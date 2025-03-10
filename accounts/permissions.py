@@ -1,0 +1,90 @@
+from rest_framework.permissions import BasePermission
+from .models import RoleChoices, AppUser
+
+class IsManagement(BasePermission):
+    """
+    Permission class for Management role.
+    Allows access to users with MANAGEMENT role and checks layer access.
+    """
+    def has_permission(self, request, view):
+        return request.user.role == RoleChoices.MANAGEMENT
+
+    def has_object_permission(self, request, view, obj):
+        # Check if user has access to this layer
+        if hasattr(obj, 'layer'):
+            return obj.layer in request.user.app_users.values_list('layer', flat=True)
+        return True
+
+class IsOperation(BasePermission):
+    """
+    Permission class for Operation role.
+    Restricts access to users' own layer type.
+    """
+    def has_permission(self, request, view):
+        return request.user.role == RoleChoices.OPERATION
+
+    def has_object_permission(self, request, view, obj):
+        user_layer = request.user.app_users.first().layer if request.user.app_users.exists() else None
+        if not user_layer:
+            return False
+        return getattr(obj, 'layer_type', None) == user_layer.layer_type
+
+class IsCreator(BasePermission):
+    """
+    Permission class for Creator role.
+    Creators have access to their assigned layers and child layers.
+    """
+    def has_permission(self, request, view):
+        return request.user.role == RoleChoices.CREATOR
+
+    def has_object_permission(self, request, view, obj):
+        creator_layers = self.get_creator_layers(request.user)
+        if hasattr(obj, 'layer'):
+            return obj.layer in creator_layers
+        return obj in creator_layers
+
+    @staticmethod
+    def get_creator_layers(user):
+        """Get all layers that the creator has access to"""
+        layers = []
+        for app_user in user.app_users.all():
+            layers.append(app_user.layer)
+            # If it's a group layer, add subsidiaries and branches
+            if app_user.layer.layer_type == 'GROUP':
+                layers.extend(app_user.layer.subsidiaries.all())
+                for subsidiary in app_user.layer.subsidiaries.all():
+                    layers.extend(subsidiary.branches.all())
+            # If it's a subsidiary layer, add branches
+            elif app_user.layer.layer_type == 'SUBSIDIARY':
+                layers.extend(app_user.layer.branches.all())
+        return layers
+
+class CanManageAppUsers(BasePermission):
+    """
+    Permission class for managing AppUsers.
+    Only CREATOR or MANAGEMENT roles can manage users in their layers.
+    """
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in [
+            RoleChoices.CREATOR,
+            RoleChoices.MANAGEMENT
+        ]
+
+    def has_object_permission(self, request, view, obj):
+        """Check if user can manage AppUsers in this layer"""
+        layer = obj.layer if isinstance(obj, AppUser) else obj
+        user_layers = request.user.app_users.values_list('layer', flat=True)
+        
+        # Check if the layer or any of its parent layers are in user's layers
+        current_layer = layer
+        while current_layer:
+            if current_layer.id in user_layers:
+                return True
+            # Move up the hierarchy
+            if hasattr(current_layer, 'subsidiary_layer'):
+                current_layer = current_layer.subsidiary_layer
+            elif hasattr(current_layer, 'group_layer'):
+                current_layer = current_layer.group_layer
+            else:
+                break
+        return False 
