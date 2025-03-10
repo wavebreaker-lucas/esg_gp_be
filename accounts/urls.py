@@ -1,6 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import RegisterLayerProfileView, LayerProfileViewSet, AppUserViewSet
+from .views.registration import RegisterLayerProfileView
+from .views.layer_management import LayerProfileViewSet
+from .views.user_management import AppUserViewSet
 
 # Create a router for ViewSets
 router = DefaultRouter()
