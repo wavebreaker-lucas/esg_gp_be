@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from .models import RoleChoices, LayerTypeChoices, GroupLayer, SubsidiaryLayer, LayerProfile, BranchLayer, AppUser
+from .serializers.models import LayerProfileSerializer
 
 # Common password list for security validation
 COMMON_PASSWORDS = {
@@ -124,8 +125,6 @@ def get_flat_sorted_layers(accessible_layers):
     """
     Convert hierarchical layer structure to flat sorted list
     """
-    from .serializers import LayerProfileSerializer
-    
     flat_list = []
     group_qs = accessible_layers.filter(layer_type=LayerTypeChoices.GROUP)
     
