@@ -1,0 +1,9 @@
+Django>=5.1.7
+djangorestframework>=3.14.0
+django-cors-headers>=4.3.1
+psycopg2-binary>=2.9.9  # PostgreSQL adapter
+python-dotenv>=1.0.1
+# Additional useful packages
+django-filter>=24.1  # For advanced filtering in DRF
+drf-yasg>=1.21.7  # For API documentation
+django-environ>=0.11.2  # For environment variables 
