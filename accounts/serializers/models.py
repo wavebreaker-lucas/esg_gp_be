@@ -1,6 +1,7 @@
 import pytz
 from rest_framework import serializers
 from django.utils import timezone
+from django.db.models import Count
 from ..models import CustomUser, AppUser, LayerProfile, GroupLayer, SubsidiaryLayer, BranchLayer, RoleChoices
 from ..services import validate_password
 
@@ -103,10 +104,10 @@ class AppUserSerializer(serializers.ModelSerializer):
 
 class LayerProfileSerializer(serializers.ModelSerializer):
     """
-    Base serializer for company layer hierarchy
+    Base serializer for company layer hierarchy with optimized queries
     """
     app_users = serializers.SerializerMethodField()
-    user_count = serializers.SerializerMethodField()
+    user_count = serializers.IntegerField(read_only=True)  # Use annotated value
     created_at = serializers.SerializerMethodField()
 
     class Meta:
@@ -123,25 +124,36 @@ class LayerProfileSerializer(serializers.ModelSerializer):
             "created_at"
         ]
 
-    def get_user_count(self, obj):
-        """Get user count excluding creators for non-group layers"""
-        if obj.layer_type == 'GROUP':
-            return obj.app_users.count()
-        return obj.app_users.exclude(user__role="CREATOR").count()
-
     def get_app_users(self, obj):
         """Get users, excluding creators for non-group layers"""
-        if obj.layer_type == 'GROUP':
-            app_users = obj.app_users.all()
-            return AppUserSerializer(app_users, many=True).data
-        non_creator_users = obj.app_users.exclude(user__role="CREATOR")
-        return AppUserSerializer(non_creator_users, many=True).data
+        # Use prefetched data
+        if hasattr(obj, 'prefetched_app_users'):
+            app_users = obj.prefetched_app_users
+            if obj.layer_type != 'GROUP':
+                app_users = [au for au in app_users if au.user.role != "CREATOR"]
+        else:
+            # Fallback to regular querying if not prefetched
+            if obj.layer_type == 'GROUP':
+                app_users = obj.app_users.all()
+            else:
+                app_users = obj.app_users.exclude(user__role="CREATOR")
+        
+        return AppUserSerializer(app_users, many=True).data
 
     def get_created_at(self, obj):
         """Format creation time in Hong Kong timezone with creator info"""
         hkt_tz = pytz.timezone('Asia/Hong_Kong')
         hkt_time = obj.created_at.astimezone(hkt_tz)
-        creator_app_user = obj.app_users.filter(user__role="CREATOR").first()
+        
+        # Use prefetched data if available
+        if hasattr(obj, 'prefetched_app_users'):
+            creator_app_user = next(
+                (au for au in obj.prefetched_app_users if au.user.role == "CREATOR"),
+                None
+            )
+        else:
+            creator_app_user = obj.app_users.filter(user__role="CREATOR").first()
+            
         creator = creator_app_user.name if creator_app_user else "Unknown"
         return f"{hkt_time.strftime('%Y-%m-%d %H:%M')}HKT by {creator}"
 

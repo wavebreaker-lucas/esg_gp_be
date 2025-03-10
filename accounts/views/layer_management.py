@@ -15,6 +15,7 @@ from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError, PermissionDenied
+from django.db.models import Count, Prefetch
 
 from ..models import (
     LayerProfile, GroupLayer, SubsidiaryLayer, BranchLayer,
@@ -38,6 +39,21 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, JSONParser]
 
+    def get_queryset(self):
+        """
+        Get optimized queryset with prefetched relationships and annotations
+        """
+        base_queryset = get_accessible_layers(self.request.user)
+        return base_queryset.prefetch_related(
+            Prefetch(
+                'app_users',
+                queryset=AppUser.objects.select_related('user'),
+                to_attr='prefetched_app_users'
+            )
+        ).annotate(
+            user_count=Count('app_users')
+        )
+
     @method_decorator(cache_page(60 * 5))
     @method_decorator(vary_on_cookie)
     def list(self, request):
@@ -51,7 +67,7 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
             if cached_result:
                 return Response(cached_result)
 
-            accessible_layers = get_accessible_layers(user)
+            accessible_layers = self.get_queryset()
 
             if layer_type_filter:
                 filter_types = [ft.strip().upper() for ft in layer_type_filter.split(',') if ft.strip()]
@@ -84,7 +100,7 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
             if cached_result:
                 return Response(cached_result)
 
-            accessible_layers = get_accessible_layers(user)
+            accessible_layers = self.get_queryset()
 
             try:
                 layer = accessible_layers.get(id=pk)
