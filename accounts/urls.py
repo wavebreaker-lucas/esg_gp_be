@@ -1,12 +1,13 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import TokenRefreshView
 from .views.registration import RegisterLayerProfileView
 from .views.layer_management import LayerProfileViewSet
 from .views.user_management import AppUserViewSet
 from .views.auth import (
     CustomTokenObtainPairView, LogoutView,
     VerifyOTPView, RequestPasswordResetView,
-    ResetPasswordView
+    ResetPasswordView, ResendOTPView
 )
 
 # Create a router for ViewSets
@@ -26,6 +27,8 @@ urlpatterns = [
     path('login/', CustomTokenObtainPairView.as_view(), name='login'),
     path('logout/', LogoutView.as_view(), name='logout'),
     path('verify-otp/', VerifyOTPView.as_view(), name='verify-otp'),
+    path('resend-otp/', ResendOTPView.as_view(), name='resend-otp'),
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('request-password-reset/', 
          RequestPasswordResetView.as_view(), 
          name='request-password-reset'),
