@@ -2,6 +2,7 @@ import pytz
 from rest_framework import serializers
 from django.utils import timezone
 from ..models import CustomUser, AppUser, LayerProfile, GroupLayer, SubsidiaryLayer, BranchLayer, RoleChoices
+from ..services import validate_password
 
 class CustomUserSerializer(serializers.ModelSerializer):
     """
@@ -33,12 +34,10 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
         return role_up
     
-    def validate_password(self, value, user=None):
-        """Validate password strength"""
-        # TODO: Implement password validation rules
-        if len(value) < 8:
-            raise serializers.ValidationError("Password must be at least 8 characters long.")
-        return value
+    def validate_password(self, value):
+        """Validate password using centralized validation"""
+        user = self.instance if self.instance else None
+        return validate_password(value, user)
 
     def create(self, validated_data):
         """Create new user with proper password hashing"""
@@ -46,7 +45,6 @@ class CustomUserSerializer(serializers.ModelSerializer):
         user = CustomUser(**validated_data)
 
         if password:
-            self.validate_password(password)
             user.set_password(password)
         else:
             raise serializers.ValidationError("Password is required!")

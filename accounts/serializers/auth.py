@@ -30,5 +30,5 @@ class ResetPasswordSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True)
 
     def validate_new_password(self, value):
-        validate_password(value, None)
-        return value
+        """Validate new password using centralized validation"""
+        return validate_password(value, self.context.get('user'))
