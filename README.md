@@ -2,9 +2,41 @@
 
 A Django-based platform for managing company hierarchies and user access control with a focus on ESG (Environmental, Social, and Governance) reporting.
 
-## Features
+## Glossary
 
-### Company Layer Management
+- **ESG**: Environmental, Social, and Governance - A framework for evaluating organizations' sustainability and societal impact
+- **JWT**: JSON Web Token - A secure way to handle user authentication and information exchange
+- **OTP**: One-Time Password - A automatically generated code sent via email for additional security
+- **API**: Application Programming Interface - A set of rules that allow different software applications to communicate
+- **CRUD**: Create, Read, Update, Delete - Basic operations for managing data
+- **Layer**: In this platform, refers to different levels of company hierarchy (Group, Subsidiary, Branch)
+- **Role-based Access**: System of providing different permissions based on user roles (CREATOR, MANAGEMENT, OPERATION)
+- **Serializer**: Component that converts complex data types (like database models) to and from JSON
+- **ViewSet**: Django REST Framework component that handles API operations for a model
+- **Middleware**: Software that acts as a bridge between different applications or components
+
+## Quick Start
+1. Clone and setup
+   ```bash
+   git clone [repository-url]
+   cd esg_platform_greenpoint
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+2. Configure and run
+   ```bash
+   cp .env.example .env
+   # Edit .env with your settings
+   python manage.py migrate
+   python manage.py createsuperuser
+   python manage.py runserver
+   ```
+
+## Core Features
+
+### 1. Company Layer Management
 - Three-tier company hierarchy:
   - Group Layer (Top level)
   - Subsidiary Layer (Mid level)
@@ -13,7 +45,7 @@ A Django-based platform for managing company hierarchies and user access control
 - Shareholding ratio tracking
 - Location and industry tracking
 
-### User Management
+### 2. User Management
 - Role-based access control (CREATOR, MANAGEMENT, OPERATION)
 - Email-based authentication
 - Two-factor authentication with OTP
@@ -21,7 +53,7 @@ A Django-based platform for managing company hierarchies and user access control
 - Bulk user import/export via CSV
 - User profile management within layers
 
-### Security Features
+### 3. Security Features
 - JWT-based authentication
 - Email verification system
 - Password reset functionality
@@ -30,152 +62,111 @@ A Django-based platform for managing company hierarchies and user access control
 - OTP system for verification
 - Session management
 
-### Data Management
+### 4. Data Management
 - CSV import/export functionality
 - Bulk operations support
 - Caching for performance
 - Transaction management
 - Error handling and logging
 
-## Technical Architecture
+## Technical Details
 
-### Core Components
-
-#### Core Django Files
+### Project Structure
 ```
-accounts/
-├── admin.py       # Django admin interface customization
-├── apps.py        # App configuration
-├── models.py      # Database models and relationships
-├── permissions.py # Custom permission classes
-├── services.py    # Business logic and utilities
-├── urls.py        # URL routing
-├── views/         # View modules
-└── serializers/   # Serializer modules
+accounts/                       # Main application directory
+├── admin.py       # Customizes the Django admin panel interface
+├── apps.py        # Django app configuration and startup settings
+├── models.py      # Defines database structure and relationships
+├── permissions.py # Handles access control and security rules
+├── services.py    # Contains core business logic and reusable functions
+├── urls.py        # Maps URLs to their corresponding views
+├── views/         # Handles HTTP requests and business logic
+└── serializers/   # Converts data between Python and JSON formats
 ```
 
-#### Models
+### Components
+
+#### 1. Models (Database Tables)
 - `CustomUser`: Extended user model with role management
+  - Handles user authentication and permissions
+  - Stores user credentials and preferences
 - `LayerProfile`: Base model for company hierarchy
-  - `GroupLayer`: Top-level company representation
-  - `SubsidiaryLayer`: Mid-level companies
-  - `BranchLayer`: Branch offices
+  - Common fields for all company types
+  - Handles shared functionality
+  - `GroupLayer`: Top-level company representation (Parent company)
+  - `SubsidiaryLayer`: Mid-level companies (Child companies)
+  - `BranchLayer`: Branch offices (Local operations)
 - `AppUser`: Links users to company layers
+  - Manages user-company relationships
+  - Stores user metadata like name and title
 
-#### Core Files Description
+#### 2. Core Files
+- **admin.py** (Django Admin Configuration)
+  - Custom admin interface for all models
+  - Enhanced display and filtering options
+  - Optimized queries for admin views
+  - Custom actions and inline models
 
-##### admin.py
-- Custom admin interface for all models
-- Enhanced display and filtering options
-- Optimized queries for admin views
-- Custom actions and inline models
+- **permissions.py** (Access Control)
+  - `IsManagement`: Allows access to management functions
+  - `IsOperation`: Restricts access to operational tasks
+  - `IsCreator`: Provides company creation privileges
+  - `CanManageAppUsers`: Controls user management capabilities
 
-##### permissions.py
-- `IsManagement`: Permission class for management role
-- `IsOperation`: Permission class for operation role
-- `IsCreator`: Permission class for creator role
-- `CanManageAppUsers`: Permission class for user management
+- **services.py** (Business Logic)
+  - Email services (Sending notifications, verifications)
+  - OTP generation and validation (Security)
+  - Password management (Reset, validation)
+  - Layer access validation (Security checks)
+  - User management utilities (Helper functions)
 
-##### services.py
-- Email services
-- OTP generation and validation
-- Password management
-- Layer access validation
-- User management utilities
-
-##### urls.py
-- API endpoint routing
-- JWT authentication endpoints
-- Layer management routes
-- User management routes
-
-#### Views Organization
+#### 3. Views and Serializers
 ```
-views/
-├── auth.py         # Authentication views
-├── registration.py # Registration handling
-├── layer_management.py # Layer CRUD operations
-├── user_management.py  # User management
-└── mixins.py      # Shared view functionality
+views/                          serializers/
+├── auth.py                     ├── auth.py
+├── registration.py             └── models.py
+├── layer_management.py
+├── user_management.py
+└── mixins.py
 ```
 
-#### Serializers Organization
-```
-serializers/
-├── auth.py    # Authentication serializers
-└── models.py  # Model serializers
-```
+## API Reference
+All API endpoints require authentication unless specified otherwise.
 
-### API Endpoints
+### Authentication Endpoints
+These endpoints handle user authentication and account management:
 
-#### Authentication
-- `POST /api/register-layer-profile/` - Register company and creator
-- `POST /api/login/` - User login
-- `POST /api/logout/` - User logout
-- `POST /api/verify-otp/` - Verify OTP code
-- `POST /api/resend-otp/` - Resend OTP code
-- `POST /api/token/refresh/` - Refresh JWT token
-- `POST /api/request-password-reset/` - Request password reset
-- `POST /api/reset-password/<token>/` - Reset password
+- `POST /api/register-layer-profile/` - Create new company and admin account (No auth required)
+- `POST /api/login/` - Authenticate user and get access token (No auth required)
+- `POST /api/logout/` - Invalidate current access token
+- `POST /api/verify-otp/` - Verify email using OTP code (No auth required)
+- `POST /api/resend-otp/` - Request new OTP code (No auth required)
+- `POST /api/token/refresh/` - Get new access token using refresh token
+- `POST /api/request-password-reset/` - Start password reset process (No auth required)
+- `POST /api/reset-password/<token>/` - Complete password reset (No auth required)
 
-#### Layer Management
-- `GET /api/layers/` - List accessible layers
-- `POST /api/layers/` - Create new layer
-- `GET /api/layers/<id>/` - Get layer details
-- `PUT /api/layers/<id>/` - Update layer
-- `DELETE /api/layers/<id>/` - Delete layer
-- `POST /api/layers/import-csv/` - Import layers from CSV
-- `GET /api/layers/download-example/` - Download CSV template
+### Layer Management Endpoints
+These endpoints manage the company hierarchy structure:
 
-#### User Management
-- `GET /api/app_users/` - List users
-- `POST /api/app_users/` - Create user
-- `GET /api/app_users/<id>/` - Get user details
-- `PUT /api/app_users/<id>/` - Update user
-- `DELETE /api/app_users/<id>/` - Delete user
-- `POST /api/app_users/<id>/add-user/` - Add user to layer
-- `POST /api/app_users/<id>/import-csv/` - Import users from CSV
-- `GET /api/app_users/<id>/export-csv/` - Export users to CSV
+- `GET /api/layers/` - Get list of companies user has access to
+- `POST /api/layers/` - Create new company (CREATOR role required)
+- `GET /api/layers/<id>/` - Get detailed company information
+- `PUT /api/layers/<id>/` - Update company details (CREATOR role required)
+- `DELETE /api/layers/<id>/` - Remove company (CREATOR role required)
+- `POST /api/layers/import-csv/` - Bulk import companies from CSV
+- `GET /api/layers/download-example/` - Get CSV template for bulk import
 
-## Setup and Installation
+### User Management Endpoints
+These endpoints handle user operations within companies:
 
-1. Clone the repository
-```bash
-git clone [repository-url]
-cd esg_platform_greenpoint
-```
-
-2. Create and activate virtual environment
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies
-```bash
-pip install -r requirements.txt
-```
-
-4. Configure environment variables
-```bash
-cp .env.example .env
-# Edit .env with your settings
-```
-
-5. Run migrations
-```bash
-python manage.py migrate
-```
-
-6. Create superuser
-```bash
-python manage.py createsuperuser
-```
-
-7. Run the development server
-```bash
-python manage.py runserver
-```
+- `GET /api/app_users/` - List users in accessible companies
+- `POST /api/app_users/` - Create new user account
+- `GET /api/app_users/<id>/` - Get user profile details
+- `PUT /api/app_users/<id>/` - Update user information
+- `DELETE /api/app_users/<id>/` - Remove user from company
+- `POST /api/app_users/<id>/add-user/` - Add existing user to company
+- `POST /api/app_users/<id>/import-csv/` - Bulk import users from CSV
+- `GET /api/app_users/<id>/export-csv/` - Export user list to CSV
 
 ## Usage Examples
 
@@ -212,7 +203,7 @@ POST /api/layers/
 
 ### Managing Users
 
-1. Add User to Layer:
+Add User to Layer:
 ```json
 POST /api/app_users/1/add-user/
 {
