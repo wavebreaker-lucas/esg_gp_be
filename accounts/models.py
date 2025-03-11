@@ -76,6 +76,35 @@ class CustomUserManager(BaseUserManager):
         import random
         return ''.join(random.choice(allowed_chars) for i in range(length))
 
+    def create_baker_tilly_admin(self, email, password, **extra_fields):
+        """
+        Create a Baker Tilly admin user with proper permissions.
+        
+        Args:
+            email: Email address for the Baker Tilly admin
+            password: Password for the account
+            **extra_fields: Additional fields like name, etc.
+            
+        Returns:
+            CustomUser: Created Baker Tilly admin user
+            
+        Raises:
+            ValueError: If email or password is invalid
+        """
+        if not email or not password:
+            raise ValueError("Email and password are required for Baker Tilly admin")
+            
+        # Set required flags for Baker Tilly admin
+        extra_fields.setdefault('is_staff', True)  # Gives admin interface access
+        extra_fields.setdefault('is_baker_tilly_admin', True)  # Gives business admin privileges
+        extra_fields.setdefault('is_active', True)  # No email verification needed
+        extra_fields.setdefault('must_change_password', False)  # Password is set directly
+        
+        # Create user with Baker Tilly admin settings
+        user = self.create_user(email, password, **extra_fields)
+        
+        return user
+
 class CustomUser(AbstractBaseUser, PermissionsMixin):
     """
     Custom user model where email is the unique identifier for authentication.
