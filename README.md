@@ -10,7 +10,10 @@ A Django-based platform for managing company hierarchies and user access control
 - **API**: Application Programming Interface - A set of rules that allow different software applications to communicate
 - **CRUD**: Create, Read, Update, Delete - Basic operations for managing data
 - **Layer**: In this platform, refers to different levels of company hierarchy (Group, Subsidiary, Branch)
-- **Role-based Access**: System of providing different permissions based on user roles (CREATOR, MANAGEMENT, OPERATION)
+- **Role-based Access**: Access control system with three levels:
+  - CREATOR: Full access to manage company structure and users
+  - MANAGEMENT: Can manage users within their layer
+  - OPERATION: Basic access for viewing and personal updates
 - **Serializer**: Component that converts complex data types (like database models) to and from JSON
 - **ViewSet**: Django REST Framework component that handles API operations for a model
 - **Middleware**: Software that acts as a bridge between different applications or components
@@ -46,7 +49,32 @@ A Django-based platform for managing company hierarchies and user access control
 - Location and industry tracking
 
 ### 2. User Management
-- Role-based access control (CREATOR, MANAGEMENT, OPERATION)
+- Role-based access control:
+  
+  **CREATOR Role**
+  - Highest level of access within their company structure
+  - Can create and manage company layers (Group → Subsidiary → Branch)
+  - Can add/remove users in their layers and child layers
+  - Has access to all company data and management functions
+  - Typically assigned to company administrators or top management
+  - Example: CEO, Company Administrator
+
+  **MANAGEMENT Role**
+  - Mid-level access within their assigned layer
+  - Can manage users within their assigned layer
+  - Can view and edit company information
+  - Cannot create new company layers
+  - Cannot access parent layer data
+  - Example: Regional Manager, Department Head
+
+  **OPERATION Role**
+  - Basic access level for day-to-day operations
+  - Can view their layer's information
+  - Can update their own profile
+  - Cannot modify company structure
+  - Cannot manage other users
+  - Example: Staff Member, Regular Employee
+
 - Email-based authentication
 - Two-factor authentication with OTP
 - Password management with security policies
@@ -129,6 +157,45 @@ views/                          serializers/
 ├── user_management.py
 └── mixins.py
 ```
+
+### Role-Based Access Control (RBAC)
+
+The platform implements a hierarchical role-based access control system that ensures secure and organized data access:
+
+#### Role Hierarchy
+1. **CREATOR Role**
+   - Highest level of access
+   - Can create and manage all layer types (Group, Subsidiary, Branch)
+   - Full user management capabilities
+   - Access to all company data and analytics
+   - Typically assigned to company administrators
+
+2. **MANAGEMENT Role**
+   - Mid-level access
+   - Can manage users within their assigned layer
+   - View and edit company information at their layer
+   - Cannot create new layers or access parent layer data
+   - Suitable for department heads and team leaders
+
+3. **OPERATION Role**
+   - Basic access level
+   - Can view their layer's information
+   - Update their own profile
+   - Limited to operational tasks
+   - Designed for regular staff members
+
+#### Access Control Implementation
+- Role verification happens through the `permissions.py` file
+- Each API endpoint checks user roles using permission classes
+- Layer access is validated using the `has_layer_access` service
+- Role assignments are stored securely in the user model
+- Changes to user roles are logged for audit purposes
+
+#### Security Considerations
+- Roles cannot be modified through regular API endpoints
+- Users cannot escalate their own privileges
+- All role-related actions require proper authentication
+- Failed access attempts are logged for security monitoring
 
 ## API Reference
 All API endpoints require authentication unless specified otherwise.
