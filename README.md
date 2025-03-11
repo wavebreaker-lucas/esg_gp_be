@@ -136,19 +136,36 @@ accounts/                       # Main application directory
 
 ### Components
 
-#### 1. Models (Database Tables)
-- `CustomUser`: Extended user model with role management
-  - Handles user authentication and permissions
-  - Stores user credentials and preferences
-- `LayerProfile`: Base model for company hierarchy
-  - Common fields for all company types
-  - Handles shared functionality
-  - `GroupLayer`: Top-level company representation (Parent company)
-  - `SubsidiaryLayer`: Mid-level companies (Child companies)
-  - `BranchLayer`: Branch offices (Local operations)
-- `AppUser`: Links users to company layers
-  - Manages user-company relationships
-  - Stores user metadata like name and title
+#### 1. Models and Serializers
+
+##### Database Models (`models.py`)
+- **CustomUser**: Database schema for user authentication
+  - Email-based authentication
+  - Role management (Creator, Management, Operation)
+  - Baker Tilly admin flags
+  - Password and OTP fields
+- **LayerProfile**: Company hierarchy database schema
+  - Base model for all company types
+  - Common fields (name, industry, location)
+  - Relationship definitions
+- **AppUser**: User-company relationship schema
+  - Links users to company layers
+  - Stores user metadata
+  - Manages layer associations
+
+##### Model Serializers (`serializers/models.py`)
+- **CustomUserSerializer**: API representation of users
+  - Handles password validation
+  - Manages role assignments
+  - Controls visible user fields
+- **LayerProfileSerializer**: Company data formatting
+  - Computes user counts
+  - Formats timestamps
+  - Handles nested user data
+- **AppUserSerializer**: User profile API handling
+  - Combines user and layer data
+  - Validates user-layer relationships
+  - Manages profile updates
 
 #### 2. Core Files
 - **admin.py** (Django Admin Configuration)
@@ -173,12 +190,37 @@ accounts/                       # Main application directory
 #### 3. Views and Serializers
 ```
 views/                          serializers/
-├── auth.py                     ├── auth.py
-├── registration.py             └── models.py
+├── auth.py                     ├── auth.py (Data validation)
+├── client_management.py        └── models.py
 ├── layer_management.py
 ├── user_management.py
 └── mixins.py
 ```
+
+Each module pair handles specific functionality:
+- **Authentication and Security**
+  - `views/auth.py`: HTTP endpoints for:
+    - JWT token-based login/logout
+    - Two-factor authentication (OTP)
+    - Password reset workflow
+    - Account activation
+  - `serializers/auth.py`: Data handling for:
+    - Login credential validation
+    - Password validation
+    - User data formatting
+    - Reset token validation
+
+- **Client Management**
+  - `views/client_management.py`: Baker Tilly admin operations
+  - Related serializers in `models.py`
+
+- **Layer Management**
+  - `views/layer_management.py`: Company hierarchy operations
+  - Related serializers in `models.py`
+
+- **User Management**
+  - `views/user_management.py`: User CRUD operations
+  - Related serializers in `models.py`
 
 ### Role-Based Access Control (RBAC)
 
