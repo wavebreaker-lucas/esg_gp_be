@@ -1,13 +1,33 @@
 from rest_framework.permissions import BasePermission
 from .models import RoleChoices, AppUser
 
-class IsManagement(BasePermission):
+class BakerTillyAccessMixin:
+    """
+    Mixin to add Baker Tilly admin access to any permission class.
+    Allows Baker Tilly admins to bypass normal permission checks.
+    """
+    def has_permission(self, request, view):
+        # Baker Tilly admins always have permission
+        if request.user.is_baker_tilly_admin:
+            return True
+        # Otherwise, check normal permissions
+        return super().has_permission(request, view)
+
+    def has_object_permission(self, request, view, obj):
+        # Baker Tilly admins can access any object
+        if request.user.is_baker_tilly_admin:
+            return True
+        # Otherwise, check normal permissions
+        return super().has_object_permission(request, view, obj)
+
+class IsManagement(BakerTillyAccessMixin, BasePermission):
     """
     Permission class for Management role.
     Allows access to users with MANAGEMENT role and checks layer access.
+    Also allows access to Baker Tilly admins.
     """
     def has_permission(self, request, view):
-        return request.user.role == RoleChoices.MANAGEMENT
+        return super().has_permission(request, view) or request.user.role == RoleChoices.MANAGEMENT
 
     def has_object_permission(self, request, view, obj):
         # Check if user has access to this layer
@@ -15,13 +35,14 @@ class IsManagement(BasePermission):
             return obj.layer in request.user.app_users.values_list('layer', flat=True)
         return True
 
-class IsOperation(BasePermission):
+class IsOperation(BakerTillyAccessMixin, BasePermission):
     """
     Permission class for Operation role.
     Restricts access to users' own layer type.
+    Also allows access to Baker Tilly admins.
     """
     def has_permission(self, request, view):
-        return request.user.role == RoleChoices.OPERATION
+        return super().has_permission(request, view) or request.user.role == RoleChoices.OPERATION
 
     def has_object_permission(self, request, view, obj):
         user_layer = request.user.app_users.first().layer if request.user.app_users.exists() else None
@@ -29,13 +50,14 @@ class IsOperation(BasePermission):
             return False
         return getattr(obj, 'layer_type', None) == user_layer.layer_type
 
-class IsCreator(BasePermission):
+class IsCreator(BakerTillyAccessMixin, BasePermission):
     """
     Permission class for Creator role.
     Creators have access to their assigned layers and child layers.
+    Also allows access to Baker Tilly admins.
     """
     def has_permission(self, request, view):
-        return request.user.role == RoleChoices.CREATOR
+        return super().has_permission(request, view) or request.user.role == RoleChoices.CREATOR
 
     def has_object_permission(self, request, view, obj):
         creator_layers = self.get_creator_layers(request.user)

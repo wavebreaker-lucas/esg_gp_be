@@ -102,6 +102,11 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         default=RoleChoices.OPERATION
     )
 
+    is_baker_tilly_admin = models.BooleanField(
+        default=False,
+        help_text="Designates whether this user is a Baker Tilly administrator with access to all client data."
+    )
+
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'email'
@@ -117,6 +122,11 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         if not self.otp_created_at:
             return True
         return (timezone.now() - self.otp_created_at) > datetime.timedelta(minutes=expiry_minutes)
+
+    @property
+    def is_admin(self):
+        """Check if user has any admin privileges"""
+        return self.is_superuser or self.is_baker_tilly_admin
 
 class LayerProfile(models.Model):
     """

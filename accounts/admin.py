@@ -11,15 +11,18 @@ from .models import (
 
 @admin.register(CustomUser)
 class CustomUserAdmin(UserAdmin):
-    list_display = ('email', 'role', 'is_active', 'is_staff', 'date_joined', 'last_login', 'get_layers')
-    list_filter = ('role', 'is_active', 'is_staff', 'date_joined', 'last_login')
+    list_display = ('email', 'role', 'is_baker_tilly_admin', 'is_active', 'is_staff', 'date_joined', 'last_login', 'get_layers')
+    list_filter = ('role', 'is_baker_tilly_admin', 'is_active', 'is_staff', 'date_joined', 'last_login')
     search_fields = ('email', 'app_users__name', 'app_users__layer__company_name')
     ordering = ('date_joined',)
     readonly_fields = ('date_joined', 'last_login', 'password_updated_at')
     
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
-        (_('Permissions'), {'fields': ('role', 'is_active', 'is_staff', 'is_superuser')}),
+        (_('Permissions'), {
+            'fields': ('role', 'is_baker_tilly_admin', 'is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
+            'classes': ('wide',)
+        }),
         (_('Password Management'), {'fields': ('must_change_password', 'password_updated_at')}),
         (_('OTP Settings'), {'fields': ('otp_code', 'otp_created_at')}),
         (_('Important dates'), {'fields': ('last_login', 'date_joined')}),
@@ -28,7 +31,7 @@ class CustomUserAdmin(UserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'password1', 'password2', 'role', 'is_active', 'is_staff'),
+            'fields': ('email', 'password1', 'password2', 'role', 'is_baker_tilly_admin', 'is_active', 'is_staff'),
         }),
     )
 

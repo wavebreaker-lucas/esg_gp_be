@@ -51,13 +51,20 @@ A Django-based platform for managing company hierarchies and user access control
 ### 2. User Management
 - Role-based access control:
   
+  **Baker Tilly Admin**
+  - Platform administrator with full business access
+  - Can view and manage all client company data
+  - Can manage emission factors and boundary templates
+  - Can oversee all ESG data and reporting
+  - Typically assigned to Baker Tilly team leads
+  - Example: ESG Advisory Lead, Audit Manager
+
   **CREATOR Role**
-  - Highest level of access within their company structure
-  - Can create and manage company layers (Group → Subsidiary → Branch)
+  - Company-level administrator
+  - Can manage their company structure (Group → Subsidiary → Branch)
   - Can add/remove users in their layers and child layers
-  - Has access to all company data and management functions
-  - Typically assigned to company administrators or top management
-  - Example: CEO, Company Administrator
+  - Has access to their company data and management functions
+  - Example: Company ESG Manager, Sustainability Director
 
   **MANAGEMENT Role**
   - Mid-level access within their assigned layer
@@ -162,40 +169,52 @@ views/                          serializers/
 
 The platform implements a hierarchical role-based access control system that ensures secure and organized data access:
 
+#### Admin Types
+1. **Baker Tilly Admin**
+   - Platform-wide business administration
+   - Access to all client company data
+   - Management of ESG configurations
+   - Oversight of all platform operations
+   - Assigned to Baker Tilly team members
+
+2. **System Superuser**
+   - Technical system administration
+   - Django admin interface access
+   - System maintenance and configuration
+   - Reserved for platform maintenance
+
 #### Role Hierarchy
 1. **CREATOR Role**
-   - Highest level of access
-   - Can create and manage all layer types (Group, Subsidiary, Branch)
-   - Full user management capabilities
-   - Access to all company data and analytics
-   - Typically assigned to company administrators
+   - Company-level administration
+   - Company structure management
+   - User management within company
+   - Company data access
 
 2. **MANAGEMENT Role**
-   - Mid-level access
-   - Can manage users within their assigned layer
-   - View and edit company information at their layer
-   - Cannot create new layers or access parent layer data
-   - Suitable for department heads and team leaders
+   - Layer-level administration
+   - User management within layer
+   - Layer data access
+   - Operational oversight
 
 3. **OPERATION Role**
-   - Basic access level
-   - Can view their layer's information
-   - Update their own profile
-   - Limited to operational tasks
-   - Designed for regular staff members
+   - Basic user access
+   - Personal profile management
+   - Layer data viewing
+   - Data entry and updates
 
 #### Access Control Implementation
-- Role verification happens through the `permissions.py` file
-- Each API endpoint checks user roles using permission classes
-- Layer access is validated using the `has_layer_access` service
-- Role assignments are stored securely in the user model
-- Changes to user roles are logged for audit purposes
+- Role verification through permission classes
+- Layer-based access control
+- Admin privileges management
+- Audit logging of admin actions
+- Secure data access controls
 
 #### Security Considerations
-- Roles cannot be modified through regular API endpoints
-- Users cannot escalate their own privileges
-- All role-related actions require proper authentication
-- Failed access attempts are logged for security monitoring
+- Strict role separation
+- Layer-based data isolation
+- Admin action logging
+- Access audit trails
+- Secure permission checks
 
 ## API Reference
 All API endpoints require authentication unless specified otherwise.
