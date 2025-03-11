@@ -4,6 +4,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views.registration import RegisterLayerProfileView
 from .views.layer_management import LayerProfileViewSet
 from .views.user_management import AppUserViewSet
+from .views.client_management import ClientSetupView, ClientUserManagementView, ClientStructureView
 from .views.auth import (
     CustomTokenObtainPairView, LogoutView,
     VerifyOTPView, RequestPasswordResetView,
@@ -18,6 +19,11 @@ router.register(r'app_users', AppUserViewSet, basename='app-user')  # /api/app_u
 
 # URL patterns including both ViewSet URLs and regular views
 urlpatterns = [
+    # Baker Tilly Admin endpoints
+    path('clients/setup/', ClientSetupView.as_view(), name='client-setup'),
+    path('clients/<int:group_id>/users/', ClientUserManagementView.as_view(), name='client-users'),
+    path('clients/<int:group_id>/structure/', ClientStructureView.as_view(), name='client-structure'),
+    
     # Custom registration endpoint
     path('register-layer-profile/', 
          RegisterLayerProfileView.as_view(), 

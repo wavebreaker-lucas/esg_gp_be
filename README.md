@@ -52,14 +52,28 @@ A Django-based platform for managing company hierarchies and user access control
 - Role-based access control:
   
   **Baker Tilly Admin**
-  - Platform administrator with full business access
-  - Can view and manage all client company data
-  - Can manage emission factors and boundary templates
-  - Can oversee all ESG data and reporting
-  - Typically assigned to Baker Tilly team leads
-  - Example: ESG Advisory Lead, Audit Manager
+  - ESG Advisory and Audit Functions:
+    - View all client company data
+    - Verify and approve submitted data
+    - Add audit notes and comments
+    - Track data submission status
+    - Request data corrections
+  - Client Setup:
+    - Initial company registration
+    - Create company admin accounts
+    - Set up company structure
+  - System Configuration:
+    - Set up emission factors
+    - Configure boundary templates
+    - Define industry parameters
+    - Set validation rules
+  - Monitoring & Reporting:
+    - Generate client reports
+    - Compare client performance
+    - Track ESG metrics
+    - Benchmark analysis
 
-  **CREATOR Role**
+  **CREATOR Role (Company Admin)**
   - Company-level administrator
   - Can manage their company structure (Group → Subsidiary → Branch)
   - Can add/remove users in their layers and child layers
@@ -218,6 +232,47 @@ The platform implements a hierarchical role-based access control system that ens
 
 ## API Reference
 All API endpoints require authentication unless specified otherwise.
+
+### Baker Tilly Admin Endpoints
+These endpoints are exclusively for Baker Tilly staff:
+
+- `POST /api/clients/setup/` - Set up new client company with initial admin
+  ```json
+  {
+    "company_name": "Example Corp",
+    "industry": "Technology",
+    "location": "Hong Kong",
+    "admin_email": "admin@example.com",
+    "admin_password": "secure_password",
+    "admin_name": "John Doe",
+    "admin_title": "ESG Administrator",
+    "template_id": 1
+  }
+  ```
+
+- `GET /api/clients/<id>/structure/` - View client company structure
+- `POST /api/clients/<id>/structure/` - Add subsidiary or branch to client
+  ```json
+  {
+    "layer_type": "SUBSIDIARY",
+    "company_name": "Example Asia",
+    "industry": "Technology",
+    "location": "Singapore",
+    "shareholding_ratio": 75.5
+  }
+  ```
+
+- `GET /api/clients/<id>/users/` - List all users in client company
+- `POST /api/clients/<id>/users/` - Add new user to client company
+  ```json
+  {
+    "email": "user@example.com",
+    "password": "secure_password",
+    "name": "Jane Smith",
+    "title": "ESG Manager",
+    "role": "MANAGEMENT"
+  }
+  ```
 
 ### Authentication Endpoints
 These endpoints handle user authentication and account management:

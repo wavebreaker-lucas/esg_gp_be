@@ -1,5 +1,13 @@
 from rest_framework.permissions import BasePermission
-from .models import RoleChoices, AppUser
+from .models import (
+    RoleChoices, 
+    AppUser, 
+    LayerProfile, 
+    GroupLayer, 
+    SubsidiaryLayer, 
+    BranchLayer,
+    CustomUser
+)
 
 class BakerTillyAccessMixin:
     """
@@ -19,6 +27,33 @@ class BakerTillyAccessMixin:
             return True
         # Otherwise, check normal permissions
         return super().has_object_permission(request, view, obj)
+
+class BakerTillyAdmin(BasePermission):
+    """
+    Permission class for Baker Tilly staff.
+    Combines client setup and advisory capabilities.
+    """
+    def has_permission(self, request, view):
+        return request.user.is_baker_tilly_admin
+
+    def has_object_permission(self, request, view, obj):
+        if not request.user.is_baker_tilly_admin:
+            return False
+            
+        # Full access to company and user management
+        if isinstance(obj, (LayerProfile, CustomUser, AppUser, 
+                          GroupLayer, SubsidiaryLayer, BranchLayer)):
+            return True
+            
+        # Can manage templates and configurations
+        if hasattr(obj, 'template_type') or hasattr(obj, 'is_configuration'):
+            return True
+            
+        # Can view and verify data
+        if hasattr(obj, 'is_esg_data'):
+            return True
+            
+        return False
 
 class IsManagement(BakerTillyAccessMixin, BasePermission):
     """
