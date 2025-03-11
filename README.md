@@ -230,6 +230,26 @@ The platform implements a hierarchical role-based access control system that ens
 - Access audit trails
 - Secure permission checks
 
+## User Management Process
+
+1. **Initial Company Setup** (Baker Tilly Admin)
+   - Creates client company via `/api/clients/setup/`
+   - Sets up initial company admin account
+   - Company admin receives login credentials
+
+2. **Adding Users** (Company Admin/Management)
+   - Company admin can add users via:
+     - Single user: `/api/app_users/{layer_id}/add-user/`
+     - Bulk import: `/api/app_users/{layer_id}/import-csv/`
+   - Users receive email with login credentials
+   - Must change password on first login
+
+3. **User Management**
+   - CREATOR: Can manage all company users
+   - MANAGEMENT: Can manage users in their layer
+   - Maximum 5 non-creator users per layer
+   - User roles: MANAGEMENT, OPERATION
+
 ## API Reference
 All API endpoints require authentication unless specified otherwise.
 
