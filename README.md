@@ -2,21 +2,30 @@
 
 A Django-based platform for managing company hierarchies and user access control with a focus on ESG (Environmental, Social, and Governance) reporting.
 
-## Glossary
+## Overview
 
-- **ESG**: Environmental, Social, and Governance - A framework for evaluating organizations' sustainability and societal impact
-- **JWT**: JSON Web Token - A secure way to handle user authentication and information exchange
-- **OTP**: One-Time Password - A automatically generated code sent via email for additional security
-- **API**: Application Programming Interface - A set of rules that allow different software applications to communicate
-- **CRUD**: Create, Read, Update, Delete - Basic operations for managing data
-- **Layer**: In this platform, refers to different levels of company hierarchy (Group, Subsidiary, Branch)
-- **Role-based Access**: Access control system with three levels:
-  - CREATOR: Full access to manage company structure and users
-  - MANAGEMENT: Can manage users within their layer
-  - OPERATION: Basic access for viewing and personal updates
-- **Serializer**: Component that converts complex data types (like database models) to and from JSON
-- **ViewSet**: Django REST Framework component that handles API operations for a model
-- **Middleware**: Software that acts as a bridge between different applications or components
+The ESG Platform enables Baker Tilly to manage and oversee their client companies' ESG reporting processes. The platform follows a hierarchical structure where:
+
+1. Baker Tilly admins oversee all client companies
+2. Each client company has its own hierarchy (Group → Subsidiary → Branch)
+3. Users within companies have different roles (Creator, Management, Operation)
+
+## Basic Workflow
+
+1. **Company Onboarding**
+   - Baker Tilly admin creates a new client company
+   - Sets up the initial company structure
+   - Creates the company admin account
+
+2. **Company Management**
+   - Company admin can manage their structure and users
+   - Baker Tilly admin can oversee and assist at any time
+   - Users can be added at different levels with appropriate roles
+
+3. **ESG Reporting**
+   - Users input ESG data based on their role
+   - Baker Tilly admins verify and approve submissions
+   - Reports and analytics are generated
 
 ## Quick Start
 1. Clone and setup
@@ -37,70 +46,62 @@ A Django-based platform for managing company hierarchies and user access control
    python manage.py runserver
    ```
 
+## Glossary
+
+- **ESG**: Environmental, Social, and Governance - A framework for evaluating organizations' sustainability and societal impact
+- **JWT**: JSON Web Token - A secure way to handle user authentication and information exchange
+- **OTP**: One-Time Password - A automatically generated code sent via email for additional security
+- **API**: Application Programming Interface - A set of rules that allow different software applications to communicate
+- **CRUD**: Create, Read, Update, Delete - Basic operations for managing data
+- **Layer**: In this platform, refers to different levels of company hierarchy (Group, Subsidiary, Branch)
+- **Role-based Access**: Access control system with three levels:
+  - CREATOR: Full access to manage company structure and users
+  - MANAGEMENT: Can manage users within their layer
+  - OPERATION: Basic access for viewing and personal updates
+- **Serializer**: Component that converts complex data types (like database models) to and from JSON
+- **ViewSet**: Django REST Framework component that handles API operations for a model
+- **Middleware**: Software that acts as a bridge between different applications or components
+
 ## Core Features
 
-### 1. Company Layer Management
-- Three-tier company hierarchy:
-  - Group Layer (Top level)
-  - Subsidiary Layer (Mid level)
-  - Branch Layer (Bottom level)
-- Company profile management
-- Shareholding ratio tracking
-- Location and industry tracking
+### 1. Role-Based Access Control
 
-### 2. User Management
-- Role-based access control:
-  
-  **Baker Tilly Admin**
-  - ESG Advisory and Audit Functions:
-    - View all client company data
-    - Verify and approve submitted data
-    - Add audit notes and comments
-    - Track data submission status
-    - Request data corrections
-  - Client Setup:
-    - Initial company registration
-    - Create company admin accounts
-    - Set up company structure
-  - System Configuration:
-    - Set up emission factors
-    - Configure boundary templates
-    - Define industry parameters
-    - Set validation rules
-  - Monitoring & Reporting:
-    - Generate client reports
-    - Compare client performance
-    - Track ESG metrics
-    - Benchmark analysis
+#### Baker Tilly Admin
+- **Platform Administration**
+  - Oversee all client companies
+  - Manage company structures
+  - Monitor ESG reporting progress
+- **Client Setup**
+  - Create new client companies
+  - Set up company admins
+  - Configure initial structure
+- **ESG Oversight**
+  - Verify submitted data
+  - Generate reports
+  - Track compliance
 
-  **CREATOR Role (Company Admin)**
-  - Company-level administrator
-  - Can manage their company structure (Group → Subsidiary → Branch)
-  - Can add/remove users in their layers and child layers
-  - Has access to their company data and management functions
-  - Example: Company ESG Manager, Sustainability Director
+#### Company Roles
+- **CREATOR (Company Admin)**
+  - Manage company structure
+  - Add/remove users
+  - Oversee company ESG reporting
+- **MANAGEMENT**
+  - Manage their layer
+  - Add/edit ESG data
+  - View reports
+- **OPERATION**
+  - Input ESG data
+  - View their layer
+  - Update profile
 
-  **MANAGEMENT Role**
-  - Mid-level access within their assigned layer
-  - Can manage users within their assigned layer
-  - Can view and edit company information
-  - Cannot create new company layers
-  - Cannot access parent layer data
-  - Example: Regional Manager, Department Head
-
-  **OPERATION Role**
-  - Basic access level for day-to-day operations
-  - Can view their layer's information
-  - Can update their own profile
-  - Cannot modify company structure
-  - Cannot manage other users
-  - Example: Staff Member, Regular Employee
-
-- Email-based authentication
-- Two-factor authentication with OTP
-- Password management with security policies
-- Bulk user import/export via CSV
-- User profile management within layers
+### 2. Company Structure
+- Three-tier hierarchy:
+  - Group Layer (Parent company)
+  - Subsidiary Layer (Child companies)
+  - Branch Layer (Local offices)
+- Profile management
+- Shareholding tracking
+- Location/industry data
 
 ### 3. Security Features
 - JWT-based authentication
@@ -297,7 +298,6 @@ These endpoints are exclusively for Baker Tilly staff:
 ### Authentication Endpoints
 These endpoints handle user authentication and account management:
 
-- `POST /api/register-layer-profile/` - Create new company and admin account (No auth required)
 - `POST /api/login/` - Authenticate user and get access token (No auth required)
 - `POST /api/logout/` - Invalidate current access token
 - `POST /api/verify-otp/` - Verify email using OTP code (No auth required)
@@ -333,34 +333,58 @@ These endpoints handle user operations within companies:
 
 ### Creating a New Company Structure
 
-1. Register a Group Layer:
+There are two ways to manage company structure:
+
+#### 1. Using Baker Tilly Admin Endpoints (Recommended)
+Baker Tilly admins can manage the complete company structure using dedicated endpoints:
+
+1. Create Initial Company:
 ```json
-POST /api/register-layer-profile/
+POST /api/clients/setup/
 {
-  "user": {
-    "email": "creator@example.com",
-    "password": "secure_password"
-  },
-  "group_layer": {
-    "company_name": "Example Group",
-    "company_industry": "Technology",
-    "company_location": "Hong Kong"
-  }
+    "company_name": "Example Corp",
+    "industry": "Technology",
+    "location": "Hong Kong",
+    "admin_email": "admin@example.com",
+    "admin_name": "John Doe",
+    "admin_title": "ESG Administrator"
 }
 ```
 
-2. Add a Subsidiary:
+2. Add Subsidiary or Branch:
+```json
+POST /api/clients/<group_id>/structure/
+{
+    "layer_type": "SUBSIDIARY",
+    "company_name": "Example Subsidiary",
+    "industry": "Software",
+    "location": "Singapore",
+    "shareholding_ratio": 75.5
+}
+```
+
+3. View Complete Structure:
+```
+GET /api/clients/<group_id>/structure/
+```
+
+#### 2. Using General Layer Management Endpoints
+Company Admins (and Baker Tilly admins) can also use these endpoints:
+
+1. Add Subsidiary:
 ```json
 POST /api/layers/
 {
-  "layer_type": "SUBSIDIARY",
-  "company_name": "Example Subsidiary",
-  "company_industry": "Software",
-  "shareholding_ratio": 100.00,
-  "company_location": "Singapore",
-  "group_id": 1
+    "layer_type": "SUBSIDIARY",
+    "company_name": "Example Subsidiary",
+    "company_industry": "Software",
+    "shareholding_ratio": 100.00,
+    "company_location": "Singapore",
+    "group_id": 1
 }
 ```
+
+Note: Baker Tilly admins have access to both sets of endpoints and can manage company structure at any time.
 
 ### Managing Users
 

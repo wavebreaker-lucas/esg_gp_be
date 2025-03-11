@@ -9,43 +9,39 @@ class UserFlowTest(TestCase):
     def setUp(self):
         self.client = APIClient()
         
-        # Create creator user
-        self.creator_data = {
-            'email': 'creator@test.com',
+        # Create Baker Tilly admin
+        self.admin_data = {
+            'email': 'admin@bakertilly.com',
             'password': 'TestPass123!',
-            'role': 'CREATOR'
+            'is_baker_tilly_admin': True
         }
-        self.creator = CustomUser.objects.create_user(**self.creator_data)
+        self.admin = CustomUser.objects.create_user(**self.admin_data)
         
-        # Create layer profile
-        self.layer_data = {
-            'name': 'Test Company',
-            'type': 'GROUP',
-            'creator': self.creator
-        }
-        self.layer = LayerProfile.objects.create(**self.layer_data)
-        
-    def test_user_registration_flow(self):
-        """Test complete user registration flow"""
-        # 1. Register new user
-        register_data = {
-            'email': 'test@example.com',
-            'password': 'SecurePass123!',
-            'role': 'MANAGEMENT',
-            'layer': self.layer.id
+        # Create company and initial admin
+        self.company_data = {
+            'company_name': 'Test Company',
+            'industry': 'Technology',
+            'location': 'Hong Kong',
+            'admin_email': 'creator@test.com',
+            'admin_name': 'Test Creator',
+            'admin_title': 'ESG Director'
         }
         
+    def test_client_setup_flow(self):
+        """Test complete client setup and user management flow"""
+        # 1. Baker Tilly admin creates company and admin
+        self.client.force_authenticate(user=self.admin)
         response = self.client.post(
-            reverse('register-layer-profile'),
-            register_data,
+            reverse('client-setup'),
+            self.company_data,
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         
-        # 2. Test login
+        # 2. Company admin can login
         login_data = {
-            'email': 'test@example.com',
-            'password': 'SecurePass123!'
+            'email': self.company_data['admin_email'],
+            'password': response.data['admin_password']  # Password sent in response
         }
         response = self.client.post(
             reverse('token_obtain_pair'),
@@ -61,19 +57,33 @@ class UserFlowTest(TestCase):
         
         # 3. Test profile access
         response = self.client.get(
-            reverse('layer-profile-detail', kwargs={'pk': self.layer.id})
+            reverse('layer-profile-detail', kwargs={'pk': 1})  # First group layer
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
     def test_layer_hierarchy(self):
         """Test layer creation and hierarchy"""
-        self.client.force_authenticate(user=self.creator)
+        # First create company and get admin
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            reverse('client-setup'),
+            self.company_data,
+            format='json'
+        )
+        creator = CustomUser.objects.get(email=self.company_data['admin_email'])
+        group_layer_id = response.data['group_layer']['id']
+        
+        # Login as company admin
+        self.client.force_authenticate(user=creator)
         
         # Create subsidiary
         subsidiary_data = {
-            'name': 'Test Subsidiary',
-            'type': 'SUBSIDIARY',
-            'parent': self.layer.id
+            'layer_type': 'SUBSIDIARY',
+            'company_name': 'Test Subsidiary',
+            'company_industry': 'Software',
+            'company_location': 'Singapore',
+            'shareholding_ratio': 100.00,
+            'group_id': group_layer_id
         }
         response = self.client.post(
             reverse('layer-profile-list'),
@@ -86,22 +96,48 @@ class UserFlowTest(TestCase):
         response = self.client.get(
             reverse('layer-profile-detail', kwargs={'pk': response.data['id']})
         )
-        self.assertEqual(response.data['parent'], self.layer.id)
+        self.assertEqual(response.data['group_id'], group_layer_id)
         
     def test_role_permissions(self):
         """Test role-based permissions"""
-        # Create operation user
-        operation_user = CustomUser.objects.create_user(
-            email='operation@test.com',
-            password='TestPass123!',
-            role='OPERATION'
+        # First create company and get admin
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            reverse('client-setup'),
+            self.company_data,
+            format='json'
         )
+        group_layer_id = response.data['group_layer']['id']
         
-        # Try to create layer (should fail)
+        # Create operation user through company admin
+        operation_data = {
+            'email': 'operation@test.com',
+            'name': 'Test Operation',
+            'title': 'Staff',
+            'role': 'OPERATION'
+        }
+        
+        creator = CustomUser.objects.get(email=self.company_data['admin_email'])
+        self.client.force_authenticate(user=creator)
+        
+        response = self.client.post(
+            reverse('app-user-add-user', kwargs={'pk': group_layer_id}),
+            operation_data,
+            format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        # Try to create layer as operation user (should fail)
+        operation_user = CustomUser.objects.get(email='operation@test.com')
         self.client.force_authenticate(user=operation_user)
+        
         layer_data = {
-            'name': 'Unauthorized Layer',
-            'type': 'GROUP'
+            'layer_type': 'SUBSIDIARY',
+            'company_name': 'Unauthorized Layer',
+            'company_industry': 'Technology',
+            'company_location': 'Singapore',
+            'shareholding_ratio': 100.00,
+            'group_id': group_layer_id
         }
         response = self.client.post(
             reverse('layer-profile-list'),
