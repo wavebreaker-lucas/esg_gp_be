@@ -146,18 +146,18 @@ accounts/                       # Main application directory
 #### 1. Core Files
 
 - **utils.py** (General Utilities)
-  - Password validation
+  - Password validation and security checks
   - OTP code generation
-  - Layer hierarchy utilities
-  - Data structure helpers
-  - Generic helper functions
+  - Layer hierarchy utilities (get_all_lower_layers, get_creator_layers, get_parent_layer)
+  - Pure utility functions without business logic or external dependencies
 
 - **services.py** (Business Logic)
   - Email services (notifications, verifications)
-  - Layer access validation
+  - Layer access validation and management
   - User management utilities
-  - Permission checks
-  - Business rule implementations
+  - Complex business logic (get_flat_sorted_layers)
+  - Functions that interact with models or external services
+  - Security constants (COMMON_PASSWORDS)
 
 - **permissions.py** (Access Control)
   - `IsManagement`: Allows access to management functions
@@ -218,7 +218,8 @@ Each module pair handles specific functionality:
     - JWT token-based login/logout
     - Two-factor authentication (OTP)
     - Password reset workflow
-    - Account activation
+    - Email verification
+    - OTP resending functionality
   - `serializers/auth.py`: Data handling for:
     - Login credential validation
     - Password validation
