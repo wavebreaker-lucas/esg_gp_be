@@ -3,7 +3,7 @@ from rest_framework import serializers
 from django.utils import timezone
 from django.db.models import Count
 from ..models import CustomUser, AppUser, LayerProfile, GroupLayer, SubsidiaryLayer, BranchLayer, RoleChoices
-from ..services import validate_password
+from ..utils import validate_password
 
 class CustomUserSerializer(serializers.ModelSerializer):
     """

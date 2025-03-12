@@ -128,15 +128,50 @@ accounts/                       # Main application directory
 ├── apps.py        # Django app configuration and startup settings
 ├── models.py      # Defines database structure and relationships
 ├── permissions.py # Handles access control and security rules
-├── services.py    # Contains core business logic and reusable functions
+├── services.py    # Contains business logic and external service interactions
+├── utils.py       # General utility functions and helpers
 ├── urls.py        # Maps URLs to their corresponding views
-├── views/         # Handles HTTP requests and business logic
+│   ├── auth.py           # Authentication views
+│   ├── client_management.py  # Baker Tilly admin operations
+│   ├── layer_management.py   # Company hierarchy operations
+│   ├── user_management.py    # User CRUD operations
+│   └── mixins.py        # Reusable view mixins
 └── serializers/   # Converts data between Python and JSON formats
+    ├── auth.py    # Authentication serializers
+    └── models.py  # Model serializers
 ```
 
 ### Components
 
-#### 1. Models and Serializers
+#### 1. Core Files
+
+- **utils.py** (General Utilities)
+  - Password validation
+  - OTP code generation
+  - Layer hierarchy utilities
+  - Data structure helpers
+  - Generic helper functions
+
+- **services.py** (Business Logic)
+  - Email services (notifications, verifications)
+  - Layer access validation
+  - User management utilities
+  - Permission checks
+  - Business rule implementations
+
+- **permissions.py** (Access Control)
+  - `IsManagement`: Allows access to management functions
+  - `IsOperation`: Restricts access to operational tasks
+  - `IsCreator`: Provides company creation privileges
+  - `CanManageAppUsers`: Controls user management capabilities
+
+- **admin.py** (Django Admin Configuration)
+  - Custom admin interface for all models
+  - Enhanced display and filtering options
+  - Optimized queries for admin views
+  - Custom actions and inline models
+
+#### 2. Models and Serializers
 
 ##### Database Models (`models.py`)
 - **CustomUser**: Database schema for user authentication
@@ -166,26 +201,6 @@ accounts/                       # Main application directory
   - Combines user and layer data
   - Validates user-layer relationships
   - Manages profile updates
-
-#### 2. Core Files
-- **admin.py** (Django Admin Configuration)
-  - Custom admin interface for all models
-  - Enhanced display and filtering options
-  - Optimized queries for admin views
-  - Custom actions and inline models
-
-- **permissions.py** (Access Control)
-  - `IsManagement`: Allows access to management functions
-  - `IsOperation`: Restricts access to operational tasks
-  - `IsCreator`: Provides company creation privileges
-  - `CanManageAppUsers`: Controls user management capabilities
-
-- **services.py** (Business Logic)
-  - Email services (Sending notifications, verifications)
-  - OTP generation and validation (Security)
-  - Password management (Reset, validation)
-  - Layer access validation (Security checks)
-  - User management utilities (Helper functions)
 
 #### 3. Views and Serializers
 ```
@@ -452,3 +467,53 @@ POST /api/app_users/1/add-user/
 ## License
 
 [Your License Here] 
+
+### Authentication and Security
+
+The platform implements a robust authentication system with multiple security features:
+
+#### 1. Password Management
+- **Validation** (`utils.py`)
+  - Minimum length requirements (8 chars, 12 for admins)
+  - Complexity rules (uppercase, lowercase, numbers)
+  - Common password prevention
+  - Staff-specific requirements
+
+#### 2. Two-Factor Authentication
+- **OTP Generation** (`utils.py`)
+  - 6-digit numeric codes
+  - Time-based expiration (10 minutes)
+- **Email Delivery** (`services.py`)
+  - Secure email transmission
+  - Clear instructions
+  - Expiration notification
+
+#### 3. User Authentication Flow
+- **Login Process**
+  - Email/password validation
+  - JWT token generation
+  - Optional 2FA verification
+- **Session Management**
+  - Token refresh mechanism
+  - Secure logout process
+  - Session timeout handling
+
+#### 4. Security Features
+- **Password Security**
+  - Secure hashing (Django's default hasher)
+  - Forced password changes
+  - Password history tracking
+- **Access Control**
+  - Role-based permissions
+  - Layer-based access
+  - Token-based API security
+
+#### 5. Email Communications
+- **User Notifications** (`services.py`)
+  - Welcome emails with credentials
+  - Password reset instructions
+  - OTP verification codes
+- **Security Alerts**
+  - Login notifications
+  - Password change confirmations
+  - Security-related updates 
