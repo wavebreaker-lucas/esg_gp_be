@@ -51,10 +51,7 @@ The ESG Platform enables Baker Tilly to manage and oversee their client companie
        - For SUBSIDIARY layers: `parent_id` is the GROUP's ID (same as `group_id`)
        - For BRANCH layers: `parent_id` is the SUBSIDIARY's ID (same as `subsidiary_id`)
        - For GROUP layers: `parent_id` is null
-     - `children` field lists the IDs of child layers:
-       - For GROUP layers: lists SUBSIDIARY IDs
-       - For SUBSIDIARY layers: lists BRANCH IDs
-       - For BRANCH layers: empty array
+     - Child layers can be found by filtering layers where their `parent_id` matches the current layer's ID
    - These relationship fields are only in the API response and don't affect how you create or manage layers
 
 ## Basic Workflow

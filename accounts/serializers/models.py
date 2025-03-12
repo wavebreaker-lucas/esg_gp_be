@@ -110,7 +110,6 @@ class LayerProfileSerializer(serializers.ModelSerializer):
     user_count = serializers.IntegerField(read_only=True)  # Use annotated value
     created_at = serializers.SerializerMethodField()
     parent_id = serializers.SerializerMethodField()
-    children = serializers.SerializerMethodField()
 
     class Meta:
         model = LayerProfile
@@ -124,8 +123,7 @@ class LayerProfileSerializer(serializers.ModelSerializer):
             "layer_type",
             "company_location",
             "created_at",
-            "parent_id",
-            "children"
+            "parent_id"
         ]
 
     def get_app_users(self, obj):
@@ -163,19 +161,14 @@ class LayerProfileSerializer(serializers.ModelSerializer):
 
     def get_parent_id(self, obj):
         """Get the ID of the parent layer"""
-        if obj.layer_type == 'SUBSIDIARY':
-            return obj.subsidiarylayer.group_layer_id
-        elif obj.layer_type == 'BRANCH':
-            return obj.branchlayer.subsidiary_layer_id
-        return None
-
-    def get_children(self, obj):
-        """Get IDs of child layers"""
-        if obj.layer_type == 'GROUP':
-            return list(obj.grouplayer.subsidiaries.values_list('id', flat=True))
-        elif obj.layer_type == 'SUBSIDIARY':
-            return list(obj.subsidiarylayer.branches.values_list('id', flat=True))
-        return []
+        try:
+            if obj.layer_type == 'SUBSIDIARY' and hasattr(obj, 'subsidiarylayer'):
+                return obj.subsidiarylayer.group_layer_id
+            elif obj.layer_type == 'BRANCH' and hasattr(obj, 'branchlayer'):
+                return obj.branchlayer.subsidiary_layer_id
+            return None
+        except Exception:
+            return None
 
 class GroupLayerSerializer(LayerProfileSerializer):
     """Serializer for top-level company groups"""
