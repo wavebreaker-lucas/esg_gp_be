@@ -42,6 +42,21 @@ The ESG Platform enables Baker Tilly to manage and oversee their client companie
    - Users can have different roles in different layers
    - Layer access is enforced through AppUser associations
 
+3. **Layer Relationships**
+   - When creating layers:
+     - Use `group_id` when creating SUBSIDIARY layers
+     - Use `subsidiary_id` when creating BRANCH layers
+   - When retrieving layers (`GET /api/layers/`):
+     - `parent_id` field shows the parent layer's ID:
+       - For SUBSIDIARY layers: `parent_id` is the GROUP's ID (same as `group_id`)
+       - For BRANCH layers: `parent_id` is the SUBSIDIARY's ID (same as `subsidiary_id`)
+       - For GROUP layers: `parent_id` is null
+     - `children` field lists the IDs of child layers:
+       - For GROUP layers: lists SUBSIDIARY IDs
+       - For SUBSIDIARY layers: lists BRANCH IDs
+       - For BRANCH layers: empty array
+   - These relationship fields are only in the API response and don't affect how you create or manage layers
+
 ## Basic Workflow
 
 1. **Company Onboarding**
