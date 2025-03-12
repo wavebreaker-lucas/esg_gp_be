@@ -14,6 +14,7 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 from datetime import timedelta
+from utils.azure_db_helper import get_db_connection_params
 
 # Load environment variables from .env file
 load_dotenv()
@@ -89,17 +90,7 @@ WSGI_APPLICATION = 'esg_platform.wsgi.application'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': os.getenv('DB_ENGINE'),
-        'NAME': os.getenv('DB_NAME'),
-        'USER': os.getenv('DB_USER'),
-        'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': os.getenv('DB_HOST'),
-        'PORT': os.getenv('DB_PORT'),
-        'OPTIONS': {
-            'sslmode': 'require'  # Required for Azure PostgreSQL
-        }
-    }
+    'default': get_db_connection_params()
 }
 
 
