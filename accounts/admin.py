@@ -36,14 +36,22 @@ class CustomUserAdmin(UserAdmin):
     )
 
     def get_layers(self, obj):
-        layers = obj.app_users.all()
-        return format_html(
-            '<br>'.join(
-                f'<a href="{reverse("admin:accounts_layerprofile_change", args=[user.layer.id])}">'
-                f'{user.layer.company_name} ({user.layer.get_layer_type_display()})</a>'
-                for user in layers
+        """Get HTML formatted list of layers the user is associated with"""
+        layers = []
+        for user in obj.app_users.all():
+            layer = user.layer
+            if layer.layer_type == 'GROUP':
+                url_name = 'admin:accounts_grouplayer_change'
+            elif layer.layer_type == 'SUBSIDIARY':
+                url_name = 'admin:accounts_subsidiarylayer_change'
+            else:  # BRANCH
+                url_name = 'admin:accounts_branchlayer_change'
+            
+            layers.append(
+                f'<a href="{reverse(url_name, args=[layer.id])}">'
+                f'{layer.company_name} ({layer.get_layer_type_display()})</a>'
             )
-        )
+        return format_html('<br>'.join(layers))
     get_layers.short_description = 'Associated Layers'
 
 @admin.register(GroupLayer)

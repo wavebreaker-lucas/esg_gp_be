@@ -10,6 +10,38 @@ The ESG Platform enables Baker Tilly to manage and oversee their client companie
 2. Each client company has its own hierarchy (Group → Subsidiary → Branch)
 3. Users within companies have different roles (Creator, Management, Operation)
 
+## Important Notes
+
+### User Management
+1. **Creator Role Inheritance**
+   - When a subsidiary is created, the CREATOR of the parent company is automatically added as a CREATOR of the subsidiary
+   - The same user (identified by email) can have different display names in different layers
+   - Example: admin@example.com can be "John Doe" in Group layer and "admin" in Subsidiary layer
+
+2. **User Limits**
+   - Maximum 5 non-creator users per layer
+   - CREATOR users are not counted in this limit
+   - Users can be added via API or Django admin interface
+
+3. **Email System**
+   - Email notifications are sent for:
+     - New user creation (with login credentials)
+     - Password resets
+     - OTP verification
+   - Development: Emails are printed to console (using console backend)
+   - Production: Configure proper email backend in settings.py
+
+### Company Hierarchy
+1. **Layer Types**
+   - GROUP: Top-level company
+   - SUBSIDIARY: Mid-level company, must have a parent GROUP
+   - BRANCH: Bottom-level company, must have a parent SUBSIDIARY
+
+2. **Access Control**
+   - CREATOR users get automatic access to child layers
+   - Users can have different roles in different layers
+   - Layer access is enforced through AppUser associations
+
 ## Basic Workflow
 
 1. **Company Onboarding**
@@ -45,6 +77,59 @@ The ESG Platform enables Baker Tilly to manage and oversee their client companie
    python manage.py createsuperuser
    python manage.py runserver
    ```
+
+3. Email Configuration (Development)
+   ```python
+   # settings.py
+   EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+   DEFAULT_FROM_EMAIL = 'noreply@esgplatform.com'
+   ```
+
+## API Examples
+
+### User Management
+
+1. Add User to Layer:
+```bash
+curl -X POST http://localhost:8000/api/app_users/{layer_id}/add-user/ \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer {token}" \
+-d '{
+    "user": {
+        "email": "user@example.com"
+    },
+    "name": "User Name",
+    "title": "Manager",
+    "role": "MANAGEMENT"
+}'
+```
+
+2. Delete User from Layer:
+```bash
+curl -X DELETE http://localhost:8000/api/app_users/{app_user_id} \
+-H "Authorization: Bearer {token}"
+```
+
+Note: Deleting an AppUser will also delete the associated CustomUser if it's their only layer association.
+
+### Company Structure
+
+1. Create Subsidiary:
+```bash
+curl -X POST http://localhost:8000/api/layers/ \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer {token}" \
+-d '{
+    "layer_type": "SUBSIDIARY",
+    "company_name": "Example Subsidiary",
+    "company_industry": "Technology",
+    "shareholding_ratio": 100.00,
+    "company_location": "Singapore",
+    "group_id": 1
+}'
+```
+
+Note: The CREATOR of the parent GROUP will automatically become a CREATOR of the new SUBSIDIARY.
 
 ## Glossary
 

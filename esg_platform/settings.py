@@ -179,3 +179,7 @@ SIMPLE_JWT = {
 
 # Frontend URL for password reset
 FRONTEND_URL = 'http://localhost:3000'  # Change this to your frontend URL
+
+# Email settings for development
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+DEFAULT_FROM_EMAIL = 'noreply@esgplatform.com'  # Add default sender email
