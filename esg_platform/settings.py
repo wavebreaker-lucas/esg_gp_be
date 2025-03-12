@@ -50,7 +50,7 @@ INSTALLED_APPS = [
     
     # Local
     'accounts',
-    'data_management',
+    # 'data_management',  # Temporarily commented out
     'dashboard',
 ]
 
