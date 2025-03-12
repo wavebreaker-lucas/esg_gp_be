@@ -22,7 +22,8 @@ class ClientSetupView(APIView):
                     'company_name': request.data['company_name'],
                     'company_industry': request.data['industry'],
                     'company_location': request.data.get('location', ''),
-                    'shareholding_ratio': 100.00  # Parent company is 100%
+                    'shareholding_ratio': 100.00,  # Parent company is 100%
+                    'layer_type': 'GROUP'  # Add this line to set the layer type
                 })
                 group_serializer.is_valid(raise_exception=True)
                 group = group_serializer.save()

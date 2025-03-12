@@ -24,7 +24,8 @@ class UserFlowTest(TestCase):
             'location': 'Hong Kong',
             'admin_email': 'creator@test.com',
             'admin_name': 'Test Creator',
-            'admin_title': 'ESG Director'
+            'admin_title': 'ESG Director',
+            'admin_password': 'SecurePass123!'  # Added missing required field
         }
         
     def test_client_setup_flow(self):
@@ -41,7 +42,7 @@ class UserFlowTest(TestCase):
         # 2. Company admin can login
         login_data = {
             'email': self.company_data['admin_email'],
-            'password': response.data['admin_password']  # Password sent in response
+            'password': self.company_data['admin_password']  # Use the password we set
         }
         response = self.client.post(
             reverse('token_obtain_pair'),
@@ -70,10 +71,11 @@ class UserFlowTest(TestCase):
             self.company_data,
             format='json'
         )
-        creator = CustomUser.objects.get(email=self.company_data['admin_email'])
-        group_layer_id = response.data['group_layer']['id']
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        group_layer_id = response.data['group']['id']
         
-        # Login as company admin
+        # Get the creator user
+        creator = CustomUser.objects.get(email=self.company_data['admin_email'])
         self.client.force_authenticate(user=creator)
         
         # Create subsidiary
@@ -107,14 +109,16 @@ class UserFlowTest(TestCase):
             self.company_data,
             format='json'
         )
-        group_layer_id = response.data['group_layer']['id']
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        group_layer_id = response.data['group']['id']
         
         # Create operation user through company admin
         operation_data = {
             'email': 'operation@test.com',
             'name': 'Test Operation',
             'title': 'Staff',
-            'role': 'OPERATION'
+            'role': 'OPERATION',
+            'password': 'TestPass123!'  # Add password for user creation
         }
         
         creator = CustomUser.objects.get(email=self.company_data['admin_email'])
