@@ -105,12 +105,29 @@ curl -X POST http://localhost:8000/api/app_users/{layer_id}/add-user/ \
 ```
 
 2. Delete User from Layer:
+
+#### Windows (PowerShell/Command Prompt):
 ```bash
-curl -X DELETE http://localhost:8000/api/app_users/{app_user_id} \
--H "Authorization: Bearer {token}"
+# Using curl.exe (recommended)
+curl.exe -v -X DELETE "http://localhost:8000/api/app_users/{app_user_id}/" -H "Authorization: Bearer {token}" -H "Accept: application/json"
+
+# Using PowerShell's Invoke-RestMethod
+Invoke-RestMethod -Method DELETE -Uri "http://localhost:8000/api/app_users/{app_user_id}/" -Headers @{Authorization="Bearer {token}"; Accept="application/json"} -Verbose
 ```
 
-Note: Deleting an AppUser will also delete the associated CustomUser if it's their only layer association.
+#### Unix-like Systems (Linux/macOS):
+```bash
+curl -X DELETE "http://localhost:8000/api/app_users/{app_user_id}/" \
+-H "Authorization: Bearer {token}" \
+-H "Accept: application/json"
+```
+
+**Important Notes:**
+- The trailing slash in the URL is required (`/{app_user_id}/`)
+- A successful deletion returns HTTP 204 (No Content)
+- The associated CustomUser will be automatically deleted if this was their only layer association
+- Make sure your JWT token is complete and not truncated
+- Use `-v` or `--verbose` flag to see detailed request/response information for debugging
 
 ### Company Structure
 
