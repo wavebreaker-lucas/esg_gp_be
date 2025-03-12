@@ -90,8 +90,19 @@ The ESG Platform enables Baker Tilly to manage and oversee their client companie
 ### User Management
 
 1. Add User to Layer:
+
+#### Windows (PowerShell/Command Prompt):
 ```bash
-curl -X POST http://localhost:8000/api/app_users/{layer_id}/add-user/ \
+# Using curl.exe (recommended)
+curl.exe -X POST "http://localhost:8000/api/app_users/{layer_id}/add-user/" ^
+-H "Content-Type: application/json" ^
+-H "Authorization: Bearer {token}" ^
+-d "{\"user\": {\"email\":\"user@example.com\"}, \"name\":\"User Name\", \"title\":\"Manager\", \"role\":\"MANAGEMENT\"}"
+```
+
+#### Unix-like Systems (Linux/macOS):
+```bash
+curl -X POST "http://localhost:8000/api/app_users/{layer_id}/add-user/" \
 -H "Content-Type: application/json" \
 -H "Authorization: Bearer {token}" \
 -d '{
@@ -103,6 +114,15 @@ curl -X POST http://localhost:8000/api/app_users/{layer_id}/add-user/ \
     "role": "MANAGEMENT"
 }'
 ```
+
+**Important Notes for Adding Users:**
+- The email MUST be wrapped in a "user" object in the JSON payload
+- Available roles: CREATOR, MANAGEMENT, OPERATION
+- For branches: Use MANAGEMENT role for users who will report emissions
+- For subsidiaries without branches: Use MANAGEMENT role for emission reporting
+- A successful creation returns HTTP 201 with the created user details
+- The user will receive an email with login credentials
+- Users must change their password on first login
 
 2. Delete User from Layer:
 
@@ -147,6 +167,40 @@ curl -X POST http://localhost:8000/api/layers/ \
 ```
 
 Note: The CREATOR of the parent GROUP will automatically become a CREATOR of the new SUBSIDIARY.
+
+2. Create Branch:
+
+#### Windows (PowerShell/Command Prompt):
+```bash
+# Using curl.exe (recommended)
+curl.exe -v -X POST "http://localhost:8000/api/layers/" ^
+-H "Content-Type: application/json" ^
+-H "Authorization: Bearer {token}" ^
+-H "Accept: application/json" ^
+-d "{\"layer_type\":\"BRANCH\",\"company_name\":\"Example Branch\",\"company_industry\":\"Technology\",\"company_location\":\"Singapore\",\"shareholding_ratio\":100.00,\"subsidiary_id\":2}"
+```
+
+#### Unix-like Systems (Linux/macOS):
+```bash
+curl -X POST "http://localhost:8000/api/layers/" \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer {token}" \
+-d '{
+    "layer_type": "BRANCH",
+    "company_name": "Example Branch",
+    "company_industry": "Technology",
+    "company_location": "Singapore",
+    "shareholding_ratio": 100.00,
+    "subsidiary_id": 2
+}'
+```
+
+**Important Notes for Branch Creation:**
+- The `subsidiary_id` field is required and must reference an existing subsidiary
+- Only CREATOR role users can create branches
+- The branch will be created under the specified subsidiary
+- A successful creation returns HTTP 201 with the created branch details
+- The CREATOR of the parent subsidiary automatically gets access to the new branch
 
 ## Glossary
 
