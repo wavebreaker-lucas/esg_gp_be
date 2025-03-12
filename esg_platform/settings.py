@@ -12,48 +12,14 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 import os
-import json
-import boto3
-from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 from datetime import timedelta
 
 # Load environment variables from .env file
 load_dotenv()
 
-def get_secret():
-    secret_name = os.getenv('AWS_SECRET_NAME', "esg-platform/database")
-    region_name = os.getenv('AWS_REGION', "us-east-1")
-
-    session = boto3.session.Session()
-    client = session.client(
-        service_name='secretsmanager',
-        region_name=region_name
-    )
-
-    try:
-        get_secret_value_response = client.get_secret_value(
-            SecretId=secret_name
-        )
-    except ClientError as e:
-        # Fall back to environment variables if secret access fails
-        print(f"Warning: Could not access Secrets Manager: {e}")
-        return {
-            'DB_NAME': os.getenv('DB_NAME', 'esg_platform'),
-            'DB_USER': os.getenv('DB_USER', 'admin'),
-            'DB_PASSWORD': os.getenv('DB_PASSWORD', ''),
-            'DB_HOST': os.getenv('DB_HOST', 'localhost'),
-            'DB_PORT': os.getenv('DB_PORT', '5432'),
-        }
-    else:
-        return json.loads(get_secret_value_response['SecretString'])
-
-# Get database credentials from Secrets Manager
-db_credentials = get_secret()
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
