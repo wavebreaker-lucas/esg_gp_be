@@ -36,6 +36,35 @@ class LogoutView(APIView, ErrorHandlingMixin):
         except Exception as e:
             return self.handle_unknown_error(e)
 
+class ResendOTPView(APIView, ErrorHandlingMixin):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        if not email:
+            return self.handle_validation_error("Email is required.")
+
+        try:
+            user = CustomUser.objects.get(email=email)
+        except CustomUser.DoesNotExist:
+            return self.handle_not_found_error("User not found.")
+
+        # Generate new OTP
+        otp_code = generate_otp_code()
+        user.otp_code = otp_code
+        user.otp_created_at = timezone.now()
+        user.save()
+
+        # Send new OTP via email
+        try:
+            send_otp_via_email(user.email, otp_code)
+            return Response(
+                {"message": "New OTP code sent successfully."},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return self.handle_unknown_error("Failed to send OTP code.")
+
 class VerifyOTPView(APIView, ErrorHandlingMixin):
     permission_classes = [AllowAny]
 

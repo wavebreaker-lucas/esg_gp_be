@@ -11,9 +11,9 @@ from .utils import (
     generate_otp_code,
     get_all_lower_layers,
     get_creator_layers,
-    get_flat_sorted_layers,
     get_parent_layer
 )
+from .serializers.models import LayerProfileSerializer
 
 # Common password list for security validation
 COMMON_PASSWORDS = {
@@ -21,6 +21,51 @@ COMMON_PASSWORDS = {
     "12345678Aa.", "12345678aA.", "qwerty", "letmein", 
     "welcome", "admin"
 }
+
+def get_flat_sorted_layers(accessible_layers):
+    """
+    Convert hierarchical layer structure to flat sorted list
+    """
+    flat_list = []
+    group_qs = accessible_layers.filter(layer_type=LayerTypeChoices.GROUP)
+    
+    if group_qs.exists():
+        group_ids = group_qs.values_list('id', flat=True)
+        groups = GroupLayer.objects.filter(id__in=group_ids).order_by('created_at')
+        for group in groups:
+            group_serialized = LayerProfileSerializer(group).data
+            flat_list.append(group_serialized)
+            
+            subsidiary_ids = accessible_layers.filter(
+                layer_type=LayerTypeChoices.SUBSIDIARY
+            ).values_list('id', flat=True)
+            subsidiaries = SubsidiaryLayer.objects.filter(
+                group_layer=group,
+                id__in=subsidiary_ids
+            ).order_by('created_at')
+            
+            for subsidiary in subsidiaries:
+                subsidiary_serialized = LayerProfileSerializer(subsidiary).data
+                flat_list.append(subsidiary_serialized)
+                
+                branch_ids = accessible_layers.filter(
+                    layer_type=LayerTypeChoices.BRANCH
+                ).values_list('id', flat=True)
+                branches = BranchLayer.objects.filter(
+                    subsidiary_layer=subsidiary,
+                    id__in=branch_ids
+                ).order_by('created_at')
+                
+                for branch in branches:
+                    branch_serialized = LayerProfileSerializer(branch).data
+                    flat_list.append(branch_serialized)
+        return flat_list
+    
+    # If no GROUP layer, just serialize all accessible layers
+    return LayerProfileSerializer(
+        accessible_layers.order_by('created_at'), 
+        many=True
+    ).data
 
 def send_email_to_user(email, password):
     """
@@ -126,7 +171,7 @@ def has_permission_to_manage_users(user, layer):
 def is_creator_on_layer(user, layer):
     """Check if the given user is a CREATOR on the specified layer."""
     return AppUser.objects.filter(
-        layer=layer, 
-        user=user, 
+        layer=layer,
+        user=user,
         user__role=RoleChoices.CREATOR
     ).exists() 
