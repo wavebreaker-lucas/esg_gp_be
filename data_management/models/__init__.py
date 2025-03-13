@@ -1,5 +1,5 @@
-from .models.templates import Template, Question, QuestionChoice, TemplateAssignment
-from .models.esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
+from .templates import Template, Question, QuestionChoice, TemplateAssignment
+from .esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
 
 __all__ = [
     'Template',
