@@ -179,35 +179,240 @@ interface AppUser {
     };
     name: string;
     title: string;
-    role: string;
     layer_id: number;
 }
 ```
 
-#### API Endpoints
+#### Role-Based Access Control
+1. **CREATOR Role**:
+   - Can manage company structure (create SUBSIDIARY and BRANCH layers only)
+   - Can add/remove users in their layers and child layers
+   - Gets automatic access to child layers when created
+   - Not counted in the 5-user limit per layer
+   - Automatically inherits CREATOR role in child layers
+   - Can have different display names in different layers
+
+2. **MANAGEMENT Role**:
+   - Can manage users within their assigned layer only
+   - Can view and manage layer data
+   - Counted in the 5-user limit
+   - Cannot create or modify company structure
+
+3. **OPERATION Role**:
+   - Basic access for viewing and personal updates
+   - Access limited to their assigned layer
+   - Counted in the 5-user limit
+   - No user management permissions
+
+#### User Management API
 ```typescript
-// Add User
+// Get users in a layer
+GET /api/layers/{layer_id}/users/
+
+// Get specific AppUser details
+GET /api/app_users/{app_user_id}/
+
+// Add User to Layer
 POST /api/app_users/{layer_id}/add-user/
 Body: {
     user: {
-        email: string
+        email: string  // Must be wrapped in user object
     },
     name: string,
     title: string,
-    role: "MANAGEMENT" | "OPERATION"
+    role: "MANAGEMENT" | "OPERATION"  // CREATOR role can only be assigned by Baker Tilly admins
 }
 
 // Delete User
-DELETE /api/app_users/{id}/
+DELETE /api/app_users/{app_user_id}/
 
-// Import Users
+// Import Users (CSV)
 POST /api/app_users/{layer_id}/import-csv/
 Content-Type: multipart/form-data
 Body: FormData
 
-// Export Users
+// Export Users (CSV)
 GET /api/app_users/{layer_id}/export-csv/
+
+// Resend login credentials
+POST /api/app_users/{layer_id}/resend-email/
+Body: {
+    email: string
+}
 ```
+
+Note: The `app_user_id` in the URLs refers to the ID of a specific AppUser record, while `layer_id` refers to the ID of the layer you want to manage users for.
+
+#### Implementation Guidelines
+
+1. **User Creation**:
+   ```typescript
+   async function addUserToLayer(layerId: number, userData: {
+       email: string;
+       name: string;
+       title: string;
+       role: "MANAGEMENT" | "OPERATION";
+   }) {
+       const response = await fetch(`/api/app_users/${layerId}/add-user/`, {
+           method: 'POST',
+           headers: {
+               'Content-Type': 'application/json',
+               'Authorization': `Bearer ${accessToken}`
+           },
+           body: JSON.stringify({
+               user: { email: userData.email },
+               name: userData.name,
+               title: userData.title,
+               role: userData.role
+           })
+       });
+
+       if (!response.ok) {
+           const error = await response.json();
+           throw new Error(error.message || 'Failed to add user');
+       }
+
+       return response.json();
+   }
+   ```
+
+2. **User Limits**:
+   ```typescript
+   function validateUserLimit(currentUsers: AppUser[], role: string): boolean {
+       const nonCreatorCount = currentUsers.filter(
+           user => user.user.role !== "CREATOR"
+       ).length;
+       return role === "CREATOR" || nonCreatorCount < 5;
+   }
+   ```
+
+3. **Permission Checks**:
+   ```typescript
+   function canManageUsers(currentUser: AppUser, targetLayer: Layer): boolean {
+       return (
+           currentUser.user.role === "CREATOR" ||
+           (currentUser.user.role === "MANAGEMENT" && 
+            currentUser.layer_id === targetLayer.id)
+       );
+   }
+   ```
+
+4. **Error Handling**:
+   - 201: User successfully created
+   - 204: User successfully deleted
+   - 400: Invalid data (e.g., email format)
+   - 403: Permission denied
+   - 409: User limit exceeded
+   - 422: Email already exists
+
+#### UI Components
+
+1. **User List**:
+```typescript
+interface UserListProps {
+    layerId: number;
+    currentUserRole: "CREATOR" | "MANAGEMENT" | "OPERATION";
+}
+
+function UserList({ layerId, currentUserRole }: UserListProps) {
+    const canManage = currentUserRole === "CREATOR" || currentUserRole === "MANAGEMENT";
+    
+    return (
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Title</TableHead>
+                    {canManage && <TableHead>Actions</TableHead>}
+                </TableRow>
+            </TableHeader>
+            {/* Table body implementation */}
+        </Table>
+    );
+}
+```
+
+2. **Add User Form**:
+```typescript
+interface AddUserFormProps {
+    layerId: number;
+    onSuccess: () => void;
+    currentUserCount: number;
+}
+
+function AddUserForm({ layerId, onSuccess, currentUserCount }: AddUserFormProps) {
+    const canAddMore = currentUserCount < 5;
+    
+    return (
+        <Form onSubmit={async (data) => {
+            if (!canAddMore) {
+                toast.error("Maximum user limit reached (5 non-creator users)");
+                return;
+            }
+            try {
+                await addUserToLayer(layerId, data);
+                toast.success("User added successfully");
+                onSuccess();
+            } catch (error) {
+                toast.error(error.message);
+            }
+        }}>
+            {/* Form fields implementation */}
+        </Form>
+    );
+}
+```
+
+3. **User Actions**:
+```typescript
+interface UserActionsProps {
+    user: AppUser;
+    currentUserRole: string;
+    onDelete: () => Promise<void>;
+}
+
+function UserActions({ user, currentUserRole, onDelete }: UserActionsProps) {
+    const canDelete = currentUserRole === "CREATOR" || 
+                     (currentUserRole === "MANAGEMENT" && user.user.role === "OPERATION");
+    
+    return (
+        <DropdownMenu>
+            {canDelete && (
+                <DropdownMenuItem onClick={onDelete}>
+                    Delete User
+                </DropdownMenuItem>
+            )}
+        </DropdownMenu>
+    );
+}
+```
+
+#### Best Practices
+
+1. **User Management**:
+   - Validate email format before submission
+   - Show clear error messages for validation failures
+   - Implement confirmation dialogs for deletions
+   - Show loading states during API calls
+   - Handle user limit gracefully in UI
+   - Keep user list updated after changes
+   - Show role-specific UI elements based on permissions
+
+2. **Role Handling**:
+   - Clearly display user roles and permissions
+   - Disable actions based on user's role
+   - Show helpful tooltips for disabled actions
+   - Handle inherited permissions correctly
+   - Update UI when permissions change
+
+3. **Error Handling**:
+   - Show user-friendly error messages
+   - Handle network failures gracefully
+   - Implement retry mechanisms
+   - Log errors for debugging
+   - Maintain consistent error UX
 
 ## Business Rules
 
