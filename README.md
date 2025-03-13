@@ -103,7 +103,78 @@ The ESG Platform enables Baker Tilly to manage and oversee their client companie
 
 ### User Management
 
-1. Add User to Layer:
+1. Get User Table Data:
+```bash
+GET /api/app_users/table/
+
+# Optional Query Parameters:
+?group_id=1           # Filter by group layer
+?subsidiary_id=2      # Filter by subsidiary layer
+?branch_id=3         # Filter by branch layer
+?role=MANAGEMENT     # Filter by role
+
+# Response Example:
+{
+    "users": [
+        {
+            "id": 1,
+            "name": "John Doe",
+            "email": "john@example.com",
+            "role": "CREATOR",
+            "title": "CEO",
+            "is_active": true,
+            "must_change_password": false,
+            "layer": {
+                "id": 1,
+                "name": "Example Corp",
+                "type": "GROUP"
+            }
+        },
+        {
+            "id": 2,
+            "name": "Jane Smith",
+            "email": "jane@example.com",
+            "role": "MANAGEMENT",
+            "title": "Manager",
+            "is_active": true,
+            "must_change_password": false,
+            "layer": {
+                "id": 3,
+                "name": "Asia Branch",
+                "type": "BRANCH",
+                "parent": {
+                    "id": 2,
+                    "name": "Asia Division",
+                    "type": "SUBSIDIARY"
+                },
+                "group": {
+                    "id": 1,
+                    "name": "Example Corp",
+                    "type": "GROUP"
+                }
+            }
+        }
+    ],
+    "total": 2
+}
+```
+
+**Key Features:**
+- Efficient database queries with optimized joins
+- Flexible filtering options
+- Flattened data structure for easy consumption
+- Complete hierarchy information
+- User status and permission details
+- Lightweight response format
+
+**Important Notes:**
+- Returns all accessible users based on requester's permissions
+- Hierarchy information is included when relevant
+- User status includes activation and password change requirements
+- Response is not cached for real-time accuracy
+- Supports filtering by layer type and role
+
+2. Add User to Layer:
 
 #### Windows (PowerShell/Command Prompt):
 ```bash

@@ -580,4 +580,191 @@ Development: http://localhost:8000/api/
 - [Backend API Documentation](./README.md)
 - [Company Structure Guide](./README.md#company-structure)
 - [User Management Guide](./README.md#user-management)
-- [Authentication Guide](./README.md#authentication-and-security) 
+- [Authentication Guide](./README.md#authentication-and-security)
+
+## User Table API
+
+### Get User Table Data
+```typescript
+GET /api/app_users/table/
+```
+
+This endpoint provides a simplified and efficient way to fetch user data for tables. It replaces the previous `/api/app_users/group-hierarchy/` endpoint with several improvements:
+
+1. **Flexible Filtering**
+   ```typescript
+   // Query Parameters
+   interface QueryParams {
+     group_id?: string;      // Filter by group layer
+     subsidiary_id?: string; // Filter by subsidiary layer
+     branch_id?: string;    // Filter by branch layer
+     role?: string;         // Filter by user role
+   }
+   ```
+
+2. **Response Structure**
+   ```typescript
+   interface UserTableResponse {
+     users: Array<{
+       id: number;
+       name: string;
+       email: string;
+       role: 'CREATOR' | 'MANAGEMENT' | 'OPERATION';
+       title: string;
+       is_active: boolean;
+       must_change_password: boolean;
+       layer: {
+         id: number;
+         name: string;
+         type: 'GROUP' | 'SUBSIDIARY' | 'BRANCH';
+         parent?: {
+           id: number;
+           name: string;
+           type: string;
+         };
+         group?: {
+           id: number;
+           name: string;
+           type: 'GROUP';
+         };
+       };
+     }>;
+     total: number;
+   }
+   ```
+
+3. **React Component Example**
+   ```tsx
+   import React, { useEffect, useState } from 'react';
+   import { Table, Tag, Space } from 'antd';
+
+   interface UserTableProps {
+     groupId?: number;
+     subsidiaryId?: number;
+     branchId?: number;
+   }
+
+   export const UserTable: React.FC<UserTableProps> = ({ 
+     groupId,
+     subsidiaryId,
+     branchId 
+   }) => {
+     const [loading, setLoading] = useState(false);
+     const [users, setUsers] = useState([]);
+     const [total, setTotal] = useState(0);
+
+     useEffect(() => {
+       const fetchUsers = async () => {
+         setLoading(true);
+         try {
+           const params = new URLSearchParams();
+           if (groupId) params.append('group_id', groupId.toString());
+           if (subsidiaryId) params.append('subsidiary_id', subsidiaryId.toString());
+           if (branchId) params.append('branch_id', branchId.toString());
+
+           const response = await fetch(`/api/app_users/table/?${params}`);
+           const data = await response.json();
+           setUsers(data.users);
+           setTotal(data.total);
+         } catch (error) {
+           console.error('Failed to fetch users:', error);
+         } finally {
+           setLoading(false);
+         }
+       };
+
+       fetchUsers();
+     }, [groupId, subsidiaryId, branchId]);
+
+     const columns = [
+       {
+         title: 'Name',
+         dataIndex: 'name',
+         key: 'name',
+       },
+       {
+         title: 'Email',
+         dataIndex: 'email',
+         key: 'email',
+       },
+       {
+         title: 'Role',
+         dataIndex: 'role',
+         key: 'role',
+         render: (role: string) => (
+           <Tag color={
+             role === 'CREATOR' ? 'green' :
+             role === 'MANAGEMENT' ? 'blue' : 'default'
+           }>
+             {role}
+           </Tag>
+         ),
+       },
+       {
+         title: 'Company',
+         key: 'company',
+         render: (_, record) => (
+           <Space direction="vertical" size="small">
+             <Tag>{record.layer.name}</Tag>
+             {record.layer.parent && (
+               <Tag color="blue">{record.layer.parent.name}</Tag>
+             )}
+             {record.layer.group && record.layer.type !== 'GROUP' && (
+               <Tag color="green">{record.layer.group.name}</Tag>
+             )}
+           </Space>
+         ),
+       },
+       {
+         title: 'Status',
+         key: 'status',
+         render: (_, record) => (
+           <Space>
+             {!record.is_active && <Tag color="red">Inactive</Tag>}
+             {record.must_change_password && (
+               <Tag color="orange">Password Change Required</Tag>
+             )}
+           </Space>
+         ),
+       }
+     ];
+
+     return (
+       <Table
+         loading={loading}
+         dataSource={users}
+         columns={columns}
+         rowKey="id"
+         pagination={{
+           total,
+           showSizeChanger: true,
+           showTotal: (total) => `Total ${total} users`
+         }}
+       />
+     );
+   };
+   ```
+
+### Advantages Over Previous Implementation
+
+1. **Simplified Data Structure**
+   - Flattened user data for easier table rendering
+   - Clear hierarchy information without nested arrays
+   - Direct access to user status and permissions
+
+2. **Flexible Filtering**
+   - Filter by any layer type (group, subsidiary, branch)
+   - Filter by user role
+   - Easy to extend with additional filters
+
+3. **Performance Optimizations**
+   - Efficient database queries using select_related and prefetch_related
+   - No redundant data in the response
+   - Lighter payload size
+
+4. **Better Frontend Integration**
+   - Simpler state management
+   - Easier to implement sorting and filtering
+   - More intuitive data structure for table components
+
+// ... existing content ... 

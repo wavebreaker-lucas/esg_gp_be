@@ -298,4 +298,94 @@ class AppUserViewSet(ModelViewSet, CSVExportMixin, ErrorHandlingMixin):
         except Exception as e:
             return self.handle_unknown_error(e)
 
+    @action(detail=False, methods=["get"], url_path="table")
+    def get_user_table(self, request):
+        """
+        Get a table of users with their layer information.
+        Query parameters:
+        - group_id: Optional. Filter users by group layer
+        - subsidiary_id: Optional. Filter users by subsidiary layer
+        - branch_id: Optional. Filter users by branch layer
+        - role: Optional. Filter users by role (CREATOR, MANAGEMENT, OPERATION)
+        """
+        try:
+            # Get filter parameters
+            group_id = request.query_params.get('group_id')
+            subsidiary_id = request.query_params.get('subsidiary_id')
+            branch_id = request.query_params.get('branch_id')
+            role = request.query_params.get('role')
+
+            # Start with all users the requester has access to
+            users = AppUser.objects.select_related(
+                'user',
+                'layer'
+            ).prefetch_related(
+                'layer__grouplayer',
+                'layer__subsidiarylayer',
+                'layer__branchlayer'
+            )
+
+            # Apply filters
+            if group_id:
+                users = users.filter(layer__grouplayer__id=group_id)
+            elif subsidiary_id:
+                users = users.filter(layer__subsidiarylayer__id=subsidiary_id)
+            elif branch_id:
+                users = users.filter(layer__branchlayer__id=branch_id)
+
+            if role:
+                users = users.filter(user__role=role.upper())
+
+            # Prepare response data
+            user_table = []
+            for app_user in users:
+                layer = app_user.layer
+                layer_info = {
+                    'id': layer.id,
+                    'name': layer.company_name,
+                    'type': layer.layer_type
+                }
+
+                # Get parent information
+                if hasattr(layer, 'branchlayer'):
+                    parent = layer.branchlayer.subsidiary_layer
+                    layer_info['parent'] = {
+                        'id': parent.id,
+                        'name': parent.company_name,
+                        'type': 'SUBSIDIARY'
+                    }
+                    group = parent.group_layer
+                    layer_info['group'] = {
+                        'id': group.id,
+                        'name': group.company_name,
+                        'type': 'GROUP'
+                    }
+                elif hasattr(layer, 'subsidiarylayer'):
+                    parent = layer.subsidiarylayer.group_layer
+                    layer_info['parent'] = {
+                        'id': parent.id,
+                        'name': parent.company_name,
+                        'type': 'GROUP'
+                    }
+
+                user_data = {
+                    'id': app_user.id,
+                    'name': app_user.name,
+                    'email': app_user.user.email,
+                    'role': app_user.user.role,
+                    'title': app_user.title,
+                    'layer': layer_info,
+                    'is_active': app_user.user.is_active,
+                    'must_change_password': app_user.user.must_change_password
+                }
+                user_table.append(user_data)
+
+            return Response({
+                'users': user_table,
+                'total': len(user_table)
+            })
+
+        except Exception as e:
+            return self.handle_unknown_error(e)
+
     # Add other methods (resend_email, bulk_delete, etc.) following the same pattern 
