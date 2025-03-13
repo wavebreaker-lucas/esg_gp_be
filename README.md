@@ -33,14 +33,16 @@ The ESG Platform enables Baker Tilly to manage and oversee their client companie
 
 ### Company Hierarchy
 1. **Layer Types**
-   - GROUP: Top-level company
-   - SUBSIDIARY: Mid-level company, must have a parent GROUP
-   - BRANCH: Bottom-level company, must have a parent SUBSIDIARY
+   - GROUP: Top-level company (can only be created by Baker Tilly admins)
+   - SUBSIDIARY: Mid-level company, must have a parent GROUP (can be created by CREATOR role)
+   - BRANCH: Bottom-level company, must have a parent SUBSIDIARY (can be created by CREATOR role)
 
 2. **Access Control**
    - CREATOR users get automatic access to child layers
    - Users can have different roles in different layers
    - Layer access is enforced through AppUser associations
+   - Only Baker Tilly admins can create GROUP layers
+   - CREATOR role users can only create SUBSIDIARY and BRANCH layers under their existing GROUP
 
 3. **Layer Relationships**
    - When creating layers:
