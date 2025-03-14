@@ -9,19 +9,13 @@ from .views.auth import (
     VerifyOTPView, RequestPasswordResetView,
     ResetPasswordView, ResendOTPView
 )
-from data_management.views import TemplateAssignmentView, TemplateViewSet
-from data_management.views.templates import (
-    ESGFormViewSet, ESGFormCategoryViewSet
-)
+from data_management.views import TemplateAssignmentView
 
 # Create a router for ViewSets
 router = DefaultRouter()
 # Register ViewSets with the router
 router.register(r'layers', LayerProfileViewSet, basename='layer-profile')  # /api/layers/
 router.register(r'app_users', AppUserViewSet, basename='app-user')  # /api/app_users/
-router.register(r'templates', TemplateViewSet, basename='template')  # /api/templates/
-router.register(r'esg-forms', ESGFormViewSet)
-router.register(r'esg-categories', ESGFormCategoryViewSet)
 
 # URL patterns including both ViewSet URLs and regular views
 urlpatterns = [
@@ -46,7 +40,6 @@ urlpatterns = [
     # Template Assignment URLs
     path('clients/<int:group_id>/templates/', TemplateAssignmentView.as_view(), name='client-templates'),
     
-    # Template management endpoints
-    path('api/', include(router.urls)),
-    path('api/companies/<int:group_id>/templates/', TemplateAssignmentView.as_view(), name='template-assignments'),
+    # Include router URLs
+    path('', include(router.urls)),
 ] 
