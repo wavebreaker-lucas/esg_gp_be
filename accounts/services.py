@@ -142,6 +142,10 @@ def get_accessible_layers(user):
     """
     Get all layers accessible to the user based on their role.
     """
+    # Baker Tilly admins have access to all layers
+    if user.is_baker_tilly_admin:
+        return LayerProfile.objects.all()
+
     if user.role == RoleChoices.MANAGEMENT:
         return get_all_lower_layers(user.app_users.first().layer)
 

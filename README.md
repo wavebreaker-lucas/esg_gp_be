@@ -749,7 +749,90 @@ These endpoints handle user authentication and account management:
 ### Layer Management Endpoints
 These endpoints manage the company hierarchy structure:
 
-- `GET /api/layers/` - Get list of companies user has access to
+#### List Layers
+```http
+GET /api/layers/
+```
+
+Returns a list of layers (companies) that the user has access to. Supports filtering by layer type.
+
+**Query Parameters:**
+- `layer_type` (optional): Filter by layer type. Values: GROUP, SUBSIDIARY, BRANCH. Can be comma-separated for multiple types.
+  Example: `/api/layers/?layer_type=GROUP` or `/api/layers/?layer_type=GROUP,SUBSIDIARY`
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "company_name": "Example Corp",
+    "company_industry": "Technology",
+    "shareholding_ratio": 100.00,
+    "app_users": [
+      {
+        "id": "uuid",
+        "user": {
+          "id": "uuid",
+          "email": "admin@example.com",
+          "role": "CREATOR",
+          "is_superuser": false,
+          "is_baker_tilly_admin": false,
+          "must_change_password": false
+        },
+        "name": "John Doe",
+        "title": "CEO",
+        "role": "CREATOR"
+      }
+    ],
+    "user_count": 1,
+    "layer_type": "GROUP",
+    "company_location": "Hong Kong",
+    "created_at": "2024-03-15 10:30HKT by John Doe",
+    "parent_id": null
+  }
+]
+```
+
+**Response Fields:**
+- `id`: Unique identifier for the layer
+- `company_name`: Name of the company
+- `company_industry`: Industry sector
+- `shareholding_ratio`: Ownership percentage (0-100)
+- `app_users`: Array of users associated with this layer
+  - `user`: User account details including role and permissions
+  - `name`: Display name in this layer
+  - `title`: Job title in this layer
+- `user_count`: Total number of users in this layer
+- `layer_type`: Type of layer (GROUP, SUBSIDIARY, BRANCH)
+- `company_location`: Physical location of the company
+- `created_at`: Creation timestamp in HKT with creator info
+- `parent_id`: ID of parent layer (null for GROUP, group_id for SUBSIDIARY, subsidiary_id for BRANCH)
+
+**Notes:**
+- Response is cached for 5 minutes for performance
+- Baker Tilly admins see all layers
+- Regular users only see layers they have access to based on their role:
+  - CREATOR: Access to their layer and all child layers
+  - MANAGEMENT: Access to their layer and lower layers
+  - OPERATION: Access only to their assigned layer
+- For non-GROUP layers, CREATOR users are excluded from app_users list
+
+**Example Usage:**
+1. Get all group layers:
+```http
+GET /api/layers/?layer_type=GROUP
+```
+
+2. Get subsidiaries and branches:
+```http
+GET /api/layers/?layer_type=SUBSIDIARY,BRANCH
+```
+
+3. Get all layers (no filter):
+```http
+GET /api/layers/
+```
+
 - `POST /api/layers/` - Create new company (CREATOR role required)
 - `GET /api/layers/<id>/` - Get detailed company information
 - `PUT /api/layers/<id>/` - Update company details (CREATOR role required)
