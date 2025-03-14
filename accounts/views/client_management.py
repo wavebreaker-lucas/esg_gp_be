@@ -4,7 +4,7 @@ from rest_framework import status
 from django.db import transaction
 from ..permissions import BakerTillyAdmin
 from ..models import CustomUser, AppUser, GroupLayer, SubsidiaryLayer, BranchLayer, RoleChoices
-from ..serializers.models import GroupLayerSerializer, AppUserSerializer
+from ..serializers.models import GroupLayerSerializer, AppUserSerializer, SubsidiaryLayerSerializer, BranchLayerSerializer
 from data_management.models import Template, TemplateAssignment
 from data_management.serializers import TemplateSerializer
 
@@ -180,17 +180,28 @@ class ClientStructureView(APIView):
 
     def get(self, request, group_id):
         """Get complete structure of a client company"""
-        group = GroupLayer.objects.get(id=group_id)
-        structure = {
-            'group': GroupLayerSerializer(group).data,
-            'subsidiaries': []
-        }
-        
-        for subsidiary in group.subsidiarylayer_set.all():
-            sub_data = {
-                'subsidiary': subsidiary,
-                'branches': subsidiary.branchlayer_set.all()
+        try:
+            group = GroupLayer.objects.get(id=group_id)
+            structure = {
+                'group': GroupLayerSerializer(group).data,
+                'subsidiaries': []
             }
-            structure['subsidiaries'].append(sub_data)
             
-        return Response(structure) 
+            for subsidiary in group.subsidiarylayer_set.all():
+                sub_data = {
+                    'subsidiary': SubsidiaryLayerSerializer(subsidiary).data,
+                    'branches': BranchLayerSerializer(subsidiary.branchlayer_set.all(), many=True).data
+                }
+                structure['subsidiaries'].append(sub_data)
+                
+            return Response(structure)
+        except GroupLayer.DoesNotExist:
+            return Response(
+                {'error': 'Group layer not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            ) 
