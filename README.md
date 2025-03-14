@@ -665,6 +665,44 @@ These endpoints are exclusively for Baker Tilly staff:
 
 **Important Note**: The `group_id` parameter in these endpoints must be the ID of a GroupLayer (top-level company). These endpoints do not work with subsidiary or branch IDs.
 
+### List All Groups
+```http
+GET /api/layers/?layer_type=GROUP
+```
+
+Returns a list of all group layers (top-level companies) in the system. This endpoint supports filtering and includes user counts.
+
+**Query Parameters:**
+- `layer_type` (optional): Filter by layer type. Values: GROUP, SUBSIDIARY, BRANCH. Can be comma-separated for multiple types.
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "name": "Company Name",
+    "layer_type": "GROUP",
+    "user_count": 5,
+    "app_users": [
+      {
+        "id": "uuid",
+        "user": {
+          "id": "uuid",
+          "email": "user@example.com",
+          "role": "CREATOR"
+        }
+      }
+    ]
+  }
+]
+```
+
+**Notes:**
+- Response is cached for 5 minutes for performance
+- Includes user counts and associated users
+- Baker Tilly admins see all groups
+- Regular users only see groups they have access to
+
 ### Authentication Endpoints
 These endpoints handle user authentication and account management:
 

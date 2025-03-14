@@ -805,4 +805,72 @@ const checkUserPermissions = (user: User) => {
         // - User management for their layers
     }
     // ... handle other roles
-}; 
+};
+
+// Layer Management Types
+export type LayerType = 'GROUP' | 'SUBSIDIARY' | 'BRANCH';
+
+export interface Layer {
+  id: string;
+  name: string;
+  layer_type: LayerType;
+  user_count: number;
+  app_users: AppUser[];
+}
+
+export interface AppUser {
+  id: string;
+  user: {
+    id: string;
+    email: string;
+    role: UserRole;
+  };
+}
+
+// Example function to fetch groups
+async function fetchGroups(): Promise<Layer[]> {
+  const response = await fetch('/api/layers/?layer_type=GROUP', {
+    headers: {
+      'Authorization': `Bearer ${getAccessToken()}`,
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch groups');
+  }
+  
+  return response.json();
+}
+
+// Example usage in a dashboard component
+function GroupDashboard() {
+  const [groups, setGroups] = useState<Layer[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    fetchGroups()
+      .then(setGroups)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+  
+  return (
+    <div>
+      {loading ? (
+        <LoadingSpinner />
+      ) : (
+        <div>
+          <h2>Groups Overview</h2>
+          {groups.map(group => (
+            <GroupCard 
+              key={group.id}
+              name={group.name}
+              userCount={group.user_count}
+              users={group.app_users}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+} 
