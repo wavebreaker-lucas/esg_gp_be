@@ -967,6 +967,148 @@ These endpoints handle user operations within companies:
 - `POST /api/app_users/<id>/import-csv/` - Bulk import users from CSV
 - `GET /api/app_users/<id>/export-csv/` - Export user list to CSV
 
+### Template Assignment
+
+The platform provides endpoints to manage ESG disclosure templates and their assignments to client companies. Only Baker Tilly admins can assign templates to companies.
+
+#### List Available Templates
+```http
+GET /api/templates/
+
+# Response Example:
+{
+    "templates": [
+        {
+            "id": 1,
+            "name": "Environmental Disclosure 2024",
+            "description": "Standard environmental disclosure template",
+            "category": "ENVIRONMENTAL",
+            "is_active": true,
+            "version": 1,
+            "created_at": "2024-01-01T00:00:00Z",
+            "created_by": {
+                "id": 1,
+                "email": "admin@bakertilly.com"
+            }
+        }
+    ]
+}
+```
+
+#### Get Client's Template Assignments
+```http
+GET /api/clients/{group_id}/templates/
+
+# Response Example:
+{
+    "assignments": [
+        {
+            "id": 1,
+            "template": {
+                "id": 1,
+                "name": "Environmental Disclosure 2024",
+                "category": "ENVIRONMENTAL"
+            },
+            "assigned_to": {
+                "id": 1,
+                "email": "client@example.com",
+                "name": "John Doe"
+            },
+            "due_date": "2024-12-31",
+            "completed_at": null,
+            "total_score": 0,
+            "max_possible_score": 100
+        }
+    ]
+}
+```
+
+#### Assign Template to Client
+```http
+POST /api/clients/{group_id}/templates/
+{
+    "template_id": 1,
+    "due_date": "2024-12-31"  # Optional
+}
+
+# Response Example:
+{
+    "message": "Template assigned successfully",
+    "assignment": {
+        "id": 1,
+        "template": {
+            "id": 1,
+            "name": "Environmental Disclosure 2024"
+        },
+        "assigned_to": {
+            "id": 1,
+            "email": "client@example.com"
+        },
+        "due_date": "2024-12-31",
+        "max_possible_score": 100
+    }
+}
+```
+
+#### Remove Template Assignment
+```http
+DELETE /api/clients/{group_id}/templates/
+{
+    "assignment_id": 1
+}
+
+# Response: 204 No Content
+```
+
+**Important Notes:**
+1. Only Baker Tilly admins can:
+   - View all available templates
+   - Assign templates to clients
+   - Remove template assignments
+2. When assigning a template:
+   - The template must be active (`is_active=True`)
+   - The template will be assigned to the company's CREATOR user
+   - Maximum possible score is automatically calculated
+3. Template assignments track:
+   - Completion status
+   - Due dates
+   - Scores achieved
+   - Assignment history
+
+**Example Workflow:**
+1. Baker Tilly admin lists available templates:
+   ```bash
+   curl -X GET "http://localhost:8000/api/templates/" \
+   -H "Authorization: Bearer {token}"
+   ```
+
+2. Assigns template to client company:
+   ```bash
+   curl -X POST "http://localhost:8000/api/clients/1/templates/" \
+   -H "Content-Type: application/json" \
+   -H "Authorization: Bearer {token}" \
+   -d '{
+       "template_id": 1,
+       "due_date": "2024-12-31"
+   }'
+   ```
+
+3. Client company can view their assignments:
+   ```bash
+   curl -X GET "http://localhost:8000/api/clients/1/templates/" \
+   -H "Authorization: Bearer {token}"
+   ```
+
+4. Baker Tilly admin can remove assignment if needed:
+   ```bash
+   curl -X DELETE "http://localhost:8000/api/clients/1/templates/" \
+   -H "Content-Type: application/json" \
+   -H "Authorization: Bearer {token}" \
+   -d '{
+       "assignment_id": 1
+   }'
+   ```
+
 ## Usage Examples
 
 ### Creating a New Company Structure
