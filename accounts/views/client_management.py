@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
+from django.db.models import Count, Sum
 from ..permissions import BakerTillyAdmin
 from ..models import CustomUser, AppUser, GroupLayer, SubsidiaryLayer, BranchLayer, RoleChoices
 from ..serializers.models import GroupLayerSerializer, AppUserSerializer, SubsidiaryLayerSerializer, BranchLayerSerializer
@@ -246,4 +247,92 @@ class ClientStructureView(APIView):
             return Response(
                 {'error': str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            ) 
+            )
+
+class ClientStatisticsView(APIView):
+    """
+    View for getting summary statistics of clients.
+    Only accessible by Baker Tilly admins.
+    """
+    permission_classes = [BakerTillyAdmin]
+    
+    def get(self, request, group_id=None):
+        """Get statistics about subsidiaries, branches, and users"""
+        try:
+            if group_id:
+                # Get statistics for a specific group
+                group = GroupLayer.objects.get(id=group_id)
+                stats = self._get_group_statistics(group)
+                return Response(stats)
+            else:
+                # Get statistics for all groups
+                all_stats = {
+                    'total_groups': GroupLayer.objects.count(),
+                    'total_subsidiaries': SubsidiaryLayer.objects.count(),
+                    'total_branches': BranchLayer.objects.count(),
+                    'total_users': AppUser.objects.count(),
+                    'groups': []
+                }
+                
+                # Get detailed stats for each group
+                for group in GroupLayer.objects.all():
+                    group_stats = self._get_group_statistics(group)
+                    all_stats['groups'].append(group_stats)
+                
+                return Response(all_stats)
+                
+        except GroupLayer.DoesNotExist:
+            return Response(
+                {'error': 'Group layer not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _get_group_statistics(self, group):
+        """Helper method to get statistics for a specific group"""
+        subsidiaries = group.subsidiarylayer_set.all()
+        
+        # Get all subsidiary IDs for this group
+        subsidiary_ids = subsidiaries.values_list('id', flat=True)
+        
+        # Count branches for these subsidiaries
+        total_branches = BranchLayer.objects.filter(subsidiary_layer_id__in=subsidiary_ids).count()
+        
+        # Get user counts by role
+        group_users = AppUser.objects.filter(layer=group)
+        subsidiary_users = AppUser.objects.filter(layer__in=subsidiary_ids)
+        branch_users = AppUser.objects.filter(
+            layer__in=BranchLayer.objects.filter(
+                subsidiary_layer_id__in=subsidiary_ids
+            ).values_list('id', flat=True)
+        )
+        
+        # Count users by role
+        def count_users_by_role(queryset):
+            return {
+                'total': queryset.count(),
+                'by_role': {
+                    'creator': queryset.filter(user__role=RoleChoices.CREATOR).count(),
+                    'management': queryset.filter(user__role=RoleChoices.MANAGEMENT).count(),
+                    'operation': queryset.filter(user__role=RoleChoices.OPERATION).count()
+                }
+            }
+        
+        return {
+            'group_id': group.id,
+            'group_name': group.company_name,
+            'statistics': {
+                'subsidiaries': subsidiaries.count(),
+                'branches': total_branches,
+                'users': {
+                    'group': count_users_by_role(group_users),
+                    'subsidiaries': count_users_by_role(subsidiary_users),
+                    'branches': count_users_by_role(branch_users),
+                    'total': group_users.count() + subsidiary_users.count() + branch_users.count()
+                }
+            }
+        } 

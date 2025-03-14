@@ -101,6 +101,121 @@ The ESG Platform enables Baker Tilly to manage and oversee their client companie
 
 ## API Examples
 
+### Statistics and Analytics
+
+1. Get Overall Client Statistics:
+```http
+GET /api/clients/statistics/
+
+# Response Example:
+{
+    "total_groups": 5,
+    "total_subsidiaries": 12,
+    "total_branches": 25,
+    "total_users": 150,
+    "groups": [
+        {
+            "group_id": 1,
+            "group_name": "Example Corp",
+            "statistics": {
+                "subsidiaries": 3,
+                "branches": 8,
+                "users": {
+                    "group": {
+                        "total": 10,
+                        "by_role": {
+                            "creator": 2,
+                            "management": 3,
+                            "operation": 5
+                        }
+                    },
+                    "subsidiaries": {
+                        "total": 15,
+                        "by_role": {
+                            "creator": 3,
+                            "management": 5,
+                            "operation": 7
+                        }
+                    },
+                    "branches": {
+                        "total": 20,
+                        "by_role": {
+                            "creator": 4,
+                            "management": 8,
+                            "operation": 8
+                        }
+                    },
+                    "total": 45
+                }
+            }
+        }
+    ]
+}
+```
+
+2. Get Single Client Statistics:
+```http
+GET /api/clients/{group_id}/statistics/
+
+# Response Example:
+{
+    "group_id": 1,
+    "group_name": "Example Corp",
+    "statistics": {
+        "subsidiaries": 3,
+        "branches": 8,
+        "users": {
+            "group": {
+                "total": 10,
+                "by_role": {
+                    "creator": 2,
+                    "management": 3,
+                    "operation": 5
+                }
+            },
+            "subsidiaries": {
+                "total": 15,
+                "by_role": {
+                    "creator": 3,
+                    "management": 5,
+                    "operation": 7
+                }
+            },
+            "branches": {
+                "total": 20,
+                "by_role": {
+                    "creator": 4,
+                    "management": 8,
+                    "operation": 8
+                }
+            },
+            "total": 45
+        }
+    }
+}
+```
+
+**Key Features:**
+- Available only to Baker Tilly admins
+- Provides comprehensive statistics at both global and per-client levels
+- Breaks down user counts by role (creator, management, operation)
+- Shows detailed hierarchy information (subsidiaries and branches)
+- Efficiently aggregates data across all layers
+
+**Use Cases:**
+1. Dashboard Overview:
+   - Quick view of total companies and users
+   - Monitor company structure growth
+   - Track user distribution across roles
+2. Client Analysis:
+   - Detailed view of client's organizational structure
+   - User distribution across different layers
+   - Role-based access patterns
+3. Resource Planning:
+   - Identify clients with complex structures
+   - Monitor user allocation across layers
+   - Plan capacity based on user distribution
+
 ### User Management
 
 1. Get User Table Data:

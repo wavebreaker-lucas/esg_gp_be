@@ -116,18 +116,27 @@ class IsCreator(BakerTillyAccessMixin, BasePermission):
                 layers.extend(app_user.layer.branches.all())
         return layers
 
-class CanManageAppUsers(BasePermission):
+class CanManageAppUsers(BakerTillyAccessMixin, BasePermission):
     """
     Permission class for managing AppUsers.
     Only CREATOR or MANAGEMENT roles can manage users in their layers.
+    Also allows access to Baker Tilly admins through BakerTillyAccessMixin.
     """
     def has_permission(self, request, view):
+        # First check if user is Baker Tilly admin through the mixin
+        if super().has_permission(request, view):
+            return True
+        # Then check normal permissions
         return request.user.is_authenticated and request.user.role in [
             RoleChoices.CREATOR,
             RoleChoices.MANAGEMENT
         ]
 
     def has_object_permission(self, request, view, obj):
+        # First check if user is Baker Tilly admin through the mixin
+        if super().has_object_permission(request, view, obj):
+            return True
+            
         """Check if user can manage AppUsers in this layer"""
         layer = obj.layer if isinstance(obj, AppUser) else obj
         user_layers = request.user.app_users.values_list('layer', flat=True)

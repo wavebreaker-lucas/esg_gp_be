@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views.layer_management import LayerProfileViewSet
 from .views.user_management import AppUserViewSet
-from .views.client_management import ClientSetupView, ClientUserManagementView, ClientStructureView
+from .views.client_management import ClientSetupView, ClientUserManagementView, ClientStructureView, ClientStatisticsView
 from .views.auth import (
     CustomTokenObtainPairView, LogoutView,
     VerifyOTPView, RequestPasswordResetView,
@@ -22,6 +22,10 @@ urlpatterns = [
     path('clients/setup/', ClientSetupView.as_view(), name='client-setup'),
     path('clients/<int:group_id>/users/', ClientUserManagementView.as_view(), name='client-users'),
     path('clients/<int:group_id>/structure/', ClientStructureView.as_view(), name='client-structure'),
+    
+    # Statistics endpoints
+    path('clients/statistics/', ClientStatisticsView.as_view(), name='client-statistics'),
+    path('clients/<int:group_id>/statistics/', ClientStatisticsView.as_view(), name='client-group-statistics'),
     
     # Auth endpoints
     path('login/', CustomTokenObtainPairView.as_view(), name='login'),
