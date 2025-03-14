@@ -467,66 +467,121 @@ curl -X POST "http://localhost:8000/api/layers/" \
 ### 3. Template System
 The platform includes a comprehensive template system for ESG disclosure:
 
-#### Template Categories
-- **General Disclosure**: Basic company information
-- **Environmental**: Environmental impact metrics
-- **Social**: Social responsibility measures
-- **Governance**: Corporate governance practices
+#### Template Types and Categories
+1. **Template Types**
+   - **Assessment Templates**: For maturity/quality evaluations with scoring
+   - **Disclosure Templates**: For pure data collection without scoring
+   - **Compliance Templates**: For compliance checks with optional scoring
 
-#### Template Components
-1. **Templates**
-   - Versioned disclosure forms
-   - Category-based organization
-   - Active/inactive status tracking
-   - Created and managed by Baker Tilly admins
+2. **Categories**
+   - **Environmental**: Environmental impact and sustainability metrics
+   - **Social**: Social responsibility and community impact
+   - **Governance**: Corporate governance practices
 
-2. **Questions**
-   - Multiple question types:
-     - Text responses
-     - Numeric inputs
-     - Single/multiple choice
-     - Date fields
-     - File uploads
-   - Section organization
-   - Required/optional settings
-   - Scoring system
-   - Custom validation rules
+#### Question Categories and Types
+1. **Question Categories**
+   - **Quantitative Data**: Numerical measurements (e.g., emissions, energy usage)
+   - **Qualitative Assessment**: Evaluative questions (may include scoring)
+   - **Documentation/Evidence**: Required documentation and proof
 
-3. **Question Choices**
-   - Predefined answer options
-   - Point-based scoring
-   - Ordered presentation
-   - Value storage
+2. **Question Types**
+   - Text responses
+   - Numeric inputs (with units)
+   - Single/multiple choice
+   - Date fields
+   - File uploads
 
-4. **Template Assignments**
-   - Company-specific assignments
-   - Progress tracking
-   - Due date management
-   - Score calculation
-   - Completion status
+3. **Question Properties**
+   - Unit types (kWh, tCO2e, hours, etc.)
+   - Custom units
+   - Evidence requirements
+   - Optional scoring (for assessment templates)
+   - Validation rules
 
-#### Template Usage
-1. **During Client Setup**
-   ```json
-   POST /api/clients/setup/
-   {
-       "company_name": "Example Corp",
-       "template_id": 1,
-       // ... other fields ...
-   }
-   ```
+#### Template Creation Example
+```http
+POST /api/templates/
+{
+    "name": "Environmental Assessment 2024",
+    "description": "Annual environmental performance assessment",
+    "category": "ENVIRONMENTAL",
+    "template_type": "ASSESSMENT",
+    "reporting_period": "Annual 2024",
+    "questions": [
+        {
+            "text": "What is your total energy consumption?",
+            "help_text": "Include all energy sources",
+            "question_type": "NUMBER",
+            "question_category": "QUANTITATIVE",
+            "unit_type": "kWh",
+            "is_required": true,
+            "order": 1,
+            "requires_evidence": true
+        },
+        {
+            "text": "Assess your energy management maturity",
+            "help_text": "Choose the most appropriate level",
+            "question_type": "CHOICE",
+            "question_category": "QUALITATIVE",
+            "is_required": true,
+            "order": 2,
+            "has_score": true,
+            "max_score": 5,
+            "choices": [
+                {
+                    "text": "No formal management",
+                    "value": "level_1",
+                    "order": 1,
+                    "score": 1
+                },
+                {
+                    "text": "Basic monitoring",
+                    "value": "level_2",
+                    "order": 2,
+                    "score": 2
+                },
+                {
+                    "text": "Systematic management",
+                    "value": "level_3",
+                    "order": 3,
+                    "score": 3
+                },
+                {
+                    "text": "Advanced optimization",
+                    "value": "level_4",
+                    "order": 4,
+                    "score": 4
+                },
+                {
+                    "text": "Industry leading",
+                    "value": "level_5",
+                    "order": 5,
+                    "score": 5
+                }
+            ]
+        }
+    ]
+}
+```
 
-2. **Template Selection**
-   - Baker Tilly admins select appropriate templates
-   - Templates can be filtered by category
-   - Only active templates are available
-   - Version control ensures consistency
+**Important Notes:**
+1. **Template Types**
+   - Choose appropriate template type based on purpose
+   - Scoring is only available in Assessment templates
+   - Disclosure templates focus on data collection
+   - Compliance templates can optionally use scoring
 
-3. **Assignment Management**
-   - Templates assigned to specific companies
-   - Progress tracking and scoring
-   - Due date monitoring
-   - Completion verification
+2. **Question Setup**
+   - Match question category to data collection needs
+   - Use appropriate units for quantitative data
+   - Only use scoring for qualitative assessments
+   - Include evidence requirements where needed
+
+3. **Best Practices**
+   - Group related questions into sections
+   - Provide clear help text and instructions
+   - Use consistent units within categories
+   - Include validation rules for data quality
 
 ### 4. Security Features
 - JWT-based authentication

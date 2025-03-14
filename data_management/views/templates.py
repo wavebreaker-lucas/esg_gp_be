@@ -1,4 +1,5 @@
 from rest_framework.views import APIView
+from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
@@ -7,6 +8,24 @@ from accounts.permissions import BakerTillyAdmin
 from accounts.models import GroupLayer, AppUser, RoleChoices
 from ..models import Template, TemplateAssignment
 from ..serializers import TemplateSerializer, TemplateAssignmentSerializer
+
+class TemplateViewSet(ModelViewSet):
+    """
+    ViewSet for managing ESG disclosure templates.
+    Only accessible by Baker Tilly admins.
+    """
+    queryset = Template.objects.all()
+    serializer_class = TemplateSerializer
+    permission_classes = [BakerTillyAdmin]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def get_queryset(self):
+        return Template.objects.prefetch_related(
+            'questions',
+            'questions__choices'
+        ).all()
 
 class TemplateAssignmentView(APIView):
     """
