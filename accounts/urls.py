@@ -9,6 +9,7 @@ from .views.auth import (
     VerifyOTPView, RequestPasswordResetView,
     ResetPasswordView, ResendOTPView
 )
+from data_management.views import TemplateAssignmentView
 
 # Create a router for ViewSets
 router = DefaultRouter()
@@ -35,6 +36,10 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('request-password-reset/', RequestPasswordResetView.as_view(), name='request-password-reset'),
     path('reset-password/<uuid:reset_token>/', ResetPasswordView.as_view(), name='reset-password'),
+    
+    # Template Assignment URLs
+    path('clients/<int:group_id>/templates/', TemplateAssignmentView.as_view(), name='client-templates'),
+    path('templates/', TemplateAssignmentView.as_view(), name='template-list'),
     
     # Include all router-generated URLs
     path('', include(router.urls)),

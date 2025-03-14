@@ -1100,3 +1100,99 @@ The platform implements a robust authentication system with multiple security fe
   - Login notifications
   - Password change confirmations
   - Security-related updates 
+
+## API Documentation
+
+### Client Setup
+
+#### POST /api/clients/setup/
+Sets up a new client company with initial admin user.
+
+Required fields:
+- `company_name`: Name of the company
+- `industry`: Company's industry
+- `admin_email`: Email for the admin user
+- `admin_password`: Password for the admin user
+- `admin_name`: Full name of the admin user
+
+Optional fields:
+- `location`: Company's location
+- `admin_title`: Title for the admin user (defaults to "ESG Administrator")
+
+### Template Management
+
+#### GET /api/templates/
+Returns a list of all available templates that can be assigned to companies.
+
+Response:
+```json
+[
+  {
+    "id": 1,
+    "name": "Template Name",
+    "description": "Template Description",
+    "is_active": true,
+    "created_at": "2024-01-01T00:00:00Z"
+  }
+]
+```
+
+#### GET /api/clients/{group_id}/templates/
+Returns all template assignments for a specific client company.
+
+Response:
+```json
+[
+  {
+    "id": 1,
+    "template": {
+      "id": 1,
+      "name": "Template Name"
+    },
+    "assigned_to": {
+      "id": 1,
+      "email": "admin@company.com"
+    },
+    "due_date": "2024-12-31",
+    "max_possible_score": 100,
+    "created_at": "2024-01-01T00:00:00Z"
+  }
+]
+```
+
+#### POST /api/clients/{group_id}/templates/
+Assigns a template to a client company.
+
+Required fields:
+- `template_id`: ID of the template to assign
+
+Optional fields:
+- `due_date`: Due date for template completion (ISO format)
+
+Response:
+```json
+{
+  "message": "Template assigned successfully",
+  "assignment": {
+    "id": 1,
+    "template": {
+      "id": 1,
+      "name": "Template Name"
+    },
+    "assigned_to": {
+      "id": 1,
+      "email": "admin@company.com"
+    },
+    "due_date": "2024-12-31",
+    "max_possible_score": 100
+  }
+}
+```
+
+#### DELETE /api/clients/{group_id}/templates/
+Removes a template assignment from a client company.
+
+Required fields:
+- `assignment_id`: ID of the template assignment to remove
+
+Response: 204 No Content 

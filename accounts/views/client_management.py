@@ -6,8 +6,6 @@ from django.db.models import Count, Sum
 from ..permissions import BakerTillyAdmin
 from ..models import CustomUser, AppUser, GroupLayer, SubsidiaryLayer, BranchLayer, RoleChoices
 from ..serializers.models import GroupLayerSerializer, AppUserSerializer, SubsidiaryLayerSerializer, BranchLayerSerializer
-from data_management.models import Template, TemplateAssignment
-from data_management.serializers import TemplateSerializer
 
 class ClientSetupView(APIView):
     """
@@ -16,25 +14,10 @@ class ClientSetupView(APIView):
     """
     permission_classes = [BakerTillyAdmin]
     
-    def get(self, request):
-        """Get available templates for client setup"""
-        templates = Template.objects.filter(is_active=True)
-        return Response(TemplateSerializer(templates, many=True).data)
-    
     def post(self, request):
         """Create new client with company structure and initial admin user"""
         try:
             with transaction.atomic():
-                # Validate template_id if provided
-                template_id = request.data.get('template_id')
-                if template_id:
-                    try:
-                        template = Template.objects.get(id=template_id, is_active=True)
-                    except Template.DoesNotExist:
-                        return Response({
-                            'error': 'Invalid or inactive template ID'
-                        }, status=status.HTTP_400_BAD_REQUEST)
-
                 # 1. Create Group Layer
                 group_serializer = GroupLayerSerializer(data={
                     'company_name': request.data['company_name'],
@@ -62,25 +45,11 @@ class ClientSetupView(APIView):
                     title=request.data.get('admin_title', 'ESG Administrator')
                 )
                 
-                # 4. Assign template if provided
-                if template_id:
-                    template_assignment = TemplateAssignment.objects.create(
-                        template=template,
-                        company=group,
-                        assigned_to=admin_user,
-                        max_possible_score=sum(q.max_score for q in template.questions.all())
-                    )
-                
-                response_data = {
+                return Response({
                     'message': 'Client setup complete',
                     'group': GroupLayerSerializer(group).data,
-                    'admin_user': AppUserSerializer(app_user).data,
-                }
-                
-                if template_id:
-                    response_data['template'] = TemplateSerializer(template).data
-                
-                return Response(response_data, status=status.HTTP_201_CREATED)
+                    'admin_user': AppUserSerializer(app_user).data
+                }, status=status.HTTP_201_CREATED)
                 
         except Exception as e:
             return Response({
