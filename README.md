@@ -123,6 +123,7 @@ GET /api/app_users/table/
             "role": "CREATOR",
             "title": "CEO",
             "is_active": true,
+            "is_baker_tilly_admin": false,
             "must_change_password": false,
             "layer": {
                 "id": 1,
@@ -133,10 +134,11 @@ GET /api/app_users/table/
         {
             "id": 2,
             "name": "Jane Smith",
-            "email": "jane@example.com",
-            "role": "MANAGEMENT",
-            "title": "Manager",
+            "email": "jane@bakertilly.com",
+            "role": "CREATOR",
+            "title": "ESG Advisor",
             "is_active": true,
+            "is_baker_tilly_admin": true,
             "must_change_password": false,
             "layer": {
                 "id": 3,
@@ -164,13 +166,16 @@ GET /api/app_users/table/
 - Flexible filtering options
 - Flattened data structure for easy consumption
 - Complete hierarchy information
-- User status and permission details
+- User status and permission details including Baker Tilly admin status
 - Lightweight response format
 
 **Important Notes:**
 - Returns all accessible users based on requester's permissions
 - Hierarchy information is included when relevant
-- User status includes activation and password change requirements
+- User status includes:
+  - Account activation status
+  - Baker Tilly admin privileges
+  - Password change requirements
 - Response is not cached for real-time accuracy
 - Supports filtering by layer type and role
 
@@ -662,12 +667,44 @@ These endpoints are exclusively for Baker Tilly staff:
 These endpoints handle user authentication and account management:
 
 - `POST /api/login/` - Authenticate user and get access token (No auth required)
+  ```json
+  // Request
+  {
+    "email": "user@example.com",
+    "password": "secure_password"
+  }
+
+  // Response
+  {
+    "access": "jwt_access_token",
+    "refresh": "jwt_refresh_token",
+    "user": {
+      "id": 1,
+      "email": "user@example.com",
+      "role": "CREATOR",
+      "is_superuser": false,
+      "is_baker_tilly_admin": true,
+      "must_change_password": false
+    }
+  }
+  ```
+
 - `POST /api/logout/` - Invalidate current access token
 - `POST /api/verify-otp/` - Verify email using OTP code (No auth required)
 - `POST /api/resend-otp/` - Request new OTP code (No auth required)
 - `POST /api/token/refresh/` - Get new access token using refresh token
 - `POST /api/request-password-reset/` - Start password reset process (No auth required)
 - `POST /api/reset-password/<token>/` - Complete password reset (No auth required)
+
+**Important Notes:**
+1. The `is_baker_tilly_admin` field in the response indicates whether the user has Baker Tilly administrator privileges
+2. Baker Tilly admins have access to:
+   - All client company data
+   - Template management
+   - User management across all companies
+   - ESG data verification
+3. Regular users (non-Baker Tilly admins) are restricted to their assigned layers and roles
+4. The admin status can only be set through the Django admin interface, not through the API
 
 ### Layer Management Endpoints
 These endpoints manage the company hierarchy structure:

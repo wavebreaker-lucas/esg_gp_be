@@ -78,8 +78,11 @@ Body: {
     refresh: string,  // JWT refresh token
     access: string,   // JWT access token
     user: {
+        id: number,
         email: string,
         role: "CREATOR" | "MANAGEMENT" | "OPERATION",
+        is_superuser: boolean,
+        is_baker_tilly_admin: boolean,
         must_change_password: boolean,
         requires_otp: boolean
     }
@@ -768,3 +771,38 @@ This endpoint provides a simplified and efficient way to fetch user data for tab
    - More intuitive data structure for table components
 
 // ... existing content ... 
+
+// TypeScript Interfaces
+
+interface User {
+    id: number;
+    email: string;
+    role: UserRole;
+    is_superuser: boolean;
+    is_baker_tilly_admin: boolean;
+    must_change_password: boolean;
+    requires_otp: boolean;
+}
+
+type UserRole = "CREATOR" | "MANAGEMENT" | "OPERATION";
+
+interface LoginResponse {
+    refresh: string;
+    access: string;
+    user: User;
+}
+
+// Example Usage:
+const checkUserPermissions = (user: User) => {
+    if (user.is_baker_tilly_admin) {
+        // Show Baker Tilly admin features
+        // - Template management
+        // - All client access
+        // - ESG verification tools
+    } else if (user.role === "CREATOR") {
+        // Show company admin features
+        // - Company structure management
+        // - User management for their layers
+    }
+    // ... handle other roles
+}; 

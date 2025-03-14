@@ -17,8 +17,12 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         
         # Add user data to response
         data['user'] = {
+            'id': self.user.id,
             'email': self.user.email,
             'role': self.user.role,
+            'is_superuser': self.user.is_superuser,
+            'is_baker_tilly_admin': self.user.is_baker_tilly_admin,
+            'must_change_password': self.user.must_change_password,
         }
         
         return data
