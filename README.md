@@ -639,8 +639,8 @@ These endpoints are exclusively for Baker Tilly staff:
   }
   ```
 
-- `GET /api/clients/<id>/structure/` - View client company structure
-- `POST /api/clients/<id>/structure/` - Add subsidiary or branch to client
+- `GET /api/clients/{group_id}/structure/` - View client company structure (group_id must be a GroupLayer ID)
+- `POST /api/clients/{group_id}/structure/` - Add subsidiary or branch to client company
   ```json
   {
     "layer_type": "SUBSIDIARY",
@@ -651,8 +651,8 @@ These endpoints are exclusively for Baker Tilly staff:
   }
   ```
 
-- `GET /api/clients/<id>/users/` - List all users in client company
-- `POST /api/clients/<id>/users/` - Add new user to client company
+- `GET /api/clients/{group_id}/users/` - List all users in client company (group_id must be a GroupLayer ID)
+- `POST /api/clients/{group_id}/users/` - Add new user to client company
   ```json
   {
     "email": "user@example.com",
@@ -662,6 +662,8 @@ These endpoints are exclusively for Baker Tilly staff:
     "role": "MANAGEMENT"
   }
   ```
+
+**Important Note**: The `group_id` parameter in these endpoints must be the ID of a GroupLayer (top-level company). These endpoints do not work with subsidiary or branch IDs.
 
 ### Authentication Endpoints
 These endpoints handle user authentication and account management:
@@ -753,7 +755,7 @@ POST /api/clients/setup/
 
 2. Add Subsidiary or Branch:
 ```json
-POST /api/clients/<group_id>/structure/
+POST /api/clients/{group_id}/structure/
 {
     "layer_type": "SUBSIDIARY",
     "company_name": "Example Subsidiary",
@@ -765,8 +767,10 @@ POST /api/clients/<group_id>/structure/
 
 3. View Complete Structure:
 ```
-GET /api/clients/<group_id>/structure/
+GET /api/clients/{group_id}/structure/
 ```
+
+Note: The `group_id` parameter must be the ID of a GroupLayer (top-level company).
 
 #### 2. Using General Layer Management Endpoints
 Company Admins (and Baker Tilly admins) can also use these endpoints:
