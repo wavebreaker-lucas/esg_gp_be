@@ -126,10 +126,52 @@ class ClientUserManagementView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
     def get(self, request, group_id):
-        """List all users in a client company"""
-        group = GroupLayer.objects.get(id=group_id)
-        users = AppUser.objects.filter(layer=group)
-        return Response(AppUserSerializer(users, many=True).data)
+        """List all users in a client company structure (group, subsidiaries, and branches)"""
+        try:
+            group = GroupLayer.objects.get(id=group_id)
+            
+            # Get users from group layer
+            group_users = AppUser.objects.filter(layer=group)
+            
+            # Initialize response structure
+            response = {
+                'group_users': AppUserSerializer(group_users, many=True).data,
+                'subsidiary_users': []
+            }
+            
+            # Get users from subsidiaries and their branches
+            for subsidiary in group.subsidiarylayer_set.all():
+                subsidiary_users = AppUser.objects.filter(layer=subsidiary)
+                branch_users = []
+                
+                # Get users from branches under this subsidiary
+                for branch in subsidiary.branchlayer_set.all():
+                    branch_users.extend(
+                        AppUserSerializer(
+                            AppUser.objects.filter(layer=branch), 
+                            many=True
+                        ).data
+                    )
+                
+                response['subsidiary_users'].append({
+                    'subsidiary_id': subsidiary.id,
+                    'subsidiary_name': subsidiary.company_name,
+                    'users': AppUserSerializer(subsidiary_users, many=True).data,
+                    'branch_users': branch_users
+                })
+            
+            return Response(response)
+            
+        except GroupLayer.DoesNotExist:
+            return Response(
+                {'error': 'Group layer not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class ClientStructureView(APIView):
     """
