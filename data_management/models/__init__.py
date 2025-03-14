@@ -1,11 +1,17 @@
-from .templates import Template, Question, QuestionChoice, TemplateAssignment
+from .templates import (
+    Template, TemplateAssignment,
+    ESGFormCategory, ESGForm, ESGMetric,
+    TemplateFormSelection
+)
 from .esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
 
 __all__ = [
     'Template',
-    'Question',
-    'QuestionChoice',
     'TemplateAssignment',
+    'ESGFormCategory',
+    'ESGForm',
+    'ESGMetric',
+    'TemplateFormSelection',
     'BoundaryItem',
     'EmissionFactor',
     'ESGData',

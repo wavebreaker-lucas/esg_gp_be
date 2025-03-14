@@ -1,5 +1,9 @@
 from django.contrib import admin
-from .models import BoundaryItem, EmissionFactor, ESGData, DataEditLog
+from .models import (
+    BoundaryItem, EmissionFactor, ESGData, DataEditLog,
+    ESGFormCategory, ESGForm, ESGMetric,
+    Template, TemplateFormSelection, TemplateAssignment
+)
 
 class BoundaryItemAdmin(admin.ModelAdmin):
     list_display = ('name', 'is_default')
@@ -33,3 +37,43 @@ class DataEditLogAdmin(admin.ModelAdmin):
                       'action', 'timestamp')
 
 admin.site.register(DataEditLog, DataEditLogAdmin)
+
+@admin.register(ESGFormCategory)
+class ESGFormCategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'code', 'icon', 'order']
+    search_fields = ['name', 'code']
+    ordering = ['order']
+
+@admin.register(ESGForm)
+class ESGFormAdmin(admin.ModelAdmin):
+    list_display = ['code', 'name', 'category', 'is_active', 'order']
+    list_filter = ['category', 'is_active']
+    search_fields = ['code', 'name']
+    ordering = ['category', 'order']
+
+@admin.register(ESGMetric)
+class ESGMetricAdmin(admin.ModelAdmin):
+    list_display = ['name', 'form', 'unit_type', 'location', 'is_required', 'order']
+    list_filter = ['form', 'unit_type', 'location', 'is_required']
+    search_fields = ['name', 'description']
+    ordering = ['form', 'order']
+
+@admin.register(Template)
+class TemplateAdmin(admin.ModelAdmin):
+    list_display = ['name', 'reporting_period', 'is_active', 'version', 'created_by']
+    list_filter = ['is_active']
+    search_fields = ['name', 'description']
+    ordering = ['-created_at']
+
+@admin.register(TemplateFormSelection)
+class TemplateFormSelectionAdmin(admin.ModelAdmin):
+    list_display = ['template', 'form', 'order']
+    list_filter = ['template', 'form']
+    ordering = ['template', 'order']
+
+@admin.register(TemplateAssignment)
+class TemplateAssignmentAdmin(admin.ModelAdmin):
+    list_display = ['template', 'company', 'assigned_to', 'status', 'due_date']
+    list_filter = ['status']
+    search_fields = ['template__name', 'company__name']
+    ordering = ['-assigned_at']

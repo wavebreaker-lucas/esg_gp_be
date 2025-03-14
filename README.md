@@ -1022,147 +1022,128 @@ These endpoints handle user operations within companies:
 - `POST /api/app_users/<id>/import-csv/` - Bulk import users from CSV
 - `GET /api/app_users/<id>/export-csv/` - Export user list to CSV
 
-### Template Assignment
+### Template Management
 
-The platform provides endpoints to manage ESG disclosure templates and their assignments to client companies. Only Baker Tilly admins can assign templates to companies.
+The platform uses a form-based template system for HKEX ESG disclosures:
 
-#### List Available Templates
+#### 1. ESG Forms
+Forms are predefined HKEX disclosure requirements:
+
 ```http
-GET /api/templates/
-
-# Response Example:
+GET /api/esg-forms/
+# Response
 {
-    "templates": [
+    "forms": [
         {
-            "id": 1,
-            "name": "Environmental Disclosure 2024",
-            "description": "Standard environmental disclosure template",
-            "category": "ENVIRONMENTAL",
-            "is_active": true,
-            "version": 1,
-            "created_at": "2024-01-01T00:00:00Z",
-            "created_by": {
-                "id": 1,
-                "email": "admin@bakertilly.com"
-            }
+            "id": 2,
+            "code": "HKEX-B2",
+            "name": "Social - Health and Safety",
+            "description": "Workplace health and safety disclosures (HKEX B2)",
+            "metrics": [
+                {
+                    "id": 1,
+                    "name": "Number of work-related fatalities",
+                    "description": "Number of deaths due to work injury",
+                    "unit_type": "count",
+                    "requires_evidence": true,
+                    "location": "HK",
+                    "is_required": false
+                },
+                {
+                    "id": 2,
+                    "name": "Number of work-related fatalities",
+                    "description": "Number of deaths due to work injury",
+                    "unit_type": "count",
+                    "requires_evidence": true,
+                    "location": "PRC",
+                    "is_required": false
+                },
+                {
+                    "id": 3,
+                    "name": "Lost days due to work injury",
+                    "description": "Number of lost days due to work injury",
+                    "unit_type": "days",
+                    "requires_evidence": true,
+                    "location": "HK",
+                    "is_required": false
+                },
+                {
+                    "id": 4,
+                    "name": "Lost days due to work injury",
+                    "description": "Number of lost days due to work injury",
+                    "unit_type": "days",
+                    "requires_evidence": true,
+                    "location": "PRC",
+                    "is_required": false
+                }
+            ]
         }
     ]
 }
-```
-
-#### Get Client's Template Assignments
-```http
-GET /api/clients/{group_id}/templates/
-
-# Response Example:
-{
-    "assignments": [
-        {
-            "id": 1,
-            "template": {
-                "id": 1,
-                "name": "Environmental Disclosure 2024",
-                "category": "ENVIRONMENTAL"
-            },
-            "assigned_to": {
-                "id": 1,
-                "email": "client@example.com",
-                "name": "John Doe"
-            },
-            "due_date": "2024-12-31",
-            "completed_at": null,
-            "total_score": 0,
-            "max_possible_score": 100
-        }
-    ]
-}
-```
-
-#### Assign Template to Client
-```http
-POST /api/clients/{group_id}/templates/
-{
-    "template_id": 1,
-    "due_date": "2024-12-31"  # Optional
-}
-
-# Response Example:
-{
-    "message": "Template assigned successfully",
-    "assignment": {
-        "id": 1,
-        "template": {
-            "id": 1,
-            "name": "Environmental Disclosure 2024"
-        },
-        "assigned_to": {
-            "id": 1,
-            "email": "client@example.com"
-        },
-        "due_date": "2024-12-31",
-        "max_possible_score": 100
-    }
-}
-```
-
-#### Remove Template Assignment
-```http
-DELETE /api/clients/{group_id}/templates/
-{
-    "assignment_id": 1
-}
-
-# Response: 204 No Content
 ```
 
 **Important Notes:**
-1. Only Baker Tilly admins can:
-   - View all available templates
-   - Assign templates to clients
-   - Remove template assignments
-2. When assigning a template:
-   - The template must be active (`is_active=True`)
-   - The template will be assigned to the company's CREATOR user
-   - Maximum possible score is automatically calculated
-3. Template assignments track:
-   - Completion status
-   - Due dates
-   - Scores achieved
-   - Assignment history
+1. **Location-Based Metrics**
+   - Each metric is specific to a location (Hong Kong or Mainland China)
+   - All location-specific metrics are optional by default
+   - Companies only need to report metrics for their operational locations
+   - Companies with operations in both locations should report both sets of metrics
 
-**Example Workflow:**
-1. Baker Tilly admin lists available templates:
-   ```bash
-   curl -X GET "http://localhost:8000/api/templates/" \
-   -H "Authorization: Bearer {token}"
-   ```
+2. **Evidence Requirements**
+   - All reported metrics require supporting evidence
+   - Evidence can include documents, calculations, or data sources
+   - The system tracks evidence attachments for audit purposes
 
-2. Assigns template to client company:
-   ```bash
-   curl -X POST "http://localhost:8000/api/clients/1/templates/" \
-   -H "Content-Type: application/json" \
-   -H "Authorization: Bearer {token}" \
-   -d '{
-       "template_id": 1,
-       "due_date": "2024-12-31"
-   }'
-   ```
+3. **Reporting Period**
+   - Templates are created for specific reporting periods (e.g., "Annual 2024")
+   - This ensures consistent year-over-year comparison
+   - Historical data is preserved for trend analysis
 
-3. Client company can view their assignments:
-   ```bash
-   curl -X GET "http://localhost:8000/api/clients/1/templates/" \
-   -H "Authorization: Bearer {token}"
-   ```
+4. **Data Validation**
+   - The system validates metric values based on their unit types
+   - Prevents submission of invalid data (e.g., negative counts)
+   - Flags significant variations from previous periods
 
-4. Baker Tilly admin can remove assignment if needed:
-   ```bash
-   curl -X DELETE "http://localhost:8000/api/clients/1/templates/" \
-   -H "Content-Type: application/json" \
-   -H "Authorization: Bearer {token}" \
-   -d '{
-       "assignment_id": 1
-   }'
-   ```
+#### 2. Creating Templates
+Templates combine relevant HKEX forms for the reporting period:
+
+```http
+POST /api/templates/
+{
+    "name": "HKEX ESG Disclosure 2024",
+    "description": "Annual ESG disclosure template for HKEX reporting",
+    "reporting_period": "Annual 2024",
+    "selected_forms": [
+        {
+            "form_id": 1,
+            "order": 1
+        },
+        {
+            "form_id": 2,
+            "order": 2
+        }
+    ]
+}
+```
+
+**Best Practices:**
+1. **Location Handling**
+   - Companies should only fill in metrics for their operational locations
+   - Empty metrics for non-operational locations will be automatically excluded from reports
+   - The system supports companies operating in:
+     - Hong Kong only
+     - Mainland China only
+     - Both Hong Kong and Mainland China
+
+2. **Data Collection**
+   - Collect data separately for each operational location
+   - Ensure evidence is location-specific and properly labeled
+   - Use consistent units across all locations
+
+3. **Reporting**
+   - Reports will automatically adapt to show only the relevant location data
+   - Combined reports for companies operating in both locations
+   - Location-specific breakdowns available when needed
 
 ## Usage Examples
 
@@ -1308,12 +1289,12 @@ Sets up a new client company with initial admin user.
 Required fields:
 - `company_name`: Name of the company
 - `industry`: Company's industry
+- `location`: Company's location
 - `admin_email`: Email for the admin user
 - `admin_password`: Password for the admin user
 - `admin_name`: Full name of the admin user
 
 Optional fields:
-- `location`: Company's location
 - `admin_title`: Title for the admin user (defaults to "ESG Administrator")
 
 ### Template Management
