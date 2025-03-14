@@ -344,7 +344,71 @@ curl -X POST "http://localhost:8000/api/layers/" \
 - Shareholding tracking
 - Location/industry data
 
-### 3. Security Features
+### 3. Template System
+The platform includes a comprehensive template system for ESG disclosure:
+
+#### Template Categories
+- **General Disclosure**: Basic company information
+- **Environmental**: Environmental impact metrics
+- **Social**: Social responsibility measures
+- **Governance**: Corporate governance practices
+
+#### Template Components
+1. **Templates**
+   - Versioned disclosure forms
+   - Category-based organization
+   - Active/inactive status tracking
+   - Created and managed by Baker Tilly admins
+
+2. **Questions**
+   - Multiple question types:
+     - Text responses
+     - Numeric inputs
+     - Single/multiple choice
+     - Date fields
+     - File uploads
+   - Section organization
+   - Required/optional settings
+   - Scoring system
+   - Custom validation rules
+
+3. **Question Choices**
+   - Predefined answer options
+   - Point-based scoring
+   - Ordered presentation
+   - Value storage
+
+4. **Template Assignments**
+   - Company-specific assignments
+   - Progress tracking
+   - Due date management
+   - Score calculation
+   - Completion status
+
+#### Template Usage
+1. **During Client Setup**
+   ```json
+   POST /api/clients/setup/
+   {
+       "company_name": "Example Corp",
+       "template_id": 1,
+       // ... other fields ...
+   }
+   ```
+
+2. **Template Selection**
+   - Baker Tilly admins select appropriate templates
+   - Templates can be filtered by category
+   - Only active templates are available
+   - Version control ensures consistency
+
+3. **Assignment Management**
+   - Templates assigned to specific companies
+   - Progress tracking and scoring
+   - Due date monitoring
+   - Completion verification
+
+### 4. Security Features
 - JWT-based authentication
 - Email verification system
 - Password reset functionality
@@ -353,7 +417,7 @@ curl -X POST "http://localhost:8000/api/layers/" \
 - OTP system for verification
 - Session management
 
-### 4. Data Management
+### 5. Data Management
 - CSV import/export functionality
 - Bulk operations support
 - Caching for performance

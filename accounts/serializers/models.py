@@ -11,10 +11,11 @@ class CustomUserSerializer(serializers.ModelSerializer):
     """
     role = serializers.CharField(required=False)
     is_superuser = serializers.SerializerMethodField()
+    is_baker_tilly_admin = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = CustomUser
-        fields = ["id", "email", "password", "role", "is_superuser", "must_change_password"]
+        fields = ["id", "email", "password", "role", "is_superuser", "is_baker_tilly_admin", "must_change_password"]
         extra_kwargs = {
             "email": {"validators": []},  # Custom email validation in update method
             "password": {"write_only": True},  # Password should never be read
