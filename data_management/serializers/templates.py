@@ -236,9 +236,15 @@ class TemplateSerializer(serializers.ModelSerializer):
 
 class TemplateAssignmentSerializer(serializers.ModelSerializer):
     template = TemplateSerializer(read_only=True)
+    template_id = serializers.PrimaryKeyRelatedField(queryset=Template.objects.all(), write_only=True)
     company = serializers.PrimaryKeyRelatedField(queryset=LayerProfile.objects.all())
     assigned_to = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all(), required=False, allow_null=True)
 
     class Meta:
         model = TemplateAssignment
         fields = '__all__'
+        
+    def create(self, validated_data):
+        template = validated_data.pop('template_id')
+        validated_data['template'] = template
+        return super().create(validated_data)
