@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from accounts.permissions import BakerTillyAdmin
-from accounts.models import CustomUser
+from accounts.models import CustomUser, AppUser
 from ..models import (
     ESGFormCategory, ESGForm, ESGMetric,
     Template, TemplateFormSelection, TemplateAssignment
@@ -67,36 +67,44 @@ class TemplateViewSet(viewsets.ModelViewSet):
         # Get all form selections with their forms and metrics
         form_selections = template.templateformselection_set.select_related('form').prefetch_related('form__metrics')
         
-        # Organize data by region
-        regions_data = {}
+        # Create a flat list of forms with their metrics
+        forms_data = []
         for selection in form_selections:
-            for region in selection.regions:
-                if region not in regions_data:
-                    regions_data[region] = []
-                
-                form_data = {
-                    'form_code': selection.form.code,
-                    'form_name': selection.form.name,
-                    'metrics': []
-                }
-                
-                for metric in selection.form.metrics.all():
+            form_data = {
+                'form_id': selection.form.id,
+                'form_code': selection.form.code,
+                'form_name': selection.form.name,
+                'regions': selection.regions,  # Keep the regions info at form level
+                'metrics': []
+            }
+            
+            for metric in selection.form.metrics.all():
+                # Only include metrics that match the form's regions or are for ALL locations
+                if metric.location == 'ALL' or metric.location in selection.regions:
                     form_data['metrics'].append({
                         'id': metric.id,
                         'name': metric.name,
                         'unit_type': metric.unit_type,
                         'custom_unit': metric.custom_unit,
                         'requires_evidence': metric.requires_evidence,
-                        'validation_rules': metric.validation_rules
+                        'validation_rules': metric.validation_rules,
+                        'location': metric.location,
+                        'is_required': metric.is_required,
+                        'order': metric.order
                     })
-                
-                regions_data[region].append(form_data)
+            
+            # Sort metrics by order
+            form_data['metrics'].sort(key=lambda x: x['order'])
+            forms_data.append(form_data)
+        
+        # Sort forms by their selection order
+        forms_data.sort(key=lambda x: next((s.order for s in form_selections if s.form.id == x['form_id']), 0))
         
         return Response({
             'template_id': template.id,
             'name': template.name,
             'reporting_period': template.reporting_period,
-            'regions': regions_data
+            'forms': forms_data
         })
 
 class TemplateAssignmentView(views.APIView):
@@ -119,16 +127,18 @@ class TemplateAssignmentView(views.APIView):
     def post(self, request, group_id):
         """Assign a template to a client company's CREATOR user"""
         # Get the CREATOR user for this company
-        creator_user = CustomUser.objects.filter(
-            appuser__layer_id=group_id,
-            appuser__role='CREATOR'
+        creator_app_user = AppUser.objects.filter(
+            layer_id=group_id,
+            role='CREATOR'
         ).first()
         
-        if not creator_user:
+        if not creator_app_user:
             return Response(
                 {'error': 'No CREATOR user found for this company'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        creator_user = creator_app_user.user
         
         data = {
             **request.data,

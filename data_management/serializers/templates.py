@@ -86,6 +86,90 @@ class ESGFormSerializer(serializers.ModelSerializer):
             for metric_data in metrics:
                 ESGMetric.objects.create(form=form, **metric_data)
         
+        # Create metrics for HKEX-A2 (Energy and Water Consumption)
+        elif form.code == 'HKEX-A2':
+            # Electricity consumption metrics
+            electricity_metrics = [
+                {
+                    'name': 'Electricity consumption (CLP)',
+                    'description': 'Monthly electricity consumption from CLP',
+                    'unit_type': 'kWh',
+                    'requires_evidence': True,
+                    'order': 1,
+                    'location': 'HK',
+                    'is_required': False,
+                    'validation_rules': {'period': 'monthly', 'year': '2024'}
+                },
+                {
+                    'name': 'Electricity consumption (HKE)',
+                    'description': 'Monthly electricity consumption from HKE',
+                    'unit_type': 'kWh',
+                    'requires_evidence': True,
+                    'order': 2,
+                    'location': 'HK',
+                    'is_required': False,
+                    'validation_rules': {'period': 'monthly', 'year': '2024'}
+                },
+                {
+                    'name': 'Electricity consumption',
+                    'description': 'Monthly electricity consumption',
+                    'unit_type': 'kWh',
+                    'requires_evidence': True,
+                    'order': 3,
+                    'location': 'PRC',
+                    'is_required': False,
+                    'validation_rules': {'period': 'monthly', 'year': '2024'}
+                },
+            ]
+            
+            # Water consumption metrics
+            water_metrics = [
+                {
+                    'name': 'Fresh water consumption',
+                    'description': 'Monthly fresh water consumption',
+                    'unit_type': 'm3',
+                    'requires_evidence': True,
+                    'order': 4,
+                    'location': 'HK',
+                    'is_required': False,
+                    'validation_rules': {'period': 'monthly', 'year': '2024'}
+                },
+                {
+                    'name': 'Fresh water consumption',
+                    'description': 'Monthly fresh water consumption',
+                    'unit_type': 'm3',
+                    'requires_evidence': True,
+                    'order': 5,
+                    'location': 'PRC',
+                    'is_required': False,
+                    'validation_rules': {'period': 'monthly', 'year': '2024'}
+                },
+                {
+                    'name': 'Wastewater consumption',
+                    'description': 'Monthly wastewater consumption',
+                    'unit_type': 'm3',
+                    'requires_evidence': True,
+                    'order': 6,
+                    'location': 'HK',
+                    'is_required': False,
+                    'validation_rules': {'period': 'monthly', 'year': '2024'}
+                },
+                {
+                    'name': 'Wastewater consumption',
+                    'description': 'Monthly wastewater consumption',
+                    'unit_type': 'm3',
+                    'requires_evidence': True,
+                    'order': 7,
+                    'location': 'PRC',
+                    'is_required': False,
+                    'validation_rules': {'period': 'monthly', 'year': '2024'}
+                },
+            ]
+            
+            # Create all metrics
+            for metric_data in electricity_metrics + water_metrics:
+                ESGMetric.objects.create(form=form, **metric_data)
+        
         return form
 
 class ESGFormCategorySerializer(serializers.ModelSerializer):

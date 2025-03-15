@@ -306,42 +306,68 @@ GET /api/templates/1/preview/
     "template_id": 1,
     "name": "HKEX ESG Comprehensive 2024",
     "reporting_period": "Annual 2024",
-    "regions": {
-        "HK": [
-            {
-                "form_code": "HKEX-A1",
-                "form_name": "Emissions",
-                "metrics": [
-                    {
-                        "id": 1,
-                        "name": "Direct GHG emissions",
-                        "unit_type": "tCO2e",
-                        "requires_evidence": true,
-                        "validation_rules": {
-                            "min": 0
-                        }
-                    }
-                ]
-            }
-        ],
-        "PRC": [
-            {
-                "form_code": "HKEX-A1",
-                "form_name": "Emissions",
-                "metrics": [
-                    {
-                        "id": 2,
-                        "name": "Direct GHG emissions",
-                        "unit_type": "tCO2e",
-                        "requires_evidence": true,
-                        "validation_rules": {
-                            "min": 0
-                        }
-                    }
-                ]
-            }
-        ]
-    }
+    "forms": [
+        {
+            "form_id": 1,
+            "form_code": "HKEX-A1",
+            "form_name": "Emissions",
+            "regions": ["HK", "PRC"],
+            "metrics": [
+                {
+                    "id": 1,
+                    "name": "Direct GHG emissions",
+                    "unit_type": "tCO2e",
+                    "custom_unit": null,
+                    "requires_evidence": true,
+                    "validation_rules": {"min": 0},
+                    "location": "HK",
+                    "is_required": false,
+                    "order": 1
+                },
+                {
+                    "id": 2,
+                    "name": "Direct GHG emissions",
+                    "unit_type": "tCO2e",
+                    "custom_unit": null,
+                    "requires_evidence": true,
+                    "validation_rules": {"min": 0},
+                    "location": "PRC",
+                    "is_required": false,
+                    "order": 2
+                }
+            ]
+        },
+        {
+            "form_id": 2,
+            "form_code": "HKEX-A2",
+            "form_name": "Resource Use",
+            "regions": ["HK", "PRC"],
+            "metrics": [
+                {
+                    "id": 8,
+                    "name": "Electricity consumption (CLP)",
+                    "unit_type": "kWh",
+                    "custom_unit": null,
+                    "requires_evidence": true,
+                    "validation_rules": {"period": "monthly", "year": "2024"},
+                    "location": "HK",
+                    "is_required": false,
+                    "order": 1
+                },
+                {
+                    "id": 9,
+                    "name": "Electricity consumption (HKE)",
+                    "unit_type": "kWh",
+                    "custom_unit": null,
+                    "requires_evidence": true,
+                    "validation_rules": {"period": "monthly", "year": "2024"},
+                    "location": "HK",
+                    "is_required": false,
+                    "order": 2
+                }
+            ]
+        }
+    ]
 }
 ```
 
@@ -423,4 +449,4 @@ Access the admin interface at `/admin/` to manage:
 - Templates
 - Template Assignments
 
-Note: Access requires either superuser status or Baker Tilly admin privileges. 
+Note: Access requires either superuser status or Baker Tilly admin privileges.
