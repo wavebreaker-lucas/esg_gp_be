@@ -4,9 +4,10 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from accounts.permissions import BakerTillyAdmin
+from accounts.models import CustomUser
 from ..models import (
     ESGFormCategory, ESGForm, ESGMetric,
-    Template, TemplateFormSelection, TemplateAssignment, CustomUser
+    Template, TemplateFormSelection, TemplateAssignment
 )
 from ..serializers.templates import (
     ESGFormCategorySerializer, ESGFormSerializer, ESGMetricSerializer,
