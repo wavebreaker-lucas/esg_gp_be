@@ -49,8 +49,8 @@ class BakerTillyAdmin(BasePermission):
         if hasattr(obj, 'template_type') or hasattr(obj, 'is_configuration'):
             return True
             
-        # Can view and verify data
-        if hasattr(obj, 'is_esg_data'):
+        # Allow access to Template objects
+        if obj.__class__.__name__ == 'Template':
             return True
             
         return False
