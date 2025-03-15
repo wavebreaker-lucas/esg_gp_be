@@ -152,4 +152,124 @@ class TemplateAssignmentView(views.APIView):
             return Response(
                 {'error': 'Assignment not found'},
                 status=status.HTTP_404_NOT_FOUND
-            ) 
+            )
+
+class UserTemplateAssignmentView(views.APIView):
+    """
+    API view for group users to access templates assigned to their group.
+    Also includes templates assigned to parent groups.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, assignment_id=None):
+        """
+        Get template assignments for the user's groups and parent groups.
+        If assignment_id is provided, return details for that specific assignment.
+        """
+        # Get all layers (groups) the user belongs to
+        user_app_users = AppUser.objects.filter(user=request.user).select_related('layer')
+        user_layers = [app_user.layer for app_user in user_app_users]
+        
+        # Get all accessible layer IDs including parent groups
+        accessible_layer_ids = set()
+        for layer in user_layers:
+            # Add the current layer
+            accessible_layer_ids.add(layer.id)
+            
+            # Add parent layers based on layer type
+            if hasattr(layer, 'branchlayer'):
+                # For branch layer, add subsidiary and group
+                subsidiary = layer.branchlayer.subsidiary_layer
+                accessible_layer_ids.add(subsidiary.id)
+                accessible_layer_ids.add(subsidiary.group_layer.id)
+            elif hasattr(layer, 'subsidiarylayer'):
+                # For subsidiary layer, add group
+                accessible_layer_ids.add(layer.subsidiarylayer.group_layer.id)
+        
+        if assignment_id:
+            # Get specific template assignment
+            try:
+                assignment = TemplateAssignment.objects.get(
+                    id=assignment_id,
+                    company_id__in=accessible_layer_ids
+                )
+                
+                # Get template with forms and metrics
+                template = assignment.template
+                form_selections = template.templateformselection_set.select_related('form').prefetch_related('form__metrics')
+                
+                # Create a flat list of forms with their metrics
+                forms_data = []
+                for selection in form_selections:
+                    form_data = {
+                        'form_id': selection.form.id,
+                        'form_code': selection.form.code,
+                        'form_name': selection.form.name,
+                        'regions': selection.regions,
+                        'metrics': []
+                    }
+                    
+                    for metric in selection.form.metrics.all():
+                        # Only include metrics that match the form's regions or are for ALL locations
+                        if metric.location == 'ALL' or metric.location in selection.regions:
+                            form_data['metrics'].append({
+                                'id': metric.id,
+                                'name': metric.name,
+                                'unit_type': metric.unit_type,
+                                'custom_unit': metric.custom_unit,
+                                'requires_evidence': metric.requires_evidence,
+                                'validation_rules': metric.validation_rules,
+                                'location': metric.location,
+                                'is_required': metric.is_required,
+                                'order': metric.order
+                            })
+                    
+                    # Sort metrics by order
+                    form_data['metrics'].sort(key=lambda x: x['order'])
+                    forms_data.append(form_data)
+                
+                # Sort forms by their selection order
+                forms_data.sort(key=lambda x: next((s.order for s in form_selections if s.form.id == x['form_id']), 0))
+                
+                response_data = {
+                    'assignment_id': assignment.id,
+                    'template_id': template.id,
+                    'template_name': template.name,
+                    'reporting_period': template.reporting_period,
+                    'company_id': assignment.company.id,
+                    'company_name': assignment.company.company_name,
+                    'status': assignment.status,
+                    'due_date': assignment.due_date,
+                    'reporting_period_start': assignment.reporting_period_start,
+                    'reporting_period_end': assignment.reporting_period_end,
+                    'forms': forms_data
+                }
+                
+                return Response(response_data)
+                
+            except TemplateAssignment.DoesNotExist:
+                return Response(
+                    {'error': 'Template assignment not found or you do not have access to it'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            # Get all template assignments for these layers
+            assignments = TemplateAssignment.objects.filter(
+                company_id__in=accessible_layer_ids
+            ).select_related('template', 'company')
+            
+            # Add layer relationship info to each assignment
+            assignments_data = []
+            for assignment in assignments:
+                assignment_data = TemplateAssignmentSerializer(assignment).data
+                
+                # Add relationship info (direct or inherited)
+                user_direct_layers = [layer.id for layer in user_layers]
+                if assignment.company_id in user_direct_layers:
+                    assignment_data['relationship'] = 'direct'
+                else:
+                    assignment_data['relationship'] = 'inherited'
+                
+                assignments_data.append(assignment_data)
+            
+            return Response(assignments_data) 
