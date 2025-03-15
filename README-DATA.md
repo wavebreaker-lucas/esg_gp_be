@@ -88,6 +88,97 @@ Properties:
 - `reporting_period_start`: Start of reporting period
 - `reporting_period_end`: End of reporting period
 
+### User Template Management
+
+#### GET /api/user-templates/
+Returns all template assignments accessible to the authenticated user, including templates assigned to their direct layer and parent layers.
+
+**Response Example:**
+```json
+[
+  {
+    "id": 1,
+    "template": {
+      "id": 1,
+      "name": "Environmental Assessment 2024"
+    },
+    "company": {
+      "id": 3,
+      "name": "Example Corp"
+    },
+    "status": "PENDING",
+    "due_date": "2024-12-31",
+    "relationship": "direct"
+  },
+  {
+    "id": 2,
+    "template": {
+      "id": 2,
+      "name": "Governance Disclosure 2024"
+    },
+    "company": {
+      "id": 1,
+      "name": "Parent Group"
+    },
+    "status": "PENDING",
+    "due_date": "2024-12-31",
+    "relationship": "inherited"
+  }
+]
+```
+
+**Key Features:**
+- Automatically finds templates assigned to the user's layer and all parent layers
+- No parameters required - uses the authenticated user's context
+- Includes "relationship" field to indicate if the template is directly assigned to the user's layer or inherited from a parent
+- Provides essential template information including status and due dates
+
+#### GET /api/user-templates/{assignment_id}/
+Returns detailed information about a specific template assignment, including all forms and metrics.
+
+**Response Example:**
+```json
+{
+  "assignment_id": 1,
+  "template_id": 1,
+  "template_name": "Environmental Assessment 2024",
+  "reporting_period": "Annual 2024",
+  "company_id": 3,
+  "company_name": "Example Corp",
+  "status": "PENDING",
+  "due_date": "2024-12-31",
+  "reporting_period_start": "2024-01-01",
+  "reporting_period_end": "2024-12-31",
+  "forms": [
+    {
+      "form_id": 1,
+      "form_code": "HKEX-A1",
+      "form_name": "Environmental - Emissions",
+      "regions": ["HK", "PRC"],
+      "metrics": [
+        {
+          "id": 1,
+          "name": "Greenhouse gas emissions",
+          "unit_type": "tCO2e",
+          "custom_unit": null,
+          "requires_evidence": true,
+          "validation_rules": {"min": 0},
+          "location": "HK",
+          "is_required": true,
+          "order": 1
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Important Notes:**
+- Returns complete form and metric details for the template
+- Only includes metrics relevant to the selected regions
+- Provides validation rules and requirements for each metric
+- Requires appropriate permissions to access
+
 ## Location-Based Reporting
 
 The system supports location-based reporting for companies operating in:
