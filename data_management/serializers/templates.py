@@ -237,7 +237,7 @@ class TemplateSerializer(serializers.ModelSerializer):
 class TemplateAssignmentSerializer(serializers.ModelSerializer):
     template = TemplateSerializer(read_only=True)
     company = serializers.PrimaryKeyRelatedField(queryset=LayerProfile.objects.all())
-    assigned_to = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all())
+    assigned_to = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all(), required=False, allow_null=True)
 
     class Meta:
         model = TemplateAssignment

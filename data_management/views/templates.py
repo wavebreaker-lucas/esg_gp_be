@@ -110,7 +110,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
 class TemplateAssignmentView(views.APIView):
     """
     API view for managing template assignments to client companies.
-    Templates are automatically assigned to the company's CREATOR user.
+    Templates are assigned directly to companies without requiring a specific user.
     """
     permission_classes = [IsAuthenticated, BakerTillyAdmin]
 
@@ -125,25 +125,10 @@ class TemplateAssignmentView(views.APIView):
 
     @transaction.atomic
     def post(self, request, group_id):
-        """Assign a template to a client company's CREATOR user"""
-        # Get the CREATOR user for this company
-        creator_app_user = AppUser.objects.filter(
-            layer_id=group_id,
-            role='CREATOR'
-        ).first()
-        
-        if not creator_app_user:
-            return Response(
-                {'error': 'No CREATOR user found for this company'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        creator_user = creator_app_user.user
-        
+        """Assign a template to a client company"""
         data = {
             **request.data,
-            'company': group_id,
-            'assigned_to': creator_user.id
+            'company': group_id
         }
         serializer = TemplateAssignmentSerializer(data=data)
         

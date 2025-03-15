@@ -377,7 +377,8 @@ POST /api/clients/{group_id}/templates/
 {
     "template_id": 1,
     "reporting_period_start": "2024-01-01",
-    "reporting_period_end": "2024-12-31"
+    "reporting_period_end": "2024-12-31",
+    "due_date": "2024-12-31"
 }
 
 // Response
@@ -391,11 +392,7 @@ POST /api/clients/{group_id}/templates/
         "id": 1,
         "name": "Example Corp"
     },
-    "assigned_to": {
-        "id": 5,
-        "email": "creator@example.com",
-        "role": "CREATOR"
-    },
+    "assigned_to": null,
     "status": "PENDING",
     "due_date": "2024-12-31",
     "reporting_period_start": "2024-01-01",
@@ -404,10 +401,9 @@ POST /api/clients/{group_id}/templates/
 ```
 
 **Important Notes:**
-1. The template is always assigned to the company's CREATOR user (initial admin)
-2. Each company must have a CREATOR user before templates can be assigned
-3. The CREATOR user is automatically created during company setup
-4. If no CREATOR user is found, the request will fail with a 400 error
+1. Templates are assigned directly to companies without requiring a specific user
+2. Any authorized user from the company can work on the template
+3. Optionally, you can specify an `assigned_to` user ID if you want to assign responsibility to a specific user
 
 ##### Remove Template Assignment
 ```json

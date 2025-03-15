@@ -126,7 +126,7 @@ class TemplateAssignment(models.Model):
 
     template = models.ForeignKey(Template, on_delete=models.CASCADE)
     company = models.ForeignKey(LayerProfile, on_delete=models.CASCADE)
-    assigned_to = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    assigned_to = models.ForeignKey(CustomUser, on_delete=models.CASCADE, null=True, blank=True)
     assigned_at = models.DateTimeField(auto_now_add=True)
     due_date = models.DateField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
