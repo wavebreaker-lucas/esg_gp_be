@@ -141,6 +141,7 @@ Example:
 #### Template Assignments
 - `GET /api/clients/{group_id}/templates/`: Get client's template assignments
 - `POST /api/clients/{group_id}/templates/`: Assign template to client
+- `DELETE /api/clients/{group_id}/templates/`: Remove template assignment (requires assignment_id in request body)
 
 ### Example Requests and Responses
 
@@ -349,8 +350,6 @@ GET /api/templates/1/preview/
 POST /api/clients/{group_id}/templates/
 {
     "template_id": 1,
-    "assigned_to": 5,
-    "due_date": "2024-12-31",
     "reporting_period_start": "2024-01-01",
     "reporting_period_end": "2024-12-31"
 }
@@ -368,13 +367,30 @@ POST /api/clients/{group_id}/templates/
     },
     "assigned_to": {
         "id": 5,
-        "email": "manager@example.com"
+        "email": "creator@example.com",
+        "role": "CREATOR"
     },
     "status": "PENDING",
     "due_date": "2024-12-31",
     "reporting_period_start": "2024-01-01",
     "reporting_period_end": "2024-12-31"
 }
+```
+
+**Important Notes:**
+1. The template is always assigned to the company's CREATOR user (initial admin)
+2. Each company must have a CREATOR user before templates can be assigned
+3. The CREATOR user is automatically created during company setup
+4. If no CREATOR user is found, the request will fail with a 400 error
+
+##### Remove Template Assignment
+```json
+DELETE /api/clients/{group_id}/templates/
+{
+    "assignment_id": 1
+}
+
+// Response: 204 No Content
 ```
 
 ## Best Practices

@@ -6,7 +6,7 @@ from django.db import transaction
 from accounts.permissions import BakerTillyAdmin
 from ..models import (
     ESGFormCategory, ESGForm, ESGMetric,
-    Template, TemplateFormSelection, TemplateAssignment
+    Template, TemplateFormSelection, TemplateAssignment, CustomUser
 )
 from ..serializers.templates import (
     ESGFormCategorySerializer, ESGFormSerializer, ESGMetricSerializer,
@@ -101,10 +101,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
 class TemplateAssignmentView(views.APIView):
     """
     API view for managing template assignments to client companies.
-    Endpoints:
-    - GET /api/clients/{group_id}/templates/: Get all template assignments for a client
-    - POST /api/clients/{group_id}/templates/: Assign template to client
-    - DELETE /api/clients/{group_id}/templates/: Remove template assignment
+    Templates are automatically assigned to the company's CREATOR user.
     """
     permission_classes = [IsAuthenticated, BakerTillyAdmin]
 
@@ -119,10 +116,23 @@ class TemplateAssignmentView(views.APIView):
 
     @transaction.atomic
     def post(self, request, group_id):
-        """Assign a template to a client company"""
+        """Assign a template to a client company's CREATOR user"""
+        # Get the CREATOR user for this company
+        creator_user = CustomUser.objects.filter(
+            appuser__layer_id=group_id,
+            appuser__role='CREATOR'
+        ).first()
+        
+        if not creator_user:
+            return Response(
+                {'error': 'No CREATOR user found for this company'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         data = {
             **request.data,
             'company': group_id,
+            'assigned_to': creator_user.id
         }
         serializer = TemplateAssignmentSerializer(data=data)
         
