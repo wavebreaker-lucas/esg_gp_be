@@ -223,10 +223,10 @@ GET /api/clients/{group_id}/statistics/
 GET /api/app_users/table/
 
 # Optional Query Parameters:
-?group_id=1           # Filter by group layer
-?subsidiary_id=2      # Filter by subsidiary layer
-?branch_id=3         # Filter by branch layer
-?role=MANAGEMENT     # Filter by role
+?group_id=1           # Filter by group layer (includes users in subsidiaries and branches under this group)
+?subsidiary_id=2      # Filter by subsidiary layer (includes users in branches under this subsidiary)
+?branch_id=3          # Filter by branch layer
+?role=MANAGEMENT      # Filter by role
 
 # Response Example:
 {
@@ -286,6 +286,10 @@ GET /api/app_users/table/
 
 **Important Notes:**
 - Returns all accessible users based on requester's permissions
+- Hierarchical filtering:
+  - When filtering by `group_id`, returns users from the group AND all its subsidiaries AND all branches under those subsidiaries
+  - When filtering by `subsidiary_id`, returns users from the subsidiary AND all its branches
+  - When filtering by `branch_id`, returns only users from that specific branch
 - Hierarchy information is included when relevant
 - User status includes:
   - Account activation status
@@ -294,7 +298,45 @@ GET /api/app_users/table/
 - Response is not cached for real-time accuracy
 - Supports filtering by layer type and role
 
-2. Add User to Layer:
+2. Get User's Group Information:
+```bash
+GET /api/app_users/my-groups/
+
+# Response Example:
+{
+    "groups": [
+        {
+            "id": 1,
+            "name": "Example Corp",
+            "direct_access": false,
+            "subsidiary_id": 3,
+            "subsidiary_name": "Tech Division",
+            "branch_id": 7,
+            "branch_name": "R&D Department",
+            "app_user_id": 12,
+            "role": "MANAGEMENT"
+        }
+    ],
+    "total": 1
+}
+```
+
+**Key Features:**
+- Returns the top-level group layer the authenticated user has access to
+- Automatically traverses the hierarchy to find parent group
+- Includes contextual information about the user's position in the hierarchy
+- Deduplicates groups to avoid redundancy
+
+**Important Notes:**
+- Always returns the highest level (group) information, even if the user is only associated with a subsidiary or branch
+- For users directly in a group layer, includes `direct_access: true`
+- For users in a subsidiary, includes the parent group and subsidiary information
+- For users in a branch, includes the parent group, subsidiary, and branch information
+- Useful for initializing the frontend after login to determine which group(s) the user belongs to
+- No query parameters required - automatically uses the authenticated user's context
+- Returns unique groups even if the user has multiple roles within the same group hierarchy
+
+3. Add User to Layer:
 
 #### Windows (PowerShell/Command Prompt):
 ```bash
@@ -1016,6 +1058,48 @@ These endpoints handle user operations within companies:
 - `GET /api/app_users/` - List users in accessible companies
 - `POST /api/app_users/` - Create new user account
 - `GET /api/app_users/<id>/` - Get user profile details
+  ```bash
+  GET /api/app_users/12/
+  
+  # Response Example:
+  {
+    "id": 12,
+    "user": {
+      "id": 5,
+      "email": "john@example.com",
+      "role": "MANAGEMENT",
+      "is_active": true,
+      "is_baker_tilly_admin": false,
+      "must_change_password": false
+    },
+    "name": "John Smith",
+    "title": "ESG Manager",
+    "layer": {
+      "id": 7,
+      "name": "R&D Department",
+      "type": "BRANCH",
+      "parent": {
+        "id": 3,
+        "name": "Tech Division",
+        "type": "SUBSIDIARY"
+      },
+      "group": {
+        "id": 1,
+        "name": "Example Corp",
+        "type": "GROUP"
+      }
+    }
+  }
+  ```
+  
+  **Important Notes:**
+  - Returns detailed information about a specific AppUser
+  - Includes complete user profile information
+  - Contains full hierarchy information (branch → subsidiary → group)
+  - Requires appropriate permissions to access (must have access to the user's layer)
+  - The `id` parameter is the AppUser ID, not the CustomUser ID
+  - Returns HTTP 404 if the AppUser doesn't exist or the requester doesn't have access
+
 - `PUT /api/app_users/<id>/` - Update user information
 - `DELETE /api/app_users/<id>/` - Remove user from company
 - `POST /api/app_users/<id>/add-user/` - Add existing user to company
@@ -1162,6 +1246,7 @@ POST /api/clients/setup/
     "industry": "Technology",
     "location": "Hong Kong",
     "admin_email": "admin@example.com",
+    "admin_password": "secure_password",
     "admin_name": "John Doe",
     "admin_title": "ESG Administrator"
 }

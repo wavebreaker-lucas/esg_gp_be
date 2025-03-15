@@ -303,8 +303,8 @@ class AppUserViewSet(ModelViewSet, CSVExportMixin, ErrorHandlingMixin):
         """
         Get a table of users with their layer information.
         Query parameters:
-        - group_id: Optional. Filter users by group layer
-        - subsidiary_id: Optional. Filter users by subsidiary layer
+        - group_id: Optional. Filter users by group layer (includes users in subsidiaries and branches under this group)
+        - subsidiary_id: Optional. Filter users by subsidiary layer (includes users in branches under this subsidiary)
         - branch_id: Optional. Filter users by branch layer
         - role: Optional. Filter users by role (CREATOR, MANAGEMENT, OPERATION)
         """
@@ -325,11 +325,31 @@ class AppUserViewSet(ModelViewSet, CSVExportMixin, ErrorHandlingMixin):
                 'layer__branchlayer'
             )
 
-            # Apply filters
+            # Apply filters - hierarchical approach
             if group_id:
-                users = users.filter(layer__grouplayer__id=group_id)
+                # Get all users in the group and its subsidiaries and branches
+                group_users = users.filter(layer__grouplayer__id=group_id)
+                
+                # Get subsidiary layers under this group
+                subsidiary_layers = LayerProfile.objects.filter(subsidiarylayer__group_layer_id=group_id)
+                subsidiary_users = users.filter(layer_id__in=subsidiary_layers)
+                
+                # Get branch layers under subsidiaries of this group
+                branch_layers = LayerProfile.objects.filter(branchlayer__subsidiary_layer__group_layer_id=group_id)
+                branch_users = users.filter(layer_id__in=branch_layers)
+                
+                # Combine all users
+                users = group_users | subsidiary_users | branch_users
             elif subsidiary_id:
-                users = users.filter(layer__subsidiarylayer__id=subsidiary_id)
+                # Get all users in the subsidiary and its branches
+                subsidiary_users = users.filter(layer__subsidiarylayer__id=subsidiary_id)
+                
+                # Get branch layers under this subsidiary
+                branch_layers = LayerProfile.objects.filter(branchlayer__subsidiary_layer_id=subsidiary_id)
+                branch_users = users.filter(layer_id__in=branch_layers)
+                
+                # Combine all users
+                users = subsidiary_users | branch_users
             elif branch_id:
                 users = users.filter(layer__branchlayer__id=branch_id)
 
@@ -385,6 +405,79 @@ class AppUserViewSet(ModelViewSet, CSVExportMixin, ErrorHandlingMixin):
                 'total': len(user_table)
             })
 
+        except Exception as e:
+            return self.handle_unknown_error(e)
+
+    @action(detail=False, methods=["get"], url_path="my-groups")
+    def get_my_groups(self, request):
+        """
+        Get all group layers the authenticated user has access to, regardless of which layer
+        they're directly associated with. For users at subsidiary or branch levels, this will
+        return their parent group information.
+        """
+        try:
+            user = request.user
+            app_users = AppUser.objects.filter(user=user).select_related(
+                'layer'
+            ).prefetch_related(
+                'layer__grouplayer',
+                'layer__subsidiarylayer',
+                'layer__branchlayer'
+            )
+            
+            # Track unique groups to avoid duplicates
+            unique_groups = {}
+            
+            for app_user in app_users:
+                layer = app_user.layer
+                group_info = None
+                
+                # Determine the group based on layer type
+                if layer.layer_type == 'GROUP' and hasattr(layer, 'grouplayer'):
+                    # User is directly in a group
+                    group_info = {
+                        'id': layer.id,
+                        'name': layer.company_name,
+                        'direct_access': True,
+                        'app_user_id': app_user.id,
+                        'role': app_user.user.role
+                    }
+                elif layer.layer_type == 'SUBSIDIARY' and hasattr(layer, 'subsidiarylayer'):
+                    # User is in a subsidiary, get parent group
+                    parent = layer.subsidiarylayer.group_layer
+                    group_info = {
+                        'id': parent.id,
+                        'name': parent.company_name,
+                        'direct_access': False,
+                        'subsidiary_id': layer.id,
+                        'subsidiary_name': layer.company_name,
+                        'app_user_id': app_user.id,
+                        'role': app_user.user.role
+                    }
+                elif layer.layer_type == 'BRANCH' and hasattr(layer, 'branchlayer'):
+                    # User is in a branch, get parent subsidiary and group
+                    subsidiary = layer.branchlayer.subsidiary_layer
+                    group = subsidiary.group_layer
+                    group_info = {
+                        'id': group.id,
+                        'name': group.company_name,
+                        'direct_access': False,
+                        'subsidiary_id': subsidiary.id,
+                        'subsidiary_name': subsidiary.company_name,
+                        'branch_id': layer.id,
+                        'branch_name': layer.company_name,
+                        'app_user_id': app_user.id,
+                        'role': app_user.user.role
+                    }
+                
+                if group_info and group_info['id'] not in unique_groups:
+                    unique_groups[group_info['id']] = group_info
+                
+            return Response({
+                'groups': list(unique_groups.values()),
+                'total': len(unique_groups)
+            })
+            
         except Exception as e:
             return self.handle_unknown_error(e)
 
