@@ -100,12 +100,16 @@ class TemplateViewSet(viewsets.ModelViewSet):
 
 class TemplateAssignmentView(views.APIView):
     """
-    API view for managing template assignments to companies.
+    API view for managing template assignments to client companies.
+    Endpoints:
+    - GET /api/clients/{group_id}/templates/: Get all template assignments for a client
+    - POST /api/clients/{group_id}/templates/: Assign template to client
+    - DELETE /api/clients/{group_id}/templates/: Remove template assignment
     """
     permission_classes = [IsAuthenticated, BakerTillyAdmin]
 
     def get(self, request, group_id):
-        """Get all template assignments for a company"""
+        """Get all template assignments for a client company"""
         assignments = TemplateAssignment.objects.filter(
             company_id=group_id
         ).select_related('template', 'company', 'assigned_to')
@@ -115,7 +119,7 @@ class TemplateAssignmentView(views.APIView):
 
     @transaction.atomic
     def post(self, request, group_id):
-        """Assign a template to a company"""
+        """Assign a template to a client company"""
         data = {
             **request.data,
             'company': group_id,
@@ -129,7 +133,7 @@ class TemplateAssignmentView(views.APIView):
 
     @transaction.atomic
     def delete(self, request, group_id):
-        """Remove a template assignment"""
+        """Remove a template assignment from a client company"""
         assignment_id = request.data.get('assignment_id')
         try:
             assignment = TemplateAssignment.objects.get(
