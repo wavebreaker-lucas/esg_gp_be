@@ -371,6 +371,47 @@ GET /api/templates/1/preview/
 }
 ```
 
+##### Get Client's Template Assignments
+```json
+GET /api/clients/{group_id}/templates/
+
+// Response
+[
+  {
+    "id": 1,
+    "template": {
+      "id": 1,
+      "name": "HKEX ESG Comprehensive 2024"
+    },
+    "company": {
+      "id": 1,
+      "name": "Example Corp"
+    },
+    "assigned_to": null,
+    "status": "PENDING",
+    "due_date": "2024-12-31",
+    "reporting_period_start": "2024-01-01",
+    "reporting_period_end": "2024-12-31"
+  },
+  {
+    "id": 2,
+    "template": {
+      "id": 2,
+      "name": "HKEX ESG Quarterly Report"
+    },
+    "company": {
+      "id": 1,
+      "name": "Example Corp"
+    },
+    "assigned_to": null,
+    "status": "IN_PROGRESS",
+    "due_date": "2024-03-31",
+    "reporting_period_start": "2024-01-01",
+    "reporting_period_end": "2024-03-31"
+  }
+]
+```
+
 ##### Assign Template to Company
 ```json
 POST /api/clients/{group_id}/templates/
