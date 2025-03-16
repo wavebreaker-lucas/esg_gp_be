@@ -111,6 +111,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
         return Response({
             'template_id': template.id,
             'name': template.name,
+            'description': template.description,
             'reporting_period': template.reporting_period,
             'forms': forms_data
         })
