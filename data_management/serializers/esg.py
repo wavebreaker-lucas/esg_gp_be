@@ -90,12 +90,12 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     
     def get_submitted_by_name(self, obj):
         if obj.submitted_by:
-            return obj.submitted_by.get_full_name() or obj.submitted_by.email
+            return obj.submitted_by.email
         return None
     
     def get_verified_by_name(self, obj):
         if obj.verified_by:
-            return obj.verified_by.get_full_name() or obj.verified_by.email
+            return obj.verified_by.email
         return None
     
     def validate(self, data):

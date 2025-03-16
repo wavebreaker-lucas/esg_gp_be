@@ -1,8 +1,9 @@
 from django.contrib import admin
-from .models import (
-    BoundaryItem, EmissionFactor, ESGData, DataEditLog,
+from .models.esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
+from .models.templates import (
     ESGFormCategory, ESGForm, ESGMetric,
-    Template, TemplateFormSelection, TemplateAssignment
+    Template, TemplateFormSelection, TemplateAssignment,
+    ESGMetricSubmission, ESGMetricEvidence
 )
 
 class BoundaryItemAdmin(admin.ModelAdmin):
@@ -77,3 +78,19 @@ class TemplateAssignmentAdmin(admin.ModelAdmin):
     list_filter = ['status']
     search_fields = ['template__name', 'layer__company_name']
     ordering = ['-assigned_at']
+
+@admin.register(ESGMetricSubmission)
+class ESGMetricSubmissionAdmin(admin.ModelAdmin):
+    list_display = ['metric', 'assignment', 'value', 'text_value', 'reporting_period', 'submitted_by', 'is_verified']
+    list_filter = ['is_verified', 'metric__form', 'reporting_period']
+    search_fields = ['metric__name', 'assignment__template__name', 'assignment__layer__company_name']
+    date_hierarchy = 'submitted_at'
+    raw_id_fields = ['metric', 'assignment', 'submitted_by', 'verified_by']
+
+@admin.register(ESGMetricEvidence)
+class ESGMetricEvidenceAdmin(admin.ModelAdmin):
+    list_display = ['submission', 'filename', 'file_type', 'uploaded_by', 'uploaded_at']
+    list_filter = ['file_type']
+    search_fields = ['filename', 'description', 'submission__metric__name']
+    date_hierarchy = 'uploaded_at'
+    raw_id_fields = ['submission', 'uploaded_by']
