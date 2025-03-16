@@ -8,11 +8,13 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import update_session_auth_hash
 from ..models import CustomUser
 from ..serializers.auth import (
     CustomTokenObtainPairSerializer,
     RequestPasswordResetSerializer,
-    ResetPasswordSerializer
+    ResetPasswordSerializer,
+    ChangePasswordSerializer
 )
 from ..services import generate_otp_code, send_otp_via_email
 from .mixins import ErrorHandlingMixin
@@ -154,5 +156,31 @@ class ResetPasswordView(APIView, ErrorHandlingMixin):
 
         return Response(
             {"message": "Password reset successfully."},
+            status=status.HTTP_200_OK
+        )
+
+class ChangePasswordView(APIView, ErrorHandlingMixin):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        serializer = ChangePasswordSerializer(
+            data=request.data, 
+            context={'user': request.user}
+        )
+        if not serializer.is_valid():
+            return self.handle_validation_error(serializer.errors)
+            
+        # Update password
+        user = request.user
+        user.set_password(serializer.validated_data['new_password'])
+        user.password_updated_at = timezone.now()
+        user.must_change_password = False
+        user.save()
+        
+        # Update session auth hash to keep user logged in
+        update_session_auth_hash(request, user)
+        
+        return Response(
+            {"message": "Password changed successfully."},
             status=status.HTTP_200_OK
         )

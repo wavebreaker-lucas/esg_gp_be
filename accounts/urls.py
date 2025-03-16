@@ -7,7 +7,8 @@ from .views.client_management import ClientSetupView, ClientUserManagementView, 
 from .views.auth import (
     CustomTokenObtainPairView, LogoutView,
     VerifyOTPView, RequestPasswordResetView,
-    ResetPasswordView, ResendOTPView
+    ResetPasswordView, ResendOTPView,
+    ChangePasswordView
 )
 from data_management.views import TemplateAssignmentView
 
@@ -36,6 +37,7 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('request-password-reset/', RequestPasswordResetView.as_view(), name='request-password-reset'),
     path('reset-password/<uuid:reset_token>/', ResetPasswordView.as_view(), name='reset-password'),
+    path('change-password/', ChangePasswordView.as_view(), name='change-password'),
     
     # Template Assignment URLs
     path('clients/<int:group_id>/templates/', TemplateAssignmentView.as_view(), name='client-templates'),
