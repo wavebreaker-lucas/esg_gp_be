@@ -10,7 +10,8 @@ class ESGMetricSerializer(serializers.ModelSerializer):
     class Meta:
         model = ESGMetric
         fields = ['id', 'name', 'description', 'unit_type', 'custom_unit', 
-                 'requires_evidence', 'order', 'validation_rules', 'location', 'is_required']
+                 'requires_evidence', 'order', 'validation_rules', 'location', 'is_required',
+                 'requires_time_reporting', 'reporting_frequency']
 
 class ESGFormSerializer(serializers.ModelSerializer):
     """Serializer for ESG forms with nested metrics"""

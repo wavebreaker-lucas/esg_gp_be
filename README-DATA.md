@@ -53,6 +53,8 @@ Properties:
   - 'PRC': Mainland China operations
   - 'ALL': All locations
 - `is_required`: Whether this metric must be reported
+- `requires_time_reporting`: Whether this metric requires reporting for multiple time periods
+- `reporting_frequency`: Required frequency of reporting (monthly, quarterly, annual)
 
 ## Templates and Assignments
 
@@ -204,20 +206,54 @@ Example:
 
 The system supports time-based reporting for metrics that require data for multiple periods:
 
-1. **Monthly Data Collection**: For metrics like electricity consumption, water usage, etc., you can submit values with different reporting periods.
+1. **Configuring Time-Based Metrics**:
+   - Set `requires_time_reporting=True` on the ESGMetric
+   - Set `reporting_frequency` to 'monthly', 'quarterly', or 'annual'
+   - These settings will be visible in the template preview and assignment details
 
-2. **Usage Example**:
-   - Submit January data: `reporting_period: "2024-01-31"`
-   - Submit February data: `reporting_period: "2024-02-29"`
-   - Submit March data: `reporting_period: "2024-03-31"`
+2. **Submitting Time-Based Data**:
+   - For metrics with `requires_time_reporting=True`, include a `reporting_period` date
+   - For monthly data, use the last day of each month (e.g., "2024-01-31", "2024-02-29")
+   - For quarterly data, use the last day of the quarter (e.g., "2024-03-31", "2024-06-30")
 
-3. **Validation Rules**:
+3. **Usage Example**:
+   ```json
+   // Monthly electricity consumption
+   POST /api/metric-submissions/batch_submit/
+   {
+       "assignment_id": 1,
+       "submissions": [
+           {
+               "metric_id": 5,
+               "value": 120.5,
+               "reporting_period": "2024-01-31",
+               "notes": "January 2024 electricity consumption"
+           },
+           {
+               "metric_id": 5,
+               "value": 115.2,
+               "reporting_period": "2024-02-29",
+               "notes": "February 2024 electricity consumption"
+           },
+           {
+               "metric_id": 5,
+               "value": 130.8,
+               "reporting_period": "2024-03-31",
+               "notes": "March 2024 electricity consumption"
+           }
+       ]
+   }
+   ```
+
+4. **Validation Rules**:
    - You can only have one submission per metric per reporting period
-   - The reporting_period field is optional - if not provided, it's treated as a single submission for the entire assignment period
+   - The reporting_period field is optional for metrics that don't require time-based reporting
+   - For metrics with `requires_time_reporting=True`, the reporting_period is required
 
-4. **Retrieving Time-Based Data**:
-   - When you get submissions for an assignment, all time-based submissions are included
-   - You can filter by reporting_period if needed
+5. **Frontend Implementation**:
+   - For metrics with `requires_time_reporting=True`, show date picker controls
+   - Use the `reporting_frequency` to guide users (e.g., show a monthly calendar for monthly metrics)
+   - Allow users to submit multiple entries for the same metric with different reporting periods
 
 This allows for flexible data collection patterns while maintaining data integrity.
 
@@ -825,6 +861,7 @@ Properties:
 - `metric`: Link to ESGMetric
 - `value`: Numeric value (for quantitative metrics)
 - `text_value`: Text value (for qualitative metrics)
+- `reporting_period`: Date field for time-based metrics (e.g., monthly data)
 - `submitted_by`: User who submitted the value
 - `submitted_at`: Submission timestamp
 - `updated_at`: Last update timestamp
@@ -833,6 +870,8 @@ Properties:
 - `verified_by`: Baker Tilly admin who verified the submission
 - `verified_at`: Verification timestamp
 - `verification_notes`: Notes from the verification process
+
+**Important Note**: The combination of `assignment`, `metric`, and `reporting_period` must be unique. This allows multiple submissions for the same metric with different reporting periods (e.g., monthly data).
 
 ### ESGMetricEvidence
 Stores supporting documentation for ESG metric submissions.

@@ -62,6 +62,12 @@ class ESGMetric(models.Model):
         ('PRC', 'Mainland China'),
         ('ALL', 'All Locations'),
     ]
+    
+    REPORTING_FREQUENCY_CHOICES = [
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('annual', 'Annual'),
+    ]
 
     form = models.ForeignKey(ESGForm, on_delete=models.CASCADE, related_name='metrics')
     name = models.CharField(max_length=255)
@@ -73,6 +79,14 @@ class ESGMetric(models.Model):
     validation_rules = models.JSONField(default=dict, blank=True)
     location = models.CharField(max_length=3, choices=LOCATION_CHOICES, default='ALL')
     is_required = models.BooleanField(default=True, help_text="Whether this metric must be reported")
+    requires_time_reporting = models.BooleanField(default=False, help_text="Whether this metric requires reporting for multiple time periods")
+    reporting_frequency = models.CharField(
+        max_length=20, 
+        choices=REPORTING_FREQUENCY_CHOICES,
+        null=True, 
+        blank=True,
+        help_text="Required frequency of reporting for time-based metrics"
+    )
 
     class Meta:
         ordering = ['form', 'order']

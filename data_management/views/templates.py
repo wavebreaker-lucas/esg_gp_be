@@ -96,7 +96,9 @@ class TemplateViewSet(viewsets.ModelViewSet):
                         'validation_rules': metric.validation_rules,
                         'location': metric.location,
                         'is_required': metric.is_required,
-                        'order': metric.order
+                        'order': metric.order,
+                        'requires_time_reporting': metric.requires_time_reporting,
+                        'reporting_frequency': metric.reporting_frequency
                     })
             
             # Sort metrics by order
@@ -227,7 +229,9 @@ class UserTemplateAssignmentView(views.APIView):
                                 'validation_rules': metric.validation_rules,
                                 'location': metric.location,
                                 'is_required': metric.is_required,
-                                'order': metric.order
+                                'order': metric.order,
+                                'requires_time_reporting': metric.requires_time_reporting,
+                                'reporting_frequency': metric.reporting_frequency
                             })
                     
                     # Sort metrics by order
