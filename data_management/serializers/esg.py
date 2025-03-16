@@ -70,7 +70,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         model = ESGMetricSubmission
         fields = [
             'id', 'assignment', 'metric', 'metric_name', 'metric_unit',
-            'value', 'text_value', 'submitted_by', 'submitted_by_name',
+            'value', 'text_value', 'reporting_period', 'submitted_by', 'submitted_by_name',
             'submitted_at', 'updated_at', 'notes', 'is_verified',
             'verified_by', 'verified_by_name', 'verified_at', 
             'verification_notes', 'evidence'
@@ -113,6 +113,25 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         if value is None and not text_value:
             raise serializers.ValidationError("Either a numeric value or text value must be provided")
         
+        # Check for duplicate submissions with the same reporting period
+        assignment = data.get('assignment')
+        reporting_period = data.get('reporting_period')
+        
+        # If this is an update, exclude the current instance
+        instance = self.instance
+        if instance:
+            try:
+                existing = ESGMetricSubmission.objects.exclude(pk=instance.pk).get(
+                    assignment=assignment,
+                    metric=metric,
+                    reporting_period=reporting_period
+                )
+                raise serializers.ValidationError(
+                    f"A submission for this metric with reporting period {reporting_period} already exists"
+                )
+            except ESGMetricSubmission.DoesNotExist:
+                pass
+        
         return data
 
 class ESGMetricSubmissionCreateSerializer(ESGMetricSubmissionSerializer):
@@ -147,7 +166,7 @@ class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
     
     def validate(self, data):
         """Validate that the assignment exists and user has access"""
-        from ..models.templates import TemplateAssignment
+        from ..models.templates import TemplateAssignment, ESGMetricSubmission
         
         try:
             assignment = TemplateAssignment.objects.get(id=data['assignment_id'])
@@ -173,5 +192,19 @@ class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
             
             if 'value' not in submission and 'text_value' not in submission:
                 raise serializers.ValidationError(f"Either value or text_value must be provided for {metric.name}")
+            
+            # Check for duplicate submissions with the same reporting period
+            if 'reporting_period' in submission:
+                try:
+                    existing = ESGMetricSubmission.objects.get(
+                        assignment_id=data['assignment_id'],
+                        metric_id=submission['metric_id'],
+                        reporting_period=submission['reporting_period']
+                    )
+                    raise serializers.ValidationError(
+                        f"A submission for metric ID {submission['metric_id']} with reporting period {submission['reporting_period']} already exists"
+                    )
+                except ESGMetricSubmission.DoesNotExist:
+                    pass
         
         return data 

@@ -151,6 +151,7 @@ class ESGMetricSubmission(models.Model):
     metric = models.ForeignKey(ESGMetric, on_delete=models.CASCADE)
     value = models.FloatField(null=True, blank=True)
     text_value = models.TextField(null=True, blank=True, help_text="For non-numeric metrics")
+    reporting_period = models.DateField(null=True, blank=True, help_text="For time-based metrics (e.g., monthly data)")
     submitted_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='metric_submissions')
     submitted_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -161,15 +162,17 @@ class ESGMetricSubmission(models.Model):
     verification_notes = models.TextField(blank=True)
 
     class Meta:
-        unique_together = ['assignment', 'metric']
+        unique_together = ['assignment', 'metric', 'reporting_period']
         indexes = [
             models.Index(fields=['assignment', 'metric']),
+            models.Index(fields=['reporting_period']),
             models.Index(fields=['submitted_by']),
             models.Index(fields=['is_verified']),
         ]
 
     def __str__(self):
-        return f"{self.metric.name} - {self.assignment.layer.name}"
+        period_str = f" ({self.reporting_period})" if self.reporting_period else ""
+        return f"{self.metric.name}{period_str} - {self.assignment.layer.name}"
 
 class ESGMetricEvidence(models.Model):
     """Supporting documentation for ESG metric submissions"""

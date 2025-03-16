@@ -200,6 +200,27 @@ Example:
 "Lost days due to work injury (PRC)" - order=4
 ```
 
+## Time-Based Reporting
+
+The system supports time-based reporting for metrics that require data for multiple periods:
+
+1. **Monthly Data Collection**: For metrics like electricity consumption, water usage, etc., you can submit values with different reporting periods.
+
+2. **Usage Example**:
+   - Submit January data: `reporting_period: "2024-01-31"`
+   - Submit February data: `reporting_period: "2024-02-29"`
+   - Submit March data: `reporting_period: "2024-03-31"`
+
+3. **Validation Rules**:
+   - You can only have one submission per metric per reporting period
+   - The reporting_period field is optional - if not provided, it's treated as a single submission for the entire assignment period
+
+4. **Retrieving Time-Based Data**:
+   - When you get submissions for an assignment, all time-based submissions are included
+   - You can filter by reporting_period if needed
+
+This allows for flexible data collection patterns while maintaining data integrity.
+
 ## API Endpoints
 
 ### ESG Data Management
@@ -574,6 +595,7 @@ POST /api/metric-submissions/
     "assignment": 1,
     "metric": 5,
     "value": 120.5,
+    "reporting_period": "2024-03-31",
     "notes": "Value from March 2024 electricity bill"
 }
 
@@ -586,6 +608,7 @@ POST /api/metric-submissions/
     "metric_unit": "kWh",
     "value": 120.5,
     "text_value": null,
+    "reporting_period": "2024-03-31",
     "submitted_by": 3,
     "submitted_by_name": "john.doe@example.com",
     "submitted_at": "2024-04-15T10:30:00Z",
@@ -609,7 +632,14 @@ POST /api/metric-submissions/batch_submit/
         {
             "metric_id": 5,
             "value": 120.5,
+            "reporting_period": "2024-03-31",
             "notes": "Value from March 2024 electricity bill"
+        },
+        {
+            "metric_id": 5,
+            "value": 115.2,
+            "reporting_period": "2024-02-29",
+            "notes": "Value from February 2024 electricity bill"
         },
         {
             "metric_id": 6,
@@ -626,12 +656,20 @@ POST /api/metric-submissions/batch_submit/
         {
             "metric_id": 5,
             "submission_id": 1,
-            "status": "success"
+            "status": "success",
+            "reporting_period": "2024-03-31"
+        },
+        {
+            "metric_id": 5,
+            "submission_id": 2,
+            "status": "success",
+            "reporting_period": "2024-02-29"
         },
         {
             "metric_id": 6,
-            "submission_id": 2,
-            "status": "success"
+            "submission_id": 3,
+            "status": "success",
+            "reporting_period": null
         }
     ]
 }

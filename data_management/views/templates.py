@@ -380,11 +380,15 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             try:
                 metric = ESGMetric.objects.get(id=metric_id)
                 
-                # Check if submission already exists
+                # Check if submission already exists with the same reporting period
+                reporting_period = submission_data.get('reporting_period')
+                
                 try:
+                    # Try to find an existing submission with the same metric and reporting period
                     submission = ESGMetricSubmission.objects.get(
                         assignment_id=assignment_id,
-                        metric_id=metric_id
+                        metric_id=metric_id,
+                        reporting_period=reporting_period
                     )
                     
                     # Update existing submission
@@ -406,7 +410,8 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 results.append({
                     'metric_id': metric_id,
                     'submission_id': submission.id,
-                    'status': 'success'
+                    'status': 'success',
+                    'reporting_period': reporting_period
                 })
                 
             except ESGMetric.DoesNotExist:
