@@ -143,4 +143,43 @@ class TemplateAssignment(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.template.name} - {self.layer.name}" 
+        return f"{self.template.name} - {self.layer.name}"
+
+class ESGMetricSubmission(models.Model):
+    """User-submitted values for ESG metrics within a template assignment"""
+    assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='submissions')
+    metric = models.ForeignKey(ESGMetric, on_delete=models.CASCADE)
+    value = models.FloatField(null=True, blank=True)
+    text_value = models.TextField(null=True, blank=True, help_text="For non-numeric metrics")
+    submitted_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='metric_submissions')
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    notes = models.TextField(blank=True)
+    is_verified = models.BooleanField(default=False)
+    verified_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_submissions')
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verification_notes = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = ['assignment', 'metric']
+        indexes = [
+            models.Index(fields=['assignment', 'metric']),
+            models.Index(fields=['submitted_by']),
+            models.Index(fields=['is_verified']),
+        ]
+
+    def __str__(self):
+        return f"{self.metric.name} - {self.assignment.layer.name}"
+
+class ESGMetricEvidence(models.Model):
+    """Supporting documentation for ESG metric submissions"""
+    submission = models.ForeignKey(ESGMetricSubmission, on_delete=models.CASCADE, related_name='evidence')
+    file = models.FileField(upload_to='esg_evidence/%Y/%m/')
+    filename = models.CharField(max_length=255)
+    file_type = models.CharField(max_length=50)
+    uploaded_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    description = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"Evidence for {self.submission.metric.name}" 

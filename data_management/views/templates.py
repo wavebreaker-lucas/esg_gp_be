@@ -3,15 +3,21 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
+from django.utils import timezone
 from accounts.permissions import BakerTillyAdmin
 from accounts.models import CustomUser, AppUser
 from ..models import (
     ESGFormCategory, ESGForm, ESGMetric,
     Template, TemplateFormSelection, TemplateAssignment
 )
+from ..models.templates import ESGMetricSubmission, ESGMetricEvidence
 from ..serializers.templates import (
     ESGFormCategorySerializer, ESGFormSerializer, ESGMetricSerializer,
     TemplateSerializer, TemplateAssignmentSerializer
+)
+from ..serializers.esg import (
+    ESGMetricSubmissionSerializer, ESGMetricSubmissionCreateSerializer,
+    ESGMetricEvidenceSerializer, ESGMetricBatchSubmissionSerializer
 )
 
 class ESGFormViewSet(viewsets.ReadOnlyModelViewSet):
@@ -272,4 +278,345 @@ class UserTemplateAssignmentView(views.APIView):
                 
                 assignments_data.append(assignment_data)
             
-            return Response(assignments_data) 
+            return Response(assignments_data)
+
+class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing ESG metric submissions.
+    """
+    serializer_class = ESGMetricSubmissionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Filter submissions based on user's access to template assignments.
+        """
+        user = self.request.user
+        
+        # Get all layers (groups) the user belongs to
+        user_app_users = AppUser.objects.filter(user=user).select_related('layer')
+        user_layers = [app_user.layer for app_user in user_app_users]
+        
+        # Get all accessible layer IDs including parent groups
+        accessible_layer_ids = set()
+        for layer in user_layers:
+            # Add the current layer
+            accessible_layer_ids.add(layer.id)
+            
+            # Add parent layers based on layer type
+            if hasattr(layer, 'branchlayer'):
+                # For branch layer, add subsidiary and group
+                subsidiary = layer.branchlayer.subsidiary_layer
+                accessible_layer_ids.add(subsidiary.id)
+                accessible_layer_ids.add(subsidiary.group_layer.id)
+            elif hasattr(layer, 'subsidiarylayer'):
+                # For subsidiary layer, add group
+                accessible_layer_ids.add(layer.subsidiarylayer.group_layer.id)
+        
+        # Filter submissions by assignments to accessible layers
+        return ESGMetricSubmission.objects.filter(
+            assignment__layer_id__in=accessible_layer_ids
+        ).select_related(
+            'assignment', 'metric', 'submitted_by', 'verified_by'
+        ).prefetch_related('evidence')
+
+    def get_serializer_class(self):
+        """
+        Use different serializers for list/retrieve vs create/update.
+        """
+        if self.action in ['create', 'update', 'partial_update']:
+            return ESGMetricSubmissionCreateSerializer
+        return ESGMetricSubmissionSerializer
+
+    def perform_create(self, serializer):
+        """
+        Set the submitted_by field to the current user.
+        """
+        serializer.save(submitted_by=self.request.user)
+        
+        # Update assignment status to IN_PROGRESS if it's PENDING
+        assignment = serializer.instance.assignment
+        if assignment.status == 'PENDING':
+            assignment.status = 'IN_PROGRESS'
+            assignment.save(update_fields=['status'])
+
+    @action(detail=False, methods=['post'])
+    @transaction.atomic
+    def batch_submit(self, request):
+        """
+        Submit multiple metric values at once for a template assignment.
+        """
+        serializer = ESGMetricBatchSubmissionSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        
+        assignment_id = serializer.validated_data['assignment_id']
+        submissions_data = serializer.validated_data['submissions']
+        assignment = serializer.context['assignment']
+        
+        # Check if user has access to this assignment
+        user_app_users = AppUser.objects.filter(user=request.user).select_related('layer')
+        user_layers = [app_user.layer.id for app_user in user_app_users]
+        
+        # Also check parent layers
+        for app_user in user_app_users:
+            layer = app_user.layer
+            if hasattr(layer, 'branchlayer'):
+                user_layers.append(layer.branchlayer.subsidiary_layer.id)
+                user_layers.append(layer.branchlayer.subsidiary_layer.group_layer.id)
+            elif hasattr(layer, 'subsidiarylayer'):
+                user_layers.append(layer.subsidiarylayer.group_layer.id)
+        
+        if assignment.layer.id not in user_layers:
+            return Response(
+                {"error": "You do not have access to this template assignment"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Process each submission
+        results = []
+        for submission_data in submissions_data:
+            metric_id = submission_data.pop('metric_id')
+            
+            try:
+                metric = ESGMetric.objects.get(id=metric_id)
+                
+                # Check if submission already exists
+                try:
+                    submission = ESGMetricSubmission.objects.get(
+                        assignment_id=assignment_id,
+                        metric_id=metric_id
+                    )
+                    
+                    # Update existing submission
+                    for key, value in submission_data.items():
+                        setattr(submission, key, value)
+                    
+                    submission.submitted_by = request.user
+                    submission.save()
+                    
+                except ESGMetricSubmission.DoesNotExist:
+                    # Create new submission
+                    submission = ESGMetricSubmission.objects.create(
+                        assignment_id=assignment_id,
+                        metric_id=metric_id,
+                        submitted_by=request.user,
+                        **submission_data
+                    )
+                
+                results.append({
+                    'metric_id': metric_id,
+                    'submission_id': submission.id,
+                    'status': 'success'
+                })
+                
+            except ESGMetric.DoesNotExist:
+                results.append({
+                    'metric_id': metric_id,
+                    'status': 'error',
+                    'message': f"Metric with ID {metric_id} not found"
+                })
+        
+        # Update assignment status to IN_PROGRESS if it's PENDING
+        if assignment.status == 'PENDING':
+            assignment.status = 'IN_PROGRESS'
+            assignment.save(update_fields=['status'])
+        
+        return Response({
+            'assignment_id': assignment_id,
+            'results': results
+        })
+
+    @action(detail=False, methods=['get'])
+    def by_assignment(self, request):
+        """
+        Get all submissions for a specific template assignment.
+        """
+        assignment_id = request.query_params.get('assignment_id')
+        if not assignment_id:
+            return Response(
+                {"error": "assignment_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if user has access to this assignment
+        queryset = self.get_queryset().filter(assignment_id=assignment_id)
+        if not queryset.exists():
+            # Check if assignment exists but has no submissions
+            try:
+                assignment = TemplateAssignment.objects.get(id=assignment_id)
+                # If we get here, the assignment exists but has no submissions
+                return Response([])
+            except TemplateAssignment.DoesNotExist:
+                return Response(
+                    {"error": "Template assignment not found or you do not have access to it"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def verify(self, request, pk=None):
+        """
+        Verify a metric submission (Baker Tilly admin only).
+        """
+        if not request.user.is_baker_tilly_admin:
+            return Response(
+                {"error": "Only Baker Tilly admins can verify submissions"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        submission = self.get_object()
+        verification_notes = request.data.get('verification_notes', '')
+        
+        submission.is_verified = True
+        submission.verified_by = request.user
+        submission.verified_at = timezone.now()
+        submission.verification_notes = verification_notes
+        submission.save()
+        
+        serializer = self.get_serializer(submission)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    @transaction.atomic
+    def submit_form(self, request):
+        """
+        Mark a template assignment as submitted when all required metrics are completed.
+        """
+        assignment_id = request.data.get('assignment_id')
+        if not assignment_id:
+            return Response(
+                {"error": "assignment_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get the assignment and check user access
+            assignment = TemplateAssignment.objects.get(id=assignment_id)
+            
+            # Check if user has access to this assignment
+            user_app_users = AppUser.objects.filter(user=request.user).select_related('layer')
+            user_layers = [app_user.layer.id for app_user in user_app_users]
+            
+            # Also check parent layers
+            for app_user in user_app_users:
+                layer = app_user.layer
+                if hasattr(layer, 'branchlayer'):
+                    user_layers.append(layer.branchlayer.subsidiary_layer.id)
+                    user_layers.append(layer.branchlayer.subsidiary_layer.group_layer.id)
+                elif hasattr(layer, 'subsidiarylayer'):
+                    user_layers.append(layer.subsidiarylayer.group_layer.id)
+            
+            if assignment.layer.id not in user_layers:
+                return Response(
+                    {"error": "You do not have access to this template assignment"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Get all required metrics for this template
+            required_metrics = []
+            form_selections = assignment.template.templateformselection_set.all()
+            
+            for selection in form_selections:
+                # Get metrics that match the form's regions or are for ALL locations
+                for metric in selection.form.metrics.filter(is_required=True):
+                    if metric.location == 'ALL' or metric.location in selection.regions:
+                        required_metrics.append(metric.id)
+            
+            # Check if all required metrics have submissions
+            submitted_metrics = ESGMetricSubmission.objects.filter(
+                assignment=assignment
+            ).values_list('metric_id', flat=True)
+            
+            missing_metrics = set(required_metrics) - set(submitted_metrics)
+            
+            if missing_metrics:
+                # Get names of missing metrics for better error message
+                missing_metric_names = ESGMetric.objects.filter(
+                    id__in=missing_metrics
+                ).values_list('name', flat=True)
+                
+                return Response({
+                    "error": "Cannot submit form with missing required metrics",
+                    "missing_metrics": list(missing_metric_names)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Update assignment status to SUBMITTED
+            assignment.status = 'SUBMITTED'
+            assignment.completed_at = timezone.now()
+            assignment.save()
+            
+            return Response({
+                "message": "Form successfully submitted",
+                "assignment_id": assignment.id,
+                "status": assignment.status,
+                "completed_at": assignment.completed_at
+            })
+            
+        except TemplateAssignment.DoesNotExist:
+            return Response(
+                {"error": "Template assignment not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing evidence files for ESG metric submissions.
+    """
+    serializer_class = ESGMetricEvidenceSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """
+        Filter evidence files based on user's access to submissions.
+        """
+        user = self.request.user
+        
+        # Get all layers (groups) the user belongs to
+        user_app_users = AppUser.objects.filter(user=user).select_related('layer')
+        user_layers = [app_user.layer for app_user in user_app_users]
+        
+        # Get all accessible layer IDs including parent groups
+        accessible_layer_ids = set()
+        for layer in user_layers:
+            # Add the current layer
+            accessible_layer_ids.add(layer.id)
+            
+            # Add parent layers based on layer type
+            if hasattr(layer, 'branchlayer'):
+                # For branch layer, add subsidiary and group
+                subsidiary = layer.branchlayer.subsidiary_layer
+                accessible_layer_ids.add(subsidiary.id)
+                accessible_layer_ids.add(subsidiary.group_layer.id)
+            elif hasattr(layer, 'subsidiarylayer'):
+                # For subsidiary layer, add group
+                accessible_layer_ids.add(layer.subsidiarylayer.group_layer.id)
+        
+        # Filter evidence by submissions for assignments to accessible layers
+        return ESGMetricEvidence.objects.filter(
+            submission__assignment__layer_id__in=accessible_layer_ids
+        ).select_related('submission', 'uploaded_by')
+    
+    def perform_create(self, serializer):
+        """
+        Set the uploaded_by field to the current user.
+        """
+        serializer.save(uploaded_by=self.request.user)
+    
+    @action(detail=False, methods=['get'])
+    def by_submission(self, request):
+        """
+        Get all evidence files for a specific submission.
+        """
+        submission_id = request.query_params.get('submission_id')
+        if not submission_id:
+            return Response(
+                {"error": "submission_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        queryset = self.get_queryset().filter(submission_id=submission_id)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data) 
