@@ -343,6 +343,18 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         if assignment.status == 'PENDING':
             assignment.status = 'IN_PROGRESS'
             assignment.save(update_fields=['status'])
+            
+    def perform_destroy(self, instance):
+        """
+        Check if the user has permission to delete this submission.
+        Users can only delete their own submissions, while Baker Tilly admins can delete any.
+        """
+        user = self.request.user
+        if instance.submitted_by == user or user.is_baker_tilly_admin:
+            instance.delete()
+        else:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You do not have permission to delete this submission.")
 
     @action(detail=False, methods=['post'])
     @transaction.atomic
