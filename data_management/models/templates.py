@@ -157,7 +157,7 @@ class TemplateAssignment(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.template.name} - {self.layer.name}"
+        return f"{self.template.name} - {self.layer.company_name}"
 
 class ESGMetricSubmission(models.Model):
     """User-submitted values for ESG metrics within a template assignment"""
@@ -186,7 +186,7 @@ class ESGMetricSubmission(models.Model):
 
     def __str__(self):
         period_str = f" ({self.reporting_period})" if self.reporting_period else ""
-        return f"{self.metric.name}{period_str} - {self.assignment.layer.name}"
+        return f"{self.metric.name}{period_str} - {self.assignment.layer.company_name}"
 
 class ESGMetricEvidence(models.Model):
     """Supporting documentation for ESG metric submissions"""
