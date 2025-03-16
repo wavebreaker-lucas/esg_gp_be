@@ -112,7 +112,6 @@ class TemplateViewSet(viewsets.ModelViewSet):
             'template_id': template.id,
             'name': template.name,
             'description': template.description,
-            'reporting_period': template.reporting_period,
             'forms': forms_data
         })
 
@@ -246,7 +245,6 @@ class UserTemplateAssignmentView(views.APIView):
                     'assignment_id': assignment.id,
                     'template_id': template.id,
                     'template_name': template.name,
-                    'reporting_period': template.reporting_period,
                     'layer_id': assignment.layer.id,
                     'layer_name': assignment.layer.company_name,
                     'status': assignment.status,

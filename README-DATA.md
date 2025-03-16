@@ -64,7 +64,6 @@ Templates combine multiple ESG forms for assignment to companies:
 Properties:
 - `name`: Template name
 - `description`: Template description
-- `reporting_period`: e.g., 'Annual 2024', 'Q1 2024'
 - `is_active`: Whether template is currently usable
 - `version`: Template version number
 - `created_by`: Baker Tilly admin who created the template
@@ -144,7 +143,6 @@ Returns detailed information about a specific template assignment, including all
   "assignment_id": 1,
   "template_id": 1,
   "template_name": "Environmental Assessment 2024",
-  "reporting_period": "Annual 2024",
   "layer_id": 3,
   "layer_name": "Example Corp",
   "status": "PENDING",
@@ -437,7 +435,6 @@ POST /api/templates/
 {
     "name": "HKEX ESG Comprehensive 2024",
     "description": "Full ESG disclosure template with all HKEX requirements",
-    "reporting_period": "Annual 2024",
     "selected_forms": [
         {
             "form_id": 1,
@@ -457,7 +454,6 @@ POST /api/templates/
     "id": 1,
     "name": "HKEX ESG Comprehensive 2024",
     "description": "Full ESG disclosure template with all HKEX requirements",
-    "reporting_period": "Annual 2024",
     "is_active": true,
     "version": 1,
     "created_by": {
@@ -499,7 +495,6 @@ GET /api/templates/1/preview/
 {
     "template_id": 1,
     "name": "HKEX ESG Comprehensive 2024",
-    "reporting_period": "Annual 2024",
     "forms": [
         {
             "form_id": 1,

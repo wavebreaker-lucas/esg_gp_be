@@ -61,7 +61,7 @@ class ESGMetricAdmin(admin.ModelAdmin):
 
 @admin.register(Template)
 class TemplateAdmin(admin.ModelAdmin):
-    list_display = ['name', 'reporting_period', 'is_active', 'version', 'created_by']
+    list_display = ['name', 'is_active', 'version', 'created_by']
     list_filter = ['is_active']
     search_fields = ['name', 'description']
     ordering = ['-created_at']

@@ -100,7 +100,6 @@ class Template(models.Model):
     """ESG disclosure templates created from forms"""
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    reporting_period = models.CharField(max_length=50, help_text="e.g., 'Annual 2024', 'Q1 2024'")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
