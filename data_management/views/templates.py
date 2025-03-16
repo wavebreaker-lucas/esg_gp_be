@@ -109,26 +109,26 @@ class TemplateViewSet(viewsets.ModelViewSet):
 
 class TemplateAssignmentView(views.APIView):
     """
-    API view for managing template assignments to client companies.
-    Templates are assigned directly to companies without requiring a specific user.
+    API view for managing template assignments to client layers.
+    Templates are assigned directly to layers without requiring a specific user.
     """
     permission_classes = [IsAuthenticated, BakerTillyAdmin]
 
     def get(self, request, group_id):
-        """Get all template assignments for a client company"""
+        """Get all template assignments for a client layer"""
         assignments = TemplateAssignment.objects.filter(
-            company_id=group_id
-        ).select_related('template', 'company', 'assigned_to')
+            layer_id=group_id
+        ).select_related('template', 'layer', 'assigned_to')
         
         serializer = TemplateAssignmentSerializer(assignments, many=True)
         return Response(serializer.data)
 
     @transaction.atomic
     def post(self, request, group_id):
-        """Assign a template to a client company"""
+        """Assign a template to a client layer"""
         data = {
             **request.data,
-            'company': group_id
+            'layer': group_id
         }
         serializer = TemplateAssignmentSerializer(data=data)
         
@@ -139,12 +139,12 @@ class TemplateAssignmentView(views.APIView):
 
     @transaction.atomic
     def delete(self, request, group_id):
-        """Remove a template assignment from a client company"""
+        """Remove a template assignment from a client layer"""
         assignment_id = request.data.get('assignment_id')
         try:
             assignment = TemplateAssignment.objects.get(
                 id=assignment_id,
-                company_id=group_id
+                layer_id=group_id
             )
             assignment.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
@@ -191,7 +191,7 @@ class UserTemplateAssignmentView(views.APIView):
             try:
                 assignment = TemplateAssignment.objects.get(
                     id=assignment_id,
-                    company_id__in=accessible_layer_ids
+                    layer_id__in=accessible_layer_ids
                 )
                 
                 # Get template with forms and metrics
@@ -236,8 +236,8 @@ class UserTemplateAssignmentView(views.APIView):
                     'template_id': template.id,
                     'template_name': template.name,
                     'reporting_period': template.reporting_period,
-                    'company_id': assignment.company.id,
-                    'company_name': assignment.company.company_name,
+                    'layer_id': assignment.layer.id,
+                    'layer_name': assignment.layer.company_name,
                     'status': assignment.status,
                     'due_date': assignment.due_date,
                     'reporting_period_start': assignment.reporting_period_start,
@@ -255,8 +255,8 @@ class UserTemplateAssignmentView(views.APIView):
         else:
             # Get all template assignments for these layers
             assignments = TemplateAssignment.objects.filter(
-                company_id__in=accessible_layer_ids
-            ).select_related('template', 'company')
+                layer_id__in=accessible_layer_ids
+            ).select_related('template', 'layer')
             
             # Add layer relationship info to each assignment
             assignments_data = []
@@ -265,7 +265,7 @@ class UserTemplateAssignmentView(views.APIView):
                 
                 # Add relationship info (direct or inherited)
                 user_direct_layers = [layer.id for layer in user_layers]
-                if assignment.company_id in user_direct_layers:
+                if assignment.layer_id in user_direct_layers:
                     assignment_data['relationship'] = 'direct'
                 else:
                     assignment_data['relationship'] = 'inherited'

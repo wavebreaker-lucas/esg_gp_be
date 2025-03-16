@@ -20,10 +20,10 @@ class EmissionFactorAdmin(admin.ModelAdmin):
 admin.site.register(EmissionFactor, EmissionFactorAdmin)
 
 class ESGDataAdmin(admin.ModelAdmin):
-    list_display = ('company', 'boundary_item', 'scope', 'value', 'unit', 
+    list_display = ('layer', 'boundary_item', 'scope', 'value', 'unit', 
                    'date_recorded', 'is_verified')
-    list_filter = ('scope', 'is_verified', 'company')
-    search_fields = ('company__name', 'boundary_item__name')
+    list_filter = ('scope', 'is_verified', 'layer')
+    search_fields = ('layer__company_name', 'boundary_item__name')
     date_hierarchy = 'date_recorded'
 
 admin.site.register(ESGData, ESGDataAdmin)
@@ -73,7 +73,7 @@ class TemplateFormSelectionAdmin(admin.ModelAdmin):
 
 @admin.register(TemplateAssignment)
 class TemplateAssignmentAdmin(admin.ModelAdmin):
-    list_display = ['template', 'company', 'assigned_to', 'status', 'due_date']
+    list_display = ['template', 'layer', 'assigned_to', 'status', 'due_date']
     list_filter = ['status']
-    search_fields = ['template__name', 'company__name']
+    search_fields = ['template__name', 'layer__company_name']
     ordering = ['-assigned_at']

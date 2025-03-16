@@ -35,7 +35,7 @@ class ESGData(models.Model):
         ('SCOPE3', 'Scope 3'),
     ]
     
-    company = models.ForeignKey(LayerProfile, on_delete=models.CASCADE)
+    layer = models.ForeignKey(LayerProfile, on_delete=models.CASCADE)
     boundary_item = models.ForeignKey(BoundaryItem, on_delete=models.CASCADE)
     scope = models.CharField(max_length=10, choices=SCOPE_CHOICES)
     value = models.DecimalField(max_digits=15, decimal_places=4)
@@ -52,13 +52,13 @@ class ESGData(models.Model):
     )
     
     def __str__(self):
-        return f"{self.company.name} - {self.boundary_item.name} - {self.date_recorded}"
+        return f"{self.layer.company_name} - {self.boundary_item.name} - {self.date_recorded}"
 
     class Meta:
         verbose_name = "ESG Data"
         verbose_name_plural = "ESG Data"
         indexes = [
-            models.Index(fields=['company', 'date_recorded']),
+            models.Index(fields=['layer', 'date_recorded']),
             models.Index(fields=['scope']),
         ]
 

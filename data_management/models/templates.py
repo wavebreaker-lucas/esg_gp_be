@@ -115,7 +115,7 @@ class TemplateFormSelection(models.Model):
         unique_together = ['template', 'form']
 
 class TemplateAssignment(models.Model):
-    """Assignment of templates to companies"""
+    """Assignment of templates to layers (groups, subsidiaries, branches)"""
     STATUS_CHOICES = [
         ('PENDING', 'Pending'),
         ('IN_PROGRESS', 'In Progress'),
@@ -125,7 +125,7 @@ class TemplateAssignment(models.Model):
     ]
 
     template = models.ForeignKey(Template, on_delete=models.CASCADE)
-    company = models.ForeignKey(LayerProfile, on_delete=models.CASCADE)
+    layer = models.ForeignKey(LayerProfile, on_delete=models.CASCADE)
     assigned_to = models.ForeignKey(CustomUser, on_delete=models.CASCADE, null=True, blank=True)
     assigned_at = models.DateTimeField(auto_now_add=True)
     due_date = models.DateField(null=True, blank=True)
@@ -136,11 +136,11 @@ class TemplateAssignment(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['template', 'company']),
+            models.Index(fields=['template', 'layer']),
             models.Index(fields=['assigned_to']),
             models.Index(fields=['due_date']),
             models.Index(fields=['status']),
         ]
 
     def __str__(self):
-        return f"{self.template.name} - {self.company.name}" 
+        return f"{self.template.name} - {self.layer.name}" 

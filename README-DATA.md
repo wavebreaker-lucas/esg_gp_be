@@ -102,7 +102,7 @@ Returns all template assignments accessible to the authenticated user, including
       "id": 1,
       "name": "Environmental Assessment 2024"
     },
-    "company": {
+    "layer": {
       "id": 3,
       "name": "Example Corp"
     },
@@ -116,7 +116,7 @@ Returns all template assignments accessible to the authenticated user, including
       "id": 2,
       "name": "Governance Disclosure 2024"
     },
-    "company": {
+    "layer": {
       "id": 1,
       "name": "Parent Group"
     },
@@ -143,8 +143,8 @@ Returns detailed information about a specific template assignment, including all
   "template_id": 1,
   "template_name": "Environmental Assessment 2024",
   "reporting_period": "Annual 2024",
-  "company_id": 3,
-  "company_name": "Example Corp",
+  "layer_id": 3,
+  "layer_name": "Example Corp",
   "status": "PENDING",
   "due_date": "2024-12-31",
   "reporting_period_start": "2024-01-01",
@@ -474,7 +474,7 @@ GET /api/clients/{group_id}/templates/
       "id": 1,
       "name": "HKEX ESG Comprehensive 2024"
     },
-    "company": {
+    "layer": {
       "id": 1,
       "name": "Example Corp"
     },
@@ -490,7 +490,7 @@ GET /api/clients/{group_id}/templates/
       "id": 2,
       "name": "HKEX ESG Quarterly Report"
     },
-    "company": {
+    "layer": {
       "id": 1,
       "name": "Example Corp"
     },
@@ -520,7 +520,7 @@ POST /api/clients/{group_id}/templates/
         "id": 1,
         "name": "HKEX ESG Comprehensive 2024"
     },
-    "company": {
+    "layer": {
         "id": 1,
         "name": "Example Corp"
     },
