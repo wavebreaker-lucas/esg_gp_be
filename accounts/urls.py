@@ -40,7 +40,7 @@ urlpatterns = [
     path('change-password/', ChangePasswordView.as_view(), name='change-password'),
     
     # Template Assignment URLs
-    path('clients/<int:group_id>/templates/', TemplateAssignmentView.as_view(), name='client-templates'),
+    path('clients/<int:layer_id>/templates/', TemplateAssignmentView.as_view(), name='client-templates'),
     
     # Include router URLs
     path('', include(router.urls)),

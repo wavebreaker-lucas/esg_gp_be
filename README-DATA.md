@@ -331,9 +331,9 @@ This allows for flexible data collection patterns while maintaining data integri
 - `GET /api/templates/{id}/preview/`: Preview template with forms and metrics
 
 #### Template Assignments
-- `GET /api/clients/{group_id}/templates/`: Get client's template assignments
-- `POST /api/clients/{group_id}/templates/`: Assign template to client
-- `DELETE /api/clients/{group_id}/templates/`: Remove template assignment (requires assignment_id in request body)
+- `GET /api/clients/{layer_id}/templates/`: Get client's template assignments
+- `POST /api/clients/{layer_id}/templates/`: Assign template to client
+- `DELETE /api/clients/{layer_id}/templates/`: Remove template assignment (requires assignment_id in request body)
 
 ### Example Requests and Responses
 
@@ -562,7 +562,7 @@ GET /api/templates/1/preview/
 
 ##### Get Client's Template Assignments
 ```json
-GET /api/clients/{group_id}/templates/
+GET /api/clients/{layer_id}/templates/
 
 // Response
 [
@@ -603,7 +603,7 @@ GET /api/clients/{group_id}/templates/
 
 ##### Assign Template to Company
 ```json
-POST /api/clients/{group_id}/templates/
+POST /api/clients/{layer_id}/templates/
 {
     "template_id": 1,
     "reporting_period_start": "2024-01-01",
@@ -631,13 +631,13 @@ POST /api/clients/{group_id}/templates/
 ```
 
 **Important Notes:**
-1. Templates are assigned directly to companies without requiring a specific user
+1. Templates can only be assigned to group layers
 2. Any authorized user from the company can work on the template
 3. Optionally, you can specify an `assigned_to` user ID if you want to assign responsibility to a specific user
 
 ##### Remove Template Assignment
 ```json
-DELETE /api/clients/{group_id}/templates/
+DELETE /api/clients/{layer_id}/templates/
 {
     "assignment_id": 1
 }
