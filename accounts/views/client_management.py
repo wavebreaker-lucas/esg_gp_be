@@ -29,6 +29,10 @@ class ClientSetupView(APIView):
                 group_serializer.is_valid(raise_exception=True)
                 group = group_serializer.save()
                 
+                # Set the creator to the Baker Tilly admin
+                group.created_by_admin = request.user
+                group.save()
+                
                 # 2. Create initial admin user
                 admin_user = CustomUser.objects.create_user(
                     email=request.data['admin_email'],
@@ -164,6 +168,10 @@ class ClientStructureView(APIView):
                         company_location=request.data.get('location', ''),
                         shareholding_ratio=request.data['shareholding_ratio']
                     )
+                    # Set the creator to the Baker Tilly admin
+                    subsidiary.created_by_admin = request.user
+                    subsidiary.save()
+                    
                     return Response({
                         'message': 'Subsidiary added successfully',
                         'subsidiary_id': subsidiary.id
@@ -180,6 +188,10 @@ class ClientStructureView(APIView):
                         company_location=request.data.get('location', ''),
                         shareholding_ratio=request.data['shareholding_ratio']
                     )
+                    # Set the creator to the Baker Tilly admin
+                    branch.created_by_admin = request.user
+                    branch.save()
+                    
                     return Response({
                         'message': 'Branch added successfully',
                         'branch_id': branch.id

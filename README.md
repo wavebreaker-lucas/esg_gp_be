@@ -1000,7 +1000,7 @@ Returns a list of layers (companies) that the user has access to. Supports filte
     "layer_type": "GROUP",
     "company_location": "Hong Kong",
     "created_at": "2024-03-15 10:30HKT by John Doe",
-    "created_by": "John Doe",
+    "created_by": "john.doe@bakertilly.com",
     "parent_id": null
   }
 ]
@@ -1019,7 +1019,7 @@ Returns a list of layers (companies) that the user has access to. Supports filte
 - `layer_type`: Type of layer (GROUP, SUBSIDIARY, BRANCH)
 - `company_location`: Physical location of the company
 - `created_at`: Creation timestamp in HKT format (YYYY-MM-DD HH:MM)
-- `created_by`: Name of the user who created this layer. For Baker Tilly admins, this will be prefixed with "Admin:". For client users with CREATOR role, this will show their name.
+- `created_by`: Email address of the user who created this layer
 - `parent_id`: ID of parent layer (null for GROUP, group_id for SUBSIDIARY, subsidiary_id for BRANCH)
 
 **Notes:**
@@ -1077,7 +1077,7 @@ GET /api/layers/
     "layer_type": "SUBSIDIARY",
     "company_location": "New Location",
     "created_at": "2024-03-15 10:30",
-    "created_by": "Admin: johndoe",
+    "created_by": "john.doe@bakertilly.com",
     "parent_id": "456"
   }
   ```

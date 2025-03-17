@@ -153,16 +153,17 @@ class LayerProfileSerializer(serializers.ModelSerializer):
 
     def get_created_by(self, obj):
         """
-        Get the name of the user who created this layer.
+        Get the email of the user who created this layer.
         
         This can be either:
         1. The Baker Tilly admin who created the record (from created_by_admin)
         2. The client user with CREATOR role (legacy approach)
+        
+        Always returns the full email address for consistency.
         """
         # First check if we have the created_by_admin field populated
         if obj.created_by_admin:
-            # For Baker Tilly admins, we'll show their email username
-            return f"Admin: {obj.created_by_admin.email.split('@')[0]}"
+            return obj.created_by_admin.email
             
         # Legacy support - look for CREATOR role user if created_by_admin is not set
         if hasattr(obj, 'prefetched_app_users'):
@@ -174,7 +175,7 @@ class LayerProfileSerializer(serializers.ModelSerializer):
             creator_app_user = obj.app_users.filter(user__role="CREATOR").first()
             
         if creator_app_user:
-            return creator_app_user.name
+            return creator_app_user.user.email
         
         return None
 
