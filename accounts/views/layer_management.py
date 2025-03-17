@@ -238,7 +238,7 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
 
         # Create the subsidiary layer
         subsidiary_layer = serializer.save()
-        # Set the creator
+        # Set the creator to the current user (could be Baker Tilly admin or client creator)
         subsidiary_layer.created_by_admin = request.user
         subsidiary_layer.save()
         
@@ -262,7 +262,7 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
 
         # Create the branch layer
         branch_layer = serializer.save()
-        # Set the creator
+        # Set the creator to the current user (could be Baker Tilly admin or client creator)
         branch_layer.created_by_admin = request.user
         branch_layer.save()
         
@@ -611,7 +611,7 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
             if not last_group_layer:
                 raise ValueError(f"No GROUP layer found for creator {user.email}.")
 
-            return SubsidiaryLayer.objects.create(
+            subsidiary = SubsidiaryLayer.objects.create(
                 company_name=row["company_name"],
                 company_industry=row["company_industry"],
                 shareholding_ratio=float(row["shareholding_ratio"]),
@@ -619,12 +619,18 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
                 layer_type=LayerTypeChoices.SUBSIDIARY,
                 company_location=row["company_location"]
             )
+            
+            # Set the creator
+            subsidiary.created_by_admin = user
+            subsidiary.save()
+            
+            return subsidiary
 
         elif layer_type == "BRANCH":
             if not last_subsidiary_layer:
                 raise ValueError("Cannot create BRANCH without a preceding SUBSIDIARY layer.")
 
-            return BranchLayer.objects.create(
+            branch = BranchLayer.objects.create(
                 company_name=row["company_name"],
                 company_industry=row["company_industry"],
                 shareholding_ratio=float(row["shareholding_ratio"]),
@@ -632,6 +638,12 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
                 layer_type=LayerTypeChoices.BRANCH,
                 company_location=row["company_location"]
             )
+            
+            # Set the creator
+            branch.created_by_admin = user
+            branch.save()
+            
+            return branch
         else:
             raise ValueError(f"Invalid layer type: {layer_type}")
 
