@@ -1000,6 +1000,7 @@ Returns a list of layers (companies) that the user has access to. Supports filte
     "layer_type": "GROUP",
     "company_location": "Hong Kong",
     "created_at": "2024-03-15 10:30HKT by John Doe",
+    "created_by": "John Doe",
     "parent_id": null
   }
 ]
@@ -1017,7 +1018,8 @@ Returns a list of layers (companies) that the user has access to. Supports filte
 - `user_count`: Total number of users in this layer
 - `layer_type`: Type of layer (GROUP, SUBSIDIARY, BRANCH)
 - `company_location`: Physical location of the company
-- `created_at`: Creation timestamp in HKT with creator info
+- `created_at`: Creation timestamp in HKT format (YYYY-MM-DD HH:MM)
+- `created_by`: Name of the user who created this layer. For Baker Tilly admins, this will be prefixed with "Admin:". For client users with CREATOR role, this will show their name.
 - `parent_id`: ID of parent layer (null for GROUP, group_id for SUBSIDIARY, subsidiary_id for BRANCH)
 
 **Notes:**
@@ -1047,7 +1049,47 @@ GET /api/layers/
 
 - `POST /api/layers/` - Create new company (CREATOR role required)
 - `GET /api/layers/<id>/` - Get detailed company information
-- `PUT /api/layers/<id>/` - Update company details (CREATOR role required)
+- `PATCH /api/layers/<id>/` - Partially update company details (CREATOR role required)
+  ```http
+  PATCH /api/layers/123/
+  Content-Type: application/json
+  
+  {
+    "company_name": "Updated Company Name",
+    "company_industry": "Updated Industry",
+    "company_location": "New Location"
+  }
+  ```
+  
+  **Request Fields:**
+  - `company_name` (optional): New name for the company
+  - `company_industry` (optional): Updated industry classification
+  - `company_location` (optional): New location information
+  - `shareholding_ratio` (optional): Updated ownership percentage (0-100)
+  
+  **Response:**
+  ```json
+  {
+    "id": "123",
+    "company_name": "Updated Company Name",
+    "company_industry": "Updated Industry",
+    "shareholding_ratio": "100.00",
+    "layer_type": "SUBSIDIARY",
+    "company_location": "New Location",
+    "created_at": "2024-03-15 10:30",
+    "created_by": "Admin: johndoe",
+    "parent_id": "456"
+  }
+  ```
+  
+  **Notes:**
+  - Only fields included in the request will be updated
+  - The user must have CREATOR role or be a Baker Tilly admin
+  - Cache is automatically invalidated, so changes appear immediately
+  - Cannot change the layer_type or parent relationships
+  - Returns HTTP 404 if the layer doesn't exist or the user doesn't have access
+  - Returns HTTP 400 if validation fails (e.g., invalid shareholding_ratio)
+
 - `DELETE /api/layers/<id>/` - Remove company (CREATOR role required)
 - `POST /api/layers/import-csv/` - Bulk import companies from CSV
 - `GET /api/layers/download-example/` - Get CSV template for bulk import

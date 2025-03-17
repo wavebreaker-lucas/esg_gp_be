@@ -222,51 +222,51 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
 
     def _create_subsidiary_layer(self, request):
         """Helper method to create a subsidiary layer"""
+        serializer = SubsidiaryLayerSerializer(data=request.data)
+        if not serializer.is_valid():
+            raise ValidationError(serializer.errors)
+
         group_id = request.data.get("group_id")
         if not group_id:
-            raise ValidationError("Group ID is required for a Subsidiary Layer.")
+            raise ValidationError("Group ID is required for subsidiary layers.")
 
-        try:
-            group_layer = GroupLayer.objects.get(id=group_id)
-        except GroupLayer.DoesNotExist:
-            raise ValidationError("Group Layer not found.")
-
+        group_layer = GroupLayer.objects.get(id=group_id)
         if not is_creator_on_layer(request.user, group_layer):
             raise PermissionDenied(
-                "You do not have permission to create a subsidiary layer for this group layer."
+                "You do not have permission to create subsidiaries for this group."
             )
 
-        serializer = SubsidiaryLayerSerializer(
-            data=request.data,
-            context={"group_layer": group_layer}
-        )
-        if serializer.is_valid():
-            return serializer.save()
-        raise ValidationError(serializer.errors)
+        # Create the subsidiary layer
+        subsidiary_layer = serializer.save()
+        # Set the creator
+        subsidiary_layer.created_by_admin = request.user
+        subsidiary_layer.save()
+        
+        return subsidiary_layer
 
     def _create_branch_layer(self, request):
         """Helper method to create a branch layer"""
+        serializer = BranchLayerSerializer(data=request.data)
+        if not serializer.is_valid():
+            raise ValidationError(serializer.errors)
+
         subsidiary_id = request.data.get("subsidiary_id")
         if not subsidiary_id:
-            raise ValidationError("Subsidiary ID is required for a Branch Layer.")
+            raise ValidationError("Subsidiary ID is required for branch layers.")
 
-        try:
-            subsidiary_layer = SubsidiaryLayer.objects.get(id=subsidiary_id)
-        except SubsidiaryLayer.DoesNotExist:
-            raise ValidationError("Subsidiary Layer not found.")
-
+        subsidiary_layer = SubsidiaryLayer.objects.get(id=subsidiary_id)
         if not is_creator_on_layer(request.user, subsidiary_layer):
             raise PermissionDenied(
-                "You do not have permission to create a branch layer for this subsidiary layer."
+                "You do not have permission to create branches for this subsidiary."
             )
 
-        serializer = BranchLayerSerializer(
-            data=request.data,
-            context={"subsidiary_layer": subsidiary_layer}
-        )
-        if serializer.is_valid():
-            return serializer.save()
-        raise ValidationError(serializer.errors)
+        # Create the branch layer
+        branch_layer = serializer.save()
+        # Set the creator
+        branch_layer.created_by_admin = request.user
+        branch_layer.save()
+        
+        return branch_layer
 
     def _get_layer_serializer(self, layer):
         """Helper method to get the appropriate serializer for a layer"""
@@ -703,6 +703,31 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
             serializer = serializer_class(layer_instance, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
+                
+                # Invalidate relevant caches
+                # Clear layer detail cache
+                cache_key = f'layer_detail_{pk}_{request.user.id}'
+                cache.delete(cache_key)
+                
+                # Clear layer list caches
+                cache_key = f'layer_list_{request.user.id}_None'
+                cache.delete(cache_key)
+                
+                # Also clear filtered cache for this layer type
+                cache_key = f'layer_list_{request.user.id}_{layer.layer_type}'
+                cache.delete(cache_key)
+                
+                # If this is a subsidiary or branch, invalidate parent group's cache
+                parent_layer_id = None
+                if hasattr(layer, 'branchlayer'):
+                    parent_layer_id = layer.branchlayer.subsidiary_layer.group_layer.id
+                elif hasattr(layer, 'subsidiarylayer'):
+                    parent_layer_id = layer.subsidiarylayer.group_layer.id
+                    
+                if parent_layer_id:
+                    cache_key = f'layer_detail_{parent_layer_id}_{request.user.id}'
+                    cache.delete(cache_key)
+                
                 return Response(serializer.data, status=status.HTTP_200_OK)
             return self.handle_validation_error(serializer.errors)
             

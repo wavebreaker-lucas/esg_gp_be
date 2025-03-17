@@ -171,6 +171,13 @@ class LayerProfile(models.Model):
     )
     company_location = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
+    created_by_admin = models.ForeignKey(
+        'CustomUser', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='created_layers'
+    )
 
     class Meta:
         verbose_name = "Company Layer"

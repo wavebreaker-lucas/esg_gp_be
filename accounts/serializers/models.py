@@ -110,6 +110,7 @@ class LayerProfileSerializer(serializers.ModelSerializer):
     app_users = serializers.SerializerMethodField()
     user_count = serializers.IntegerField(read_only=True)  # Use annotated value
     created_at = serializers.SerializerMethodField()
+    created_by = serializers.SerializerMethodField()
     parent_id = serializers.SerializerMethodField()
 
     class Meta:
@@ -124,6 +125,7 @@ class LayerProfileSerializer(serializers.ModelSerializer):
             "layer_type",
             "company_location",
             "created_at",
+            "created_by",
             "parent_id"
         ]
 
@@ -144,11 +146,25 @@ class LayerProfileSerializer(serializers.ModelSerializer):
         return AppUserSerializer(app_users, many=True).data
 
     def get_created_at(self, obj):
-        """Format creation time in Hong Kong timezone with creator info"""
+        """Format creation time in Hong Kong timezone"""
         hkt_tz = pytz.timezone('Asia/Hong_Kong')
         hkt_time = obj.created_at.astimezone(hkt_tz)
+        return hkt_time.strftime('%Y-%m-%d %H:%M')
+
+    def get_created_by(self, obj):
+        """
+        Get the name of the user who created this layer.
         
-        # Use prefetched data if available
+        This can be either:
+        1. The Baker Tilly admin who created the record (from created_by_admin)
+        2. The client user with CREATOR role (legacy approach)
+        """
+        # First check if we have the created_by_admin field populated
+        if obj.created_by_admin:
+            # For Baker Tilly admins, we'll show their email username
+            return f"Admin: {obj.created_by_admin.email.split('@')[0]}"
+            
+        # Legacy support - look for CREATOR role user if created_by_admin is not set
         if hasattr(obj, 'prefetched_app_users'):
             creator_app_user = next(
                 (au for au in obj.prefetched_app_users if au.user.role == "CREATOR"),
@@ -157,8 +173,10 @@ class LayerProfileSerializer(serializers.ModelSerializer):
         else:
             creator_app_user = obj.app_users.filter(user__role="CREATOR").first()
             
-        creator = creator_app_user.name if creator_app_user else "Unknown"
-        return f"{hkt_time.strftime('%Y-%m-%d %H:%M')}HKT by {creator}"
+        if creator_app_user:
+            return creator_app_user.name
+        
+        return None
 
     def get_parent_id(self, obj):
         """Get the ID of the parent layer"""
