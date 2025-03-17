@@ -1,3 +1,4 @@
+import uuid
 from django.db import transaction
 from django.core.cache import cache
 from django.utils.decorators import method_decorator
@@ -169,6 +170,29 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
                     layer, app_users_data
                 )
 
+                # Invalidate relevant caches
+                # Clear user-specific layer list caches
+                cache_key = f'layer_list_{request.user.id}_None'
+                cache.delete(cache_key)
+                # Also clear any filtered caches
+                cache_key = f'layer_list_{request.user.id}_{layer_type}'
+                cache.delete(cache_key)
+                
+                # If this is a subsidiary or branch, invalidate parent group's cache
+                parent_layer_id = None
+                if layer_type == "SUBSIDIARY" and request.data.get("group_id"):
+                    parent_layer_id = request.data.get("group_id")
+                elif layer_type == "BRANCH" and request.data.get("subsidiary_id"):
+                    try:
+                        subsidiary = SubsidiaryLayer.objects.get(id=request.data.get("subsidiary_id"))
+                        parent_layer_id = subsidiary.group_layer.id
+                    except SubsidiaryLayer.DoesNotExist:
+                        pass
+                    
+                if parent_layer_id:
+                    cache_key = f'layer_detail_{parent_layer_id}_{request.user.id}'
+                    cache.delete(cache_key)
+
                 serializer = self._get_layer_serializer(layer)
                 return Response(
                     {
@@ -264,7 +288,31 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
             if not app_user or app_user.user.role != RoleChoices.CREATOR:
                 return self.handle_permission_error("You do not have permission to delete this layer.")
 
+            # Get parent layer for cache invalidation
+            parent_layer_id = None
+            if hasattr(layer, 'branchlayer'):
+                parent_layer_id = layer.branchlayer.subsidiary_layer.group_layer.id
+            elif hasattr(layer, 'subsidiarylayer'):
+                parent_layer_id = layer.subsidiarylayer.group_layer.id
+
+            # Delete the layer
             layer.delete()
+            
+            # Invalidate relevant caches
+            # Clear user-specific layer list caches
+            for app_user in AppUser.objects.filter(user=request.user):
+                cache_key = f'layer_list_{request.user.id}_None'
+                cache.delete(cache_key)
+                # Also clear any filtered caches
+                for layer_type in ['GROUP', 'SUBSIDIARY', 'BRANCH']:
+                    cache_key = f'layer_list_{request.user.id}_{layer_type}'
+                    cache.delete(cache_key)
+            
+            # If this was a subsidiary or branch, invalidate parent group's cache
+            if parent_layer_id:
+                cache_key = f'layer_detail_{parent_layer_id}_{request.user.id}'
+                cache.delete(cache_key)
+
             return Response(
                 {"message": "Layer deleted successfully."},
                 status=status.HTTP_204_NO_CONTENT
@@ -311,8 +359,31 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
                     f"You do not have permission to delete the following layers: {unauthorized_layers}"
                 )
 
+            # Collect parent group IDs for cache invalidation
+            parent_group_ids = set()
+            for layer in layers_to_delete:
+                if hasattr(layer, 'branchlayer'):
+                    parent_group_ids.add(layer.branchlayer.subsidiary_layer.group_layer.id)
+                elif hasattr(layer, 'subsidiarylayer'):
+                    parent_group_ids.add(layer.subsidiarylayer.group_layer.id)
+
             count = layers_to_delete.count()
             layers_to_delete.delete()
+
+            # Invalidate caches
+            # Clear user-specific layer list caches
+            for app_user in AppUser.objects.filter(user=request.user):
+                cache_key = f'layer_list_{request.user.id}_None'
+                cache.delete(cache_key)
+                # Also clear any filtered caches
+                for layer_type in ['GROUP', 'SUBSIDIARY', 'BRANCH']:
+                    cache_key = f'layer_list_{request.user.id}_{layer_type}'
+                    cache.delete(cache_key)
+            
+            # Invalidate parent group caches
+            for group_id in parent_group_ids:
+                cache_key = f'layer_detail_{group_id}_{request.user.id}'
+                cache.delete(cache_key)
 
             return Response(
                 {"message": f"Successfully deleted {count} layer(s)."},
