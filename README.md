@@ -961,20 +961,34 @@ These endpoints handle user authentication and account management:
 ### Layer Management Endpoints
 These endpoints manage the company hierarchy structure:
 
-#### List Layers
-```http
-GET /api/layers/
-```
+#### Get All Layers
 
-Returns a list of layers (companies) that the user has access to. Supports filtering by layer type.
+**Endpoint:** `/api/layers/`  
+**Method:** GET  
+**Authentication:** Required  
+**Description:** Get all layers accessible to the authenticated user.
 
 **Query Parameters:**
-- `layer_type` (optional): Filter by layer type. Values: GROUP, SUBSIDIARY, BRANCH. Can be comma-separated for multiple types.
-  Example: `/api/layers/?layer_type=GROUP` or `/api/layers/?layer_type=GROUP,SUBSIDIARY`
+- `layer_type` (optional): Filter by layer type (GROUP, SUBSIDIARY, BRANCH)
 
-**Response:**
-```json
-[
+**Response Fields:**
+- `id`: Unique identifier for the layer
+- `company_name`: Name of the company
+- `company_industry`: Industry sector
+- `shareholding_ratio`: Ownership percentage (0-100)
+- `app_users`: Array of users associated with this layer
+  - `user`: User account details including role and permissions
+  - `name`: Display name in this layer
+  - `title`: Job title in this layer
+- `user_count`: Total number of users in this layer
+- `layer_type`: Type of layer (GROUP, SUBSIDIARY, BRANCH)
+- `company_location`: Physical location of the company
+- `created_at`: Creation timestamp in HKT format (YYYY-MM-DD HH:MM)
+- `created_by`: Email address of the user who created this layer
+- `parent_id`: ID of parent layer (null for GROUP, group_id for SUBSIDIARY, subsidiary_id for BRANCH)
+
+**Example Response:**
+  ```json
   {
     "id": "uuid",
     "company_name": "Example Corp",
@@ -999,75 +1013,54 @@ Returns a list of layers (companies) that the user has access to. Supports filte
     "user_count": 1,
     "layer_type": "GROUP",
     "company_location": "Hong Kong",
-    "created_at": "2024-03-15 10:30HKT by John Doe",
+    "created_at": "2024-03-15 10:30",
     "created_by": "john.doe@bakertilly.com",
     "parent_id": null
   }
-]
-```
+  ```
 
-**Response Fields:**
-- `id`: Unique identifier for the layer
+### Get Layer Detail
+
+**Endpoint:** `/api/layers/{id}/`  
+**Method:** GET  
+**Authentication:** Required  
+**Description:** Get details for a specific layer.
+
+**Response:** Same as the Get All Layers endpoint.
+
+### Create Layer
+
+**Endpoint:** `/api/layers/`  
+**Method:** POST  
+**Authentication:** Required  
+**Description:** Create a new layer (SUBSIDIARY or BRANCH).
+
+**Request Body:**
+- `layer_type`: Type of layer to create (SUBSIDIARY or BRANCH)
 - `company_name`: Name of the company
 - `company_industry`: Industry sector
-- `shareholding_ratio`: Ownership percentage (0-100)
-- `app_users`: Array of users associated with this layer
-  - `user`: User account details including role and permissions
-  - `name`: Display name in this layer
-  - `title`: Job title in this layer
-- `user_count`: Total number of users in this layer
-- `layer_type`: Type of layer (GROUP, SUBSIDIARY, BRANCH)
 - `company_location`: Physical location of the company
-- `created_at`: Creation timestamp in HKT format (YYYY-MM-DD HH:MM)
-- `created_by`: Email address of the user who created this layer
-- `parent_id`: ID of parent layer (null for GROUP, group_id for SUBSIDIARY, subsidiary_id for BRANCH)
+- `shareholding_ratio`: Ownership percentage (0-100)
+- `group_id`: ID of parent group (required for SUBSIDIARY)
+- `subsidiary_id`: ID of parent subsidiary (required for BRANCH)
+- `app_users`: Array of users to add to this layer (optional)
 
-**Notes:**
-- Response is cached for 5 minutes for performance
-- Baker Tilly admins see all layers
-- Regular users only see layers they have access to based on their role:
-  - CREATOR: Access to their layer and all child layers
-  - MANAGEMENT: Access to their layer and lower layers
-  - OPERATION: Access only to their assigned layer
-- For non-GROUP layers, CREATOR users are excluded from app_users list
+**Response:** Same as the Get Layer Detail endpoint.
 
-**Example Usage:**
-1. Get all group layers:
-```http
-GET /api/layers/?layer_type=GROUP
-```
+### Update Layer
 
-2. Get subsidiaries and branches:
-```http
-GET /api/layers/?layer_type=SUBSIDIARY,BRANCH
-```
+**Endpoint:** `/api/layers/{id}/`  
+**Method:** PATCH  
+**Authentication:** Required  
+**Description:** Update an existing layer.
 
-3. Get all layers (no filter):
-```http
-GET /api/layers/
-```
+**Request Body:**
+- `company_name`: Name of the company (optional)
+- `company_industry`: Industry sector (optional)
+- `company_location`: Physical location of the company (optional)
+- `shareholding_ratio`: Ownership percentage (0-100) (optional)
 
-- `POST /api/layers/` - Create new company (CREATOR role required)
-- `GET /api/layers/<id>/` - Get detailed company information
-- `PATCH /api/layers/<id>/` - Partially update company details (CREATOR role required)
-  ```http
-  PATCH /api/layers/123/
-  Content-Type: application/json
-  
-  {
-    "company_name": "Updated Company Name",
-    "company_industry": "Updated Industry",
-    "company_location": "New Location"
-  }
-  ```
-  
-  **Request Fields:**
-  - `company_name` (optional): New name for the company
-  - `company_industry` (optional): Updated industry classification
-  - `company_location` (optional): New location information
-  - `shareholding_ratio` (optional): Updated ownership percentage (0-100)
-  
-  **Response:**
+**Response:**
   ```json
   {
     "id": "123",
@@ -1081,18 +1074,15 @@ GET /api/layers/
     "parent_id": "456"
   }
   ```
-  
-  **Notes:**
-  - Only fields included in the request will be updated
-  - The user must have CREATOR role or be a Baker Tilly admin
-  - Cache is automatically invalidated, so changes appear immediately
-  - Cannot change the layer_type or parent relationships
-  - Returns HTTP 404 if the layer doesn't exist or the user doesn't have access
-  - Returns HTTP 400 if validation fails (e.g., invalid shareholding_ratio)
 
-- `DELETE /api/layers/<id>/` - Remove company (CREATOR role required)
-- `POST /api/layers/import-csv/` - Bulk import companies from CSV
-- `GET /api/layers/download-example/` - Get CSV template for bulk import
+### Delete Layer
+
+**Endpoint:** `/api/layers/{id}/`  
+**Method:** DELETE  
+**Authentication:** Required  
+**Description:** Delete a layer.
+
+**Response:** HTTP 204 No Content
 
 ### User Management Endpoints
 These endpoints handle user operations within companies:
