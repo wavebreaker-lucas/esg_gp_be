@@ -76,6 +76,9 @@ Properties:
 - `form`: Link to ESG Form
 - `regions`: List of applicable regions
 - `order`: Display sequence in template
+- `is_completed`: Whether this form has been completed
+- `completed_at`: When the form was completed
+- `completed_by`: User who completed the form
 
 ### 3. Template Assignment
 Assigns templates to companies for reporting:
@@ -85,9 +88,10 @@ Properties:
 - `company`: Link to Company (LayerProfile)
 - `assigned_to`: User responsible for reporting
 - `due_date`: Submission deadline
-- `status`: Current status (PENDING, IN_PROGRESS, etc.)
+- `status`: Current status (PENDING, IN_PROGRESS, SUBMITTED, etc.)
 - `reporting_period_start`: Start of reporting period
 - `reporting_period_end`: End of reporting period
+- `completed_at`: When the template was submitted
 
 ### User Template Management
 
@@ -730,9 +734,125 @@ POST /api/metric-submissions/batch_submit/
             "status": "success",
             "reporting_period": null
         }
+    ],
+    "forms_completed": ["HKEX-A2: Resource Use"],
+    "all_forms_completed": false,
+    "assignment_status": "IN_PROGRESS"
+}
+```
+
+##### Complete a Form
+```json
+POST /api/esg-forms/{form_id}/complete_form/
+{
+    "assignment_id": 1
+}
+
+// Response
+{
+    "message": "Form successfully completed",
+    "form_id": 2,
+    "form_name": "HKEX-A2: Resource Use",
+    "assignment_id": 1,
+    "all_forms_completed": false,
+    "assignment_status": "IN_PROGRESS"
+}
+```
+
+**Important Notes:**
+- This endpoint checks if all required metrics for the form have been submitted
+- If any required metrics are missing, it returns an error with the list of missing metrics
+- When a form is completed, it updates the `is_completed`, `completed_at`, and `completed_by` fields in the `TemplateFormSelection` model
+- If all forms in the template are completed, it automatically updates the assignment status to "SUBMITTED"
+
+##### Submit a Template
+```json
+POST /api/metric-submissions/submit_template/
+{
+    "assignment_id": 1
+}
+
+// Response
+{
+    "message": "Template successfully submitted",
+    "assignment_id": 1,
+    "status": "SUBMITTED",
+    "completed_at": "2024-04-15T11:45:00Z"
+}
+```
+
+**Important Notes:**
+- This endpoint checks if all forms in the template have been completed
+- If any forms are incomplete, it returns an error with the list of incomplete forms
+- When a template is submitted, it updates the assignment status to "SUBMITTED" and sets the `completed_at` timestamp
+
+##### Get Template Completion Status
+```json
+GET /api/templates/{template_id}/completion_status/?assignment_id=1
+
+// Response
+{
+    "assignment_id": 1,
+    "template_id": 1,
+    "template_name": "HKEX ESG Comprehensive 2024",
+    "status": "IN_PROGRESS",
+    "due_date": "2024-12-31",
+    "completed_at": null,
+    "total_forms": 3,
+    "completed_forms": 1,
+    "overall_completion_percentage": 33.33,
+    "forms": [
+        {
+            "form_id": 1,
+            "form_name": "Emissions",
+            "form_code": "HKEX-A1",
+            "is_completed": false,
+            "completed_at": null,
+            "completed_by": null,
+            "total_required_metrics": 4,
+            "total_submitted_metrics": 2,
+            "completion_percentage": 50.0,
+            "missing_metrics": [
+                {"id": 3, "name": "Indirect GHG emissions"},
+                {"id": 4, "name": "Waste produced"}
+            ]
+        },
+        {
+            "form_id": 2,
+            "form_name": "Resource Use",
+            "form_code": "HKEX-A2",
+            "is_completed": true,
+            "completed_at": "2024-04-10T15:30:00Z",
+            "completed_by": "john.doe@example.com",
+            "total_required_metrics": 3,
+            "total_submitted_metrics": 3,
+            "completion_percentage": 100.0,
+            "missing_metrics": []
+        },
+        {
+            "form_id": 3,
+            "form_name": "Environment and Natural Resources",
+            "form_code": "HKEX-A3",
+            "is_completed": false,
+            "completed_at": null,
+            "completed_by": null,
+            "total_required_metrics": 2,
+            "total_submitted_metrics": 0,
+            "completion_percentage": 0.0,
+            "missing_metrics": [
+                {"id": 15, "name": "Significant impacts on environment"},
+                {"id": 16, "name": "Mitigation measures"}
+            ]
+        }
     ]
 }
 ```
+
+**Important Notes:**
+- This endpoint provides detailed information about the completion status of each form in the template
+- It calculates completion percentages for each form and for the overall template
+- It lists missing metrics for each incomplete form
+- This is useful for tracking progress and identifying what still needs to be completed
 
 ##### Get Submissions for a Template Assignment
 ```json
@@ -781,22 +901,6 @@ GET /api/metric-submissions/by_assignment/?assignment_id=1
         "evidence": []
     }
 ]
-```
-
-##### Submit a Completed Form
-```json
-POST /api/metric-submissions/submit_form/
-{
-    "assignment_id": 1
-}
-
-// Response
-{
-    "message": "Form successfully submitted",
-    "assignment_id": 1,
-    "status": "SUBMITTED",
-    "completed_at": "2024-04-15T11:45:00Z"
-}
 ```
 
 ##### Verify a Metric Submission (Baker Tilly Admin only)
@@ -914,8 +1018,10 @@ Properties:
 2. **View Template Details**: Users get detailed information about a specific template using `/api/user-templates/{assignment_id}/`
 3. **Submit Metric Values**: Users submit values for metrics using `/api/metric-submissions/` or `/api/metric-submissions/batch_submit/`
 4. **Upload Evidence**: Users upload supporting documentation using `/api/metric-evidence/`
-5. **Submit Completed Form**: Users mark the form as completed using `/api/metric-submissions/submit_form/`
-6. **Verification**: Baker Tilly admins verify submissions using `/api/metric-submissions/{id}/verify/`
+5. **Complete Forms**: Users mark forms as completed using `/api/esg-forms/{form_id}/complete_form/` when all required metrics are filled
+6. **Check Completion Status**: Users check the completion status of the template using `/api/templates/{template_id}/completion_status/`
+7. **Submit Template**: Users submit the completed template using `/api/metric-submissions/submit_template/` when all forms are completed
+8. **Verification**: Baker Tilly admins verify submissions using `/api/metric-submissions/{id}/verify/`
 
 ## Best Practices
 

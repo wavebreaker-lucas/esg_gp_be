@@ -187,10 +187,11 @@ class TemplateFormSelectionSerializer(serializers.ModelSerializer):
         write_only=True,
         source='form'
     )
+    completed_by = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = TemplateFormSelection
-        fields = ['id', 'form', 'form_id', 'regions', 'order']
+        fields = ['id', 'form', 'form_id', 'regions', 'order', 'is_completed', 'completed_at', 'completed_by']
 
 class TemplateSerializer(serializers.ModelSerializer):
     selected_forms = TemplateFormSelectionSerializer(

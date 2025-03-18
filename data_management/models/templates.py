@@ -122,6 +122,9 @@ class TemplateFormSelection(models.Model):
     form = models.ForeignKey(ESGForm, on_delete=models.CASCADE)
     regions = models.JSONField(default=list)  # List of regions this form applies to
     order = models.PositiveIntegerField(default=0)
+    is_completed = models.BooleanField(default=False)  # Track if this form is completed
+    completed_at = models.DateTimeField(null=True, blank=True)  # When the form was completed
+    completed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='completed_forms')  # Who completed the form
 
     class Meta:
         ordering = ['template', 'order']

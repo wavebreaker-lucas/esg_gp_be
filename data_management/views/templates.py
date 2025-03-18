@@ -37,6 +37,209 @@ class ESGFormViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = ESGMetricSerializer(metrics, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'])
+    def check_completion(self, request, pk=None):
+        """
+        Check if a form is completed for a specific assignment.
+        This endpoint returns the completion status, missing metrics,
+        and completion percentage for the form.
+        """
+        form = self.get_object()
+        assignment_id = request.query_params.get('assignment_id')
+        
+        if not assignment_id:
+            return Response(
+                {"error": "assignment_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            # Get the assignment
+            assignment = TemplateAssignment.objects.get(id=assignment_id)
+            
+            # Find the form selection for this form in the template
+            try:
+                form_selection = TemplateFormSelection.objects.get(
+                    template=assignment.template,
+                    form=form
+                )
+                
+                # If the form is already completed, return its status
+                if form_selection.is_completed:
+                    return Response({
+                        "form_id": form.id,
+                        "form_name": form.name,
+                        "form_code": form.code,
+                        "is_completed": True,
+                        "completed_at": form_selection.completed_at,
+                        "completed_by": form_selection.completed_by.email if form_selection.completed_by else None,
+                        "completion_percentage": 100
+                    })
+                    
+                # Get all required metrics for this form that apply to the selected regions
+                required_metrics = []
+                for metric in form.metrics.filter(is_required=True):
+                    if metric.location == 'ALL' or metric.location in form_selection.regions:
+                        required_metrics.append(metric.id)
+                        
+                # Check if all required metrics have submissions
+                submitted_metrics = ESGMetricSubmission.objects.filter(
+                    assignment=assignment,
+                    metric__form=form
+                ).values_list('metric_id', flat=True)
+                
+                # Calculate completion percentage
+                total_required = len(required_metrics)
+                total_submitted = len(set(required_metrics) & set(submitted_metrics))
+                
+                completion_percentage = 0
+                if total_required > 0:
+                    completion_percentage = (total_submitted / total_required) * 100
+                    
+                # Get missing metrics if any
+                missing_metrics = []
+                if total_submitted < total_required:
+                    missing_metric_ids = set(required_metrics) - set(submitted_metrics)
+                    missing_metrics = ESGMetric.objects.filter(
+                        id__in=missing_metric_ids
+                    ).values('id', 'name', 'location')
+                
+                # Check if all required metrics are submitted but form isn't marked complete
+                can_complete = total_required > 0 and total_submitted == total_required
+                
+                return Response({
+                    "form_id": form.id,
+                    "form_name": form.name,
+                    "form_code": form.code,
+                    "is_completed": False,
+                    "completion_percentage": completion_percentage,
+                    "total_required_metrics": total_required,
+                    "total_submitted_metrics": total_submitted,
+                    "missing_metrics": list(missing_metrics),
+                    "can_complete": can_complete
+                })
+                
+            except TemplateFormSelection.DoesNotExist:
+                return Response(
+                    {"error": "This form is not part of the template"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        except TemplateAssignment.DoesNotExist:
+            return Response(
+                {"error": "Template assignment not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def complete_form(self, request, pk=None):
+        """
+        Mark a form as completed for a specific template assignment.
+        This is called when all required metrics for this form have been submitted.
+        """
+        form = self.get_object()
+        assignment_id = request.data.get('assignment_id')
+        
+        if not assignment_id:
+            return Response(
+                {"error": "assignment_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            # Get the assignment
+            assignment = TemplateAssignment.objects.get(id=assignment_id)
+            
+            # Check if user has access to this assignment
+            user_app_users = AppUser.objects.filter(user=request.user).select_related('layer')
+            user_layers = [app_user.layer.id for app_user in user_app_users]
+            
+            # Also check parent layers
+            for app_user in user_app_users:
+                layer = app_user.layer
+                if hasattr(layer, 'branchlayer'):
+                    user_layers.append(layer.branchlayer.subsidiary_layer.id)
+                    user_layers.append(layer.branchlayer.subsidiary_layer.group_layer.id)
+                elif hasattr(layer, 'subsidiarylayer'):
+                    user_layers.append(layer.subsidiarylayer.group_layer.id)
+            
+            if assignment.layer.id not in user_layers:
+                return Response(
+                    {"error": "You do not have access to this template assignment"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+                
+            # Find the form selection for this form in the template
+            try:
+                form_selection = TemplateFormSelection.objects.get(
+                    template=assignment.template,
+                    form=form
+                )
+            except TemplateFormSelection.DoesNotExist:
+                return Response(
+                    {"error": "This form is not part of the template"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            # Get all required metrics for this form that apply to the selected regions
+            required_metrics = []
+            for metric in form.metrics.filter(is_required=True):
+                if metric.location == 'ALL' or metric.location in form_selection.regions:
+                    required_metrics.append(metric.id)
+                    
+            # Check if all required metrics have submissions
+            submitted_metrics = ESGMetricSubmission.objects.filter(
+                assignment=assignment,
+                metric__form=form
+            ).values_list('metric_id', flat=True)
+            
+            missing_metrics = set(required_metrics) - set(submitted_metrics)
+            
+            if missing_metrics:
+                # Get names of missing metrics for better error message
+                missing_metric_names = ESGMetric.objects.filter(
+                    id__in=missing_metrics
+                ).values_list('name', flat=True)
+                
+                return Response({
+                    "error": "Cannot complete form with missing required metrics",
+                    "missing_metrics": list(missing_metric_names)
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+            # Mark the form as completed
+            form_selection.is_completed = True
+            form_selection.completed_at = timezone.now()
+            form_selection.completed_by = request.user
+            form_selection.save()
+            
+            # Check if all forms in the template are completed
+            all_forms_completed = all(
+                selection.is_completed 
+                for selection in assignment.template.templateformselection_set.all()
+            )
+            
+            # If all forms are completed, update the assignment status
+            if all_forms_completed and assignment.status != 'SUBMITTED':
+                assignment.status = 'SUBMITTED'
+                assignment.completed_at = timezone.now()
+                assignment.save()
+                
+            return Response({
+                "message": "Form successfully completed",
+                "form_id": form.id,
+                "form_name": form.name,
+                "assignment_id": assignment.id,
+                "all_forms_completed": all_forms_completed,
+                "assignment_status": assignment.status
+            })
+            
+        except TemplateAssignment.DoesNotExist:
+            return Response(
+                {"error": "Template assignment not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
 class ESGFormCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for viewing ESG form categories with their associated forms.
@@ -113,6 +316,94 @@ class TemplateViewSet(viewsets.ModelViewSet):
             'name': template.name,
             'description': template.description,
             'forms': forms_data
+        })
+
+    @action(detail=True, methods=['get'])
+    def completion_status(self, request, pk=None):
+        """Get the completion status of forms in a template for a specific assignment"""
+        template = self.get_object()
+        assignment_id = request.query_params.get('assignment_id')
+        
+        if not assignment_id:
+            return Response(
+                {"error": "assignment_id query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            assignment = TemplateAssignment.objects.get(id=assignment_id, template=template)
+        except TemplateAssignment.DoesNotExist:
+            return Response(
+                {"error": "Template assignment not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+            
+        # Get all form selections for this template
+        form_selections = template.templateformselection_set.select_related('form').all()
+        
+        # Create a response with completion status for each form
+        forms_status = []
+        for selection in form_selections:
+            # Get all required metrics for this form
+            required_metrics = []
+            for metric in selection.form.metrics.filter(is_required=True):
+                if metric.location == 'ALL' or metric.location in selection.regions:
+                    required_metrics.append(metric.id)
+                    
+            # Get submitted metrics for this form
+            submitted_metrics = ESGMetricSubmission.objects.filter(
+                assignment=assignment,
+                metric__form=selection.form
+            ).values_list('metric_id', flat=True)
+            
+            # Calculate completion percentage
+            total_required = len(required_metrics)
+            total_submitted = len(set(required_metrics) & set(submitted_metrics))
+            
+            completion_percentage = 0
+            if total_required > 0:
+                completion_percentage = (total_submitted / total_required) * 100
+                
+            # Get missing metrics if any
+            missing_metrics = []
+            if total_submitted < total_required:
+                missing_metric_ids = set(required_metrics) - set(submitted_metrics)
+                missing_metrics = ESGMetric.objects.filter(
+                    id__in=missing_metric_ids
+                ).values('id', 'name')
+                
+            forms_status.append({
+                'form_id': selection.form.id,
+                'form_name': selection.form.name,
+                'form_code': selection.form.code,
+                'is_completed': selection.is_completed,
+                'completed_at': selection.completed_at,
+                'completed_by': selection.completed_by.email if selection.completed_by else None,
+                'total_required_metrics': total_required,
+                'total_submitted_metrics': total_submitted,
+                'completion_percentage': completion_percentage,
+                'missing_metrics': list(missing_metrics)
+            })
+            
+        # Calculate overall completion percentage
+        total_forms = len(form_selections)
+        completed_forms = sum(1 for selection in form_selections if selection.is_completed)
+        
+        overall_percentage = 0
+        if total_forms > 0:
+            overall_percentage = (completed_forms / total_forms) * 100
+            
+        return Response({
+            'assignment_id': assignment.id,
+            'template_id': template.id,
+            'template_name': template.name,
+            'status': assignment.status,
+            'due_date': assignment.due_date,
+            'completed_at': assignment.completed_at,
+            'total_forms': total_forms,
+            'completed_forms': completed_forms,
+            'overall_completion_percentage': overall_percentage,
+            'forms': forms_status
         })
 
 class TemplateAssignmentView(views.APIView):
@@ -386,6 +677,64 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             assignment.status = 'IN_PROGRESS'
             assignment.save(update_fields=['status'])
             
+        # Check if the form is now complete
+        self._check_form_completion(serializer.instance)
+            
+    def _check_form_completion(self, submission):
+        """
+        Helper method to check if a form is complete after a submission.
+        If all required metrics for a form are submitted, mark the form as completed.
+        """
+        # Get the form for this metric
+        form = submission.metric.form
+        assignment = submission.assignment
+        
+        try:
+            # Find the form selection for this form in the template
+            form_selection = TemplateFormSelection.objects.get(
+                template=assignment.template,
+                form=form
+            )
+            
+            # If the form is already completed, no need to check again
+            if form_selection.is_completed:
+                return
+                
+            # Get all required metrics for this form that apply to the selected regions
+            required_metrics = []
+            for metric in form.metrics.filter(is_required=True):
+                if metric.location == 'ALL' or metric.location in form_selection.regions:
+                    required_metrics.append(metric.id)
+                    
+            # Check if all required metrics have submissions
+            submitted_metrics = ESGMetricSubmission.objects.filter(
+                assignment=assignment,
+                metric__form=form
+            ).values_list('metric_id', flat=True)
+            
+            # If all required metrics are submitted, mark the form as completed
+            if set(required_metrics).issubset(set(submitted_metrics)):
+                form_selection.is_completed = True
+                form_selection.completed_at = timezone.now()
+                form_selection.completed_by = self.request.user
+                form_selection.save()
+                
+                # Check if all forms in the template are completed
+                all_forms_completed = all(
+                    selection.is_completed 
+                    for selection in assignment.template.templateformselection_set.all()
+                )
+                
+                # If all forms are completed, update the assignment status
+                if all_forms_completed and assignment.status != 'SUBMITTED':
+                    assignment.status = 'SUBMITTED'
+                    assignment.completed_at = timezone.now()
+                    assignment.save()
+                    
+        except TemplateFormSelection.DoesNotExist:
+            # This form is not part of the template, so we can't mark it as completed
+            pass
+
     def perform_destroy(self, instance):
         """
         Check if the user has permission to delete this submission.
@@ -432,11 +781,19 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         
         # Process each submission
         results = []
+        submissions_by_form = {}  # Track submissions by form to check completion
+        
         for submission_data in submissions_data:
             metric_id = submission_data.pop('metric_id')
             
             try:
                 metric = ESGMetric.objects.get(id=metric_id)
+                form_id = metric.form_id
+                
+                # Add to form tracking
+                if form_id not in submissions_by_form:
+                    submissions_by_form[form_id] = []
+                submissions_by_form[form_id].append(metric_id)
                 
                 # Check if submission already exists with the same reporting period
                 reporting_period = submission_data.get('reporting_period')
@@ -484,9 +841,62 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             assignment.status = 'IN_PROGRESS'
             assignment.save(update_fields=['status'])
         
+        # Check form completion for each form that had submissions
+        forms_completed = []
+        for form_id in submissions_by_form.keys():
+            try:
+                form = ESGForm.objects.get(id=form_id)
+                form_selection = TemplateFormSelection.objects.get(
+                    template=assignment.template,
+                    form=form
+                )
+                
+                # If the form is already completed, skip it
+                if form_selection.is_completed:
+                    continue
+                    
+                # Get all required metrics for this form that apply to the selected regions
+                required_metrics = []
+                for metric in form.metrics.filter(is_required=True):
+                    if metric.location == 'ALL' or metric.location in form_selection.regions:
+                        required_metrics.append(metric.id)
+                        
+                # Check if all required metrics have submissions
+                submitted_metrics = ESGMetricSubmission.objects.filter(
+                    assignment=assignment,
+                    metric__form=form
+                ).values_list('metric_id', flat=True)
+                
+                # If all required metrics are submitted, mark the form as completed
+                if set(required_metrics).issubset(set(submitted_metrics)):
+                    form_selection.is_completed = True
+                    form_selection.completed_at = timezone.now()
+                    form_selection.completed_by = request.user
+                    form_selection.save()
+                    forms_completed.append(form.name)
+                    
+            except (ESGForm.DoesNotExist, TemplateFormSelection.DoesNotExist):
+                # Skip if form doesn't exist or isn't part of the template
+                continue
+                
+        # Check if all forms in the template are completed
+        all_forms_completed = all(
+            selection.is_completed 
+            for selection in assignment.template.templateformselection_set.all()
+        )
+        
+        # If all forms are completed, update the assignment status
+        if all_forms_completed and assignment.status != 'SUBMITTED':
+            assignment.status = 'SUBMITTED'
+            assignment.completed_at = timezone.now()
+            assignment.save()
+        
         return Response({
             'assignment_id': assignment_id,
-            'results': results
+            'results': results,
+            'forms_completed': forms_completed,
+            'all_forms_completed': all_forms_completed,
+            'assignment_status': assignment.status
         })
 
     @action(detail=False, methods=['get'])
@@ -544,9 +954,10 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     @transaction.atomic
-    def submit_form(self, request):
+    def submit_template(self, request):
         """
-        Mark a template assignment as submitted when all required metrics are completed.
+        Mark a template assignment as submitted when all forms are completed.
+        This is the final step in the submission process after completing all forms.
         """
         assignment_id = request.data.get('assignment_id')
         if not assignment_id:
@@ -578,32 +989,18 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_403_FORBIDDEN
                 )
             
-            # Get all required metrics for this template
-            required_metrics = []
+            # Check if all forms in the template are completed
             form_selections = assignment.template.templateformselection_set.all()
+            incomplete_forms = [
+                selection.form.name
+                for selection in form_selections
+                if not selection.is_completed
+            ]
             
-            for selection in form_selections:
-                # Get metrics that match the form's regions or are for ALL locations
-                for metric in selection.form.metrics.filter(is_required=True):
-                    if metric.location == 'ALL' or metric.location in selection.regions:
-                        required_metrics.append(metric.id)
-            
-            # Check if all required metrics have submissions
-            submitted_metrics = ESGMetricSubmission.objects.filter(
-                assignment=assignment
-            ).values_list('metric_id', flat=True)
-            
-            missing_metrics = set(required_metrics) - set(submitted_metrics)
-            
-            if missing_metrics:
-                # Get names of missing metrics for better error message
-                missing_metric_names = ESGMetric.objects.filter(
-                    id__in=missing_metrics
-                ).values_list('name', flat=True)
-                
+            if incomplete_forms:
                 return Response({
-                    "error": "Cannot submit form with missing required metrics",
-                    "missing_metrics": list(missing_metric_names)
+                    "error": "Cannot submit template with incomplete forms",
+                    "incomplete_forms": incomplete_forms
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             # Update assignment status to SUBMITTED
@@ -612,7 +1009,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             assignment.save()
             
             return Response({
-                "message": "Form successfully submitted",
+                "message": "Template successfully submitted",
                 "assignment_id": assignment.id,
                 "status": assignment.status,
                 "completed_at": assignment.completed_at
