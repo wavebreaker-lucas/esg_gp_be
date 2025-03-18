@@ -88,7 +88,7 @@ Properties:
 - `company`: Link to Company (LayerProfile)
 - `assigned_to`: User responsible for reporting
 - `due_date`: Submission deadline
-- `status`: Current status (PENDING, IN_PROGRESS, SUBMITTED, etc.)
+- `status`: Current status (PENDING, IN_PROGRESS, SUBMITTED, VERIFIED, REJECTED)
 - `reporting_period_start`: Start of reporting period
 - `reporting_period_end`: End of reporting period
 - `completed_at`: When the template was submitted
@@ -305,7 +305,7 @@ This allows for flexible data collection patterns while maintaining data integri
 - `DELETE /api/metric-submissions/{id}/`: Delete a metric submission
 - `GET /api/metric-submissions/by_assignment/?assignment_id={id}`: Get all submissions for a template assignment
 - `POST /api/metric-submissions/batch_submit/`: Submit multiple metric values at once
-- `POST /api/metric-submissions/submit_form/`: Mark a form as completed when all required metrics are filled
+- `POST /api/metric-submissions/submit_template/`: Mark a template as submitted when all forms are completed
 - `POST /api/metric-submissions/{id}/verify/`: Verify a metric submission (Baker Tilly admin only)
 
 #### ESG Metric Evidence Endpoints
@@ -321,6 +321,8 @@ This allows for flexible data collection patterns while maintaining data integri
 - `GET /api/esg-forms/`: List active ESG forms
 - `GET /api/esg-forms/{id}/`: Get specific form details
 - `GET /api/esg-forms/{id}/metrics/`: Get metrics for a specific form
+- `GET /api/esg-forms/{id}/check_completion/?assignment_id={id}`: Check completion status of a specific form
+- `POST /api/esg-forms/{id}/complete_form/`: Mark a form as completed
 
 #### ESG Categories (Read-only)
 - `GET /api/esg-categories/`: List all categories with their active forms
@@ -333,6 +335,7 @@ This allows for flexible data collection patterns while maintaining data integri
 - `PUT /api/templates/{id}/`: Update template
 - `DELETE /api/templates/{id}/`: Delete template
 - `GET /api/templates/{id}/preview/`: Preview template with forms and metrics
+- `GET /api/templates/{id}/completion_status/?assignment_id={id}`: Get completion status of all forms in a template
 
 #### Template Assignments
 - `GET /api/clients/{layer_id}/templates/`: Get client's template assignments
@@ -741,6 +744,32 @@ POST /api/metric-submissions/batch_submit/
 }
 ```
 
+##### Check Form Completion Status
+```json
+GET /api/esg-forms/{form_id}/check_completion/?assignment_id=1
+
+// Response
+{
+    "form_id": 2,
+    "form_name": "Resource Use",
+    "form_code": "HKEX-A2",
+    "is_completed": false,
+    "completion_percentage": 75.0,
+    "total_required_metrics": 4,
+    "total_submitted_metrics": 3,
+    "missing_metrics": [
+        {"id": 10, "name": "Wastewater consumption", "location": "HK"}
+    ],
+    "can_complete": false
+}
+```
+
+**Important Notes:**
+- This endpoint checks if a specific form is completed or can be completed
+- It returns the completion percentage and missing metrics, if any
+- The `can_complete` flag indicates if the form can be marked as completed
+- If the form is already completed, it includes when it was completed and by whom
+
 ##### Complete a Form
 ```json
 POST /api/esg-forms/{form_id}/complete_form/
@@ -752,7 +781,8 @@ POST /api/esg-forms/{form_id}/complete_form/
 {
     "message": "Form successfully completed",
     "form_id": 2,
-    "form_name": "HKEX-A2: Resource Use",
+    "form_name": "Resource Use",
+    "form_code": "HKEX-A2",
     "assignment_id": 1,
     "all_forms_completed": false,
     "assignment_status": "IN_PROGRESS"
@@ -908,28 +938,6 @@ GET /api/metric-submissions/by_assignment/?assignment_id=1
 POST /api/metric-submissions/1/verify/
 {
     "verification_notes": "Verified against provided utility bills"
-}
-
-// Response
-{
-    "id": 1,
-    "assignment": 1,
-    "metric": 5,
-    "metric_name": "Electricity consumption (CLP)",
-    "metric_unit": "kWh",
-    "value": 120.5,
-    "text_value": null,
-    "submitted_by": 3,
-    "submitted_by_name": "john.doe@example.com",
-    "submitted_at": "2024-04-15T10:30:00Z",
-    "updated_at": "2024-04-15T10:30:00Z",
-    "notes": "Value from March 2024 electricity bill",
-    "is_verified": true,
-    "verified_by": 2,
-    "verified_by_name": "admin@bakertilly.com",
-    "verified_at": "2024-04-16T09:15:00Z",
-    "verification_notes": "Verified against provided utility bills",
-    "evidence": []
 }
 ```
 
