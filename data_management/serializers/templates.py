@@ -13,13 +13,20 @@ class ESGMetricSerializer(serializers.ModelSerializer):
                  'requires_evidence', 'order', 'validation_rules', 'location', 'is_required',
                  'requires_time_reporting', 'reporting_frequency']
 
+class ESGFormCategorySerializer(serializers.ModelSerializer):
+    """Serializer for ESG form categories"""
+    class Meta:
+        model = ESGFormCategory
+        fields = ['id', 'name', 'code', 'icon', 'order']
+
 class ESGFormSerializer(serializers.ModelSerializer):
     """Serializer for ESG forms with nested metrics"""
     metrics = ESGMetricSerializer(many=True, read_only=True)
+    category = ESGFormCategorySerializer(read_only=True)
 
     class Meta:
         model = ESGForm
-        fields = ['id', 'code', 'name', 'description', 'is_active', 'metrics']
+        fields = ['id', 'code', 'name', 'description', 'is_active', 'metrics', 'category', 'order']
 
     def create(self, validated_data):
         """Create a new ESG form with example metrics"""
@@ -173,7 +180,9 @@ class ESGFormSerializer(serializers.ModelSerializer):
         
         return form
 
-class ESGFormCategorySerializer(serializers.ModelSerializer):
+# Used in category listing views with forms nested inside categories
+class ESGFormCategoryWithFormsSerializer(serializers.ModelSerializer):
+    """Serializer for ESG form categories with nested forms"""
     forms = ESGFormSerializer(many=True, read_only=True)
     
     class Meta:

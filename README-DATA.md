@@ -159,6 +159,14 @@ Returns detailed information about a specific template assignment, including all
       "form_code": "HKEX-A1",
       "form_name": "Environmental - Emissions",
       "regions": ["HK", "PRC"],
+      "category": {
+        "id": 1,
+        "name": "Environmental",
+        "code": "environmental",
+        "icon": "leaf",
+        "order": 1
+      },
+      "order": 1,
       "metrics": [
         {
           "id": 1,
@@ -209,6 +217,8 @@ Returns detailed information about a specific template assignment, including all
 - Returns complete form and metric details for the template
 - Only includes metrics relevant to the selected regions
 - Provides validation rules and requirements for each metric
+- **Includes category information for each form**, allowing frontend to group forms by category
+- Each form includes its `order` value for proper sequencing within its category
 - Requires appropriate permissions to access
 
 ## Location-Based Reporting

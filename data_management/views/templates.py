@@ -538,7 +538,7 @@ class UserTemplateAssignmentView(views.APIView):
                 
                 # Get template with forms and metrics
                 template = assignment.template
-                form_selections = template.templateformselection_set.select_related('form').prefetch_related('form__metrics')
+                form_selections = template.templateformselection_set.select_related('form', 'form__category').prefetch_related('form__metrics')
                 
                 # Create a flat list of forms with their metrics
                 forms_data = []
@@ -548,6 +548,14 @@ class UserTemplateAssignmentView(views.APIView):
                         'form_code': selection.form.code,
                         'form_name': selection.form.name,
                         'regions': selection.regions,
+                        'category': {
+                            'id': selection.form.category.id,
+                            'name': selection.form.category.name,
+                            'code': selection.form.category.code,
+                            'icon': selection.form.category.icon,
+                            'order': selection.form.category.order
+                        },
+                        'order': selection.form.order,
                         'metrics': []
                     }
                     
