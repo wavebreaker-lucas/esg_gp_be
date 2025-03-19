@@ -315,14 +315,30 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
     def destroy(self, request, pk=None):
         """Delete a layer"""
         try:
-            layer = LayerProfile.objects.get(id=pk, app_users__user=request.user)
+            # First check if user is a Baker Tilly admin
+            is_baker_tilly_admin = getattr(request.user, 'is_baker_tilly_admin', False)
+            
+            if is_baker_tilly_admin:
+                # Baker Tilly admins can delete any non-GROUP layer
+                try:
+                    layer = LayerProfile.objects.get(id=pk)
+                except LayerProfile.DoesNotExist:
+                    return self.handle_not_found_error("Layer not found.")
+            else:
+                # For regular users, apply the more restrictive query
+                try:
+                    layer = LayerProfile.objects.get(id=pk, app_users__user=request.user)
+                except LayerProfile.DoesNotExist:
+                    return self.handle_not_found_error("Layer not found or you do not have access to it.")
 
             if layer.layer_type == LayerTypeChoices.GROUP:
                 return self.handle_permission_error("Cannot delete a layer with layer_type GROUP.")
 
-            app_user = AppUser.objects.filter(user=request.user, layer=layer).first()
-            if not app_user or app_user.user.role != RoleChoices.CREATOR:
-                return self.handle_permission_error("You do not have permission to delete this layer.")
+            # For regular users, additional permission checks
+            if not is_baker_tilly_admin:
+                app_user = AppUser.objects.filter(user=request.user, layer=layer).first()
+                if not app_user or app_user.user.role != RoleChoices.CREATOR:
+                    return self.handle_permission_error("You do not have permission to delete this layer.")
 
             # Get parent layer for cache invalidation
             parent_layer_id = None
@@ -354,8 +370,6 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
                 status=status.HTTP_204_NO_CONTENT
             )
 
-        except LayerProfile.DoesNotExist:
-            return self.handle_not_found_error("Layer not found or you do not have access to it.")
         except Exception as e:
             return self.handle_unknown_error(e)
 

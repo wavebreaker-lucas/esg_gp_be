@@ -269,6 +269,105 @@ class ClientStructureView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    def delete(self, request, group_id):
+        """Delete a subsidiary or branch from a client company structure"""
+        try:
+            with transaction.atomic():
+                group = GroupLayer.objects.get(id=group_id)
+                
+                # Get layer ID and type from request data
+                layer_id = request.data.get('layer_id')
+                layer_type = request.data.get('layer_type')
+                
+                if not layer_id:
+                    return Response(
+                        {'error': 'layer_id is required'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                if not layer_type:
+                    return Response(
+                        {'error': 'layer_type is required'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                    
+                if layer_type == 'SUBSIDIARY':
+                    try:
+                        # Ensure the subsidiary belongs to this group
+                        subsidiary = SubsidiaryLayer.objects.get(id=layer_id, group_layer=group)
+                        
+                        # Check if subsidiary has branches
+                        if subsidiary.branchlayer_set.exists():
+                            return Response(
+                                {'error': 'Cannot delete subsidiary with branches. Delete branches first.'}, 
+                                status=status.HTTP_400_BAD_REQUEST
+                            )
+                            
+                        # Delete the subsidiary
+                        subsidiary.delete()
+                        return Response(
+                            {'message': 'Subsidiary deleted successfully'}, 
+                            status=status.HTTP_200_OK
+                        )
+                        
+                    except SubsidiaryLayer.DoesNotExist:
+                        return Response(
+                            {'error': 'Subsidiary not found or does not belong to this group'}, 
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                        
+                elif layer_type == 'BRANCH':
+                    try:
+                        # Get the subsidiary ID
+                        subsidiary_id = request.data.get('subsidiary_id')
+                        
+                        if not subsidiary_id:
+                            return Response(
+                                {'error': 'subsidiary_id is required for branch deletion'}, 
+                                status=status.HTTP_400_BAD_REQUEST
+                            )
+                            
+                        # Ensure the subsidiary belongs to this group
+                        subsidiary = SubsidiaryLayer.objects.get(id=subsidiary_id, group_layer=group)
+                        
+                        # Ensure the branch belongs to this subsidiary
+                        branch = BranchLayer.objects.get(id=layer_id, subsidiary_layer=subsidiary)
+                        
+                        # Delete the branch
+                        branch.delete()
+                        return Response(
+                            {'message': 'Branch deleted successfully'}, 
+                            status=status.HTTP_200_OK
+                        )
+                        
+                    except SubsidiaryLayer.DoesNotExist:
+                        return Response(
+                            {'error': 'Subsidiary not found or does not belong to this group'}, 
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                    except BranchLayer.DoesNotExist:
+                        return Response(
+                            {'error': 'Branch not found or does not belong to this subsidiary'}, 
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                        
+                else:
+                    return Response(
+                        {'error': 'Invalid layer_type. Must be SUBSIDIARY or BRANCH.'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                    
+        except GroupLayer.DoesNotExist:
+            return Response(
+                {'error': 'Group layer not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 class ClientStatisticsView(APIView):
     """
     View for getting summary statistics of clients.
