@@ -63,12 +63,48 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
             user = request.user
             layer_type_filter = request.query_params.get("layer_type")
             
-            cache_key = f'layer_list_{user.id}_{layer_type_filter}'
-            cached_result = cache.get(cache_key)
+            # Create a cache key that includes all query parameters, not just layer_type
+            query_params_str = "&".join(f"{k}={v}" for k, v in sorted(request.query_params.items()))
+            cache_key = f'layer_list_{user.id}_{query_params_str}'
+            
+            # Skip cache for force_refresh
+            if request.query_params.get('force_refresh'):
+                cache.delete(cache_key)
+                cached_result = None
+            else:
+                cached_result = cache.get(cache_key)
+                
             if cached_result:
                 return Response(cached_result)
 
             accessible_layers = self.get_queryset()
+            
+            # Apply any filters from query parameters
+            if 'group_id' in request.query_params:
+                group_id = request.query_params.get('group_id')
+                # Get layers for this group
+                group_layers = accessible_layers.filter(id=group_id, layer_type='GROUP')
+                
+                # Get subsidiaries for this group
+                subsidiary_ids = SubsidiaryLayer.objects.filter(
+                    group_layer_id=group_id
+                ).values_list('id', flat=True)
+                subsidiary_layers = accessible_layers.filter(
+                    id__in=subsidiary_ids,
+                    layer_type='SUBSIDIARY'
+                )
+                
+                # Get branches for subsidiaries of this group
+                branch_ids = BranchLayer.objects.filter(
+                    subsidiary_layer_id__in=subsidiary_ids
+                ).values_list('id', flat=True)
+                branch_layers = accessible_layers.filter(
+                    id__in=branch_ids, 
+                    layer_type='BRANCH'
+                )
+                
+                # Combine all filtered layers
+                accessible_layers = (group_layers | subsidiary_layers | branch_layers).distinct()
 
             if layer_type_filter:
                 filter_types = [ft.strip().upper() for ft in layer_type_filter.split(',') if ft.strip()]
