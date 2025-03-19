@@ -273,8 +273,8 @@ class TemplateViewSet(viewsets.ModelViewSet):
     def preview(self, request, pk=None):
         """Preview a template with all its forms and metrics"""
         template = self.get_object()
-        # Get all form selections with their forms and metrics
-        form_selections = template.templateformselection_set.select_related('form').prefetch_related('form__metrics')
+        # Update to include form__category in select_related
+        form_selections = template.templateformselection_set.select_related('form', 'form__category').prefetch_related('form__metrics')
         
         # Create a flat list of forms with their metrics
         forms_data = []
@@ -284,6 +284,15 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 'form_code': selection.form.code,
                 'form_name': selection.form.name,
                 'regions': selection.regions,  # Keep the regions info at form level
+                # Add category information to match the user-templates endpoint
+                'category': {
+                    'id': selection.form.category.id,
+                    'name': selection.form.category.name,
+                    'code': selection.form.category.code,
+                    'icon': selection.form.category.icon,
+                    'order': selection.form.category.order
+                },
+                'order': selection.form.order,
                 'metrics': []
             }
             
@@ -313,7 +322,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
         
         return Response({
             'template_id': template.id,
-            'name': template.name,
+            'template_name': template.name,
             'description': template.description,
             'forms': forms_data
         })

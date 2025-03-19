@@ -511,13 +511,22 @@ GET /api/templates/1/preview/
 // Response
 {
     "template_id": 1,
-    "name": "HKEX ESG Comprehensive 2024",
+    "template_name": "HKEX ESG Comprehensive 2024",
+    "description": "Comprehensive ESG reporting template following HKEX guidelines",
     "forms": [
         {
             "form_id": 1,
             "form_code": "HKEX-A1",
             "form_name": "Emissions",
             "regions": ["HK", "PRC"],
+            "category": {
+                "id": 1,
+                "name": "Environmental",
+                "code": "environmental",
+                "icon": "leaf",
+                "order": 1
+            },
+            "order": 1,
             "metrics": [
                 {
                     "id": 1,
@@ -528,7 +537,9 @@ GET /api/templates/1/preview/
                     "validation_rules": {"min": 0},
                     "location": "HK",
                     "is_required": false,
-                    "order": 1
+                    "order": 1,
+                    "requires_time_reporting": false,
+                    "reporting_frequency": null
                 },
                 {
                     "id": 2,
@@ -539,7 +550,9 @@ GET /api/templates/1/preview/
                     "validation_rules": {"min": 0},
                     "location": "PRC",
                     "is_required": false,
-                    "order": 2
+                    "order": 2,
+                    "requires_time_reporting": false,
+                    "reporting_frequency": null
                 }
             ]
         },
@@ -548,6 +561,14 @@ GET /api/templates/1/preview/
             "form_code": "HKEX-A2",
             "form_name": "Resource Use",
             "regions": ["HK", "PRC"],
+            "category": {
+                "id": 1,
+                "name": "Environmental",
+                "code": "environmental",
+                "icon": "leaf",
+                "order": 1
+            },
+            "order": 2,
             "metrics": [
                 {
                     "id": 8,
@@ -558,7 +579,9 @@ GET /api/templates/1/preview/
                     "validation_rules": {"period": "monthly", "year": "2024"},
                     "location": "HK",
                     "is_required": false,
-                    "order": 1
+                    "order": 1,
+                    "requires_time_reporting": true,
+                    "reporting_frequency": "monthly"
                 },
                 {
                     "id": 9,
@@ -569,13 +592,27 @@ GET /api/templates/1/preview/
                     "validation_rules": {"period": "monthly", "year": "2024"},
                     "location": "HK",
                     "is_required": false,
-                    "order": 2
+                    "order": 2,
+                    "requires_time_reporting": true,
+                    "reporting_frequency": "monthly"
                 }
             ]
         }
     ]
 }
 ```
+
+**Key Features:**
+- Returns complete category information for each form, including:
+  - `id`: The category's unique identifier
+  - `name`: The display name of the category
+  - `code`: The category's code (e.g., "environmental")
+  - `icon`: Icon reference for frontend rendering (e.g., "leaf")
+  - `order`: The display order within the category list
+- Includes form `order` for sorting within categories
+- Provides the same metric details as the user-templates endpoint
+- Matches the format of the user-templates endpoint for frontend compatibility
+- Allows the same components to be used for both preview and assigned templates
 
 ##### Get Client's Template Assignments
 ```json
