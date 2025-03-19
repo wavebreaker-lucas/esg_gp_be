@@ -56,6 +56,25 @@ Properties:
 - `requires_time_reporting`: Whether this metric requires reporting for multiple time periods
 - `reporting_frequency`: Required frequency of reporting (monthly, quarterly, annual)
 
+### 4. Custom Forms and Metrics
+The system allows Baker Tilly administrators to create custom forms and metrics for specific client needs:
+
+1. **Custom Categories**: New form categories can be created beyond the standard Environmental, Social, and Governance.
+2. **Custom Forms**: Administrators can create bespoke forms for specialized reporting requirements.
+3. **Custom Metrics**: Industry-specific or client-specific metrics can be defined with flexible properties:
+   - Custom unit types
+   - Location-specific metrics
+   - Time-based reporting frequencies
+   - Validation rules to ensure data quality
+
+Custom forms and metrics can be created alongside standard forms in templates, allowing a mix of standardized and client-specific reporting within the same workflow.
+
+### Related API Endpoints:
+- `POST /api/esg-categories/`: Create custom category
+- `POST /api/esg-forms/`: Create custom form
+- `POST /api/esg-metrics/`: Create custom metric
+- `POST /api/esg-forms/{id}/add_metric/`: Add metric to existing form
+
 ## Templates and Assignments
 
 ### 1. Templates
@@ -327,16 +346,31 @@ This allows for flexible data collection patterns while maintaining data integri
 
 ### Form and Template Management
 
-#### ESG Forms (Read-only)
+#### ESG Forms
 - `GET /api/esg-forms/`: List active ESG forms
 - `GET /api/esg-forms/{id}/`: Get specific form details
+- `POST /api/esg-forms/`: Create new ESG form (Baker Tilly Admin only)
+- `PUT /api/esg-forms/{id}/`: Update ESG form (Baker Tilly Admin only)
+- `DELETE /api/esg-forms/{id}/`: Delete ESG form (Baker Tilly Admin only)
 - `GET /api/esg-forms/{id}/metrics/`: Get metrics for a specific form
+- `POST /api/esg-forms/{id}/add_metric/`: Add a metric to a form (Baker Tilly Admin only)
 - `GET /api/esg-forms/{id}/check_completion/?assignment_id={id}`: Check completion status of a specific form
 - `POST /api/esg-forms/{id}/complete_form/`: Mark a form as completed
 
-#### ESG Categories (Read-only)
+#### ESG Categories
 - `GET /api/esg-categories/`: List all categories with their active forms
 - `GET /api/esg-categories/{id}/`: Get specific category details
+- `POST /api/esg-categories/`: Create new category (Baker Tilly Admin only)
+- `PUT /api/esg-categories/{id}/`: Update category (Baker Tilly Admin only)
+- `DELETE /api/esg-categories/{id}/`: Delete category (Baker Tilly Admin only)
+
+#### ESG Metrics
+- `GET /api/esg-metrics/`: List all metrics
+- `GET /api/esg-metrics/?form_id={id}`: List metrics for a specific form
+- `GET /api/esg-metrics/{id}/`: Get specific metric details
+- `POST /api/esg-metrics/`: Create new metric (Baker Tilly Admin only)
+- `PUT /api/esg-metrics/{id}/`: Update metric (Baker Tilly Admin only)
+- `DELETE /api/esg-metrics/{id}/`: Delete metric (Baker Tilly Admin only)
 
 #### Templates (Baker Tilly Admin only)
 - `GET /api/templates/`: List all templates
@@ -697,6 +731,123 @@ DELETE /api/clients/{layer_id}/templates/
 }
 
 // Response: 204 No Content
+```
+
+#### 3. ESG Form and Metric Management
+
+##### Create ESG Category
+```json
+POST /api/esg-categories/
+{
+    "name": "Custom Reporting",
+    "code": "custom",
+    "icon": "clipboard-check",
+    "order": 4
+}
+
+// Response
+{
+    "id": 4,
+    "name": "Custom Reporting",
+    "code": "custom",
+    "icon": "clipboard-check",
+    "order": 4
+}
+```
+
+##### Create ESG Form
+```json
+POST /api/esg-forms/
+{
+    "category_id": 4,
+    "code": "CUSTOM-1",
+    "name": "Custom Sustainability Metrics",
+    "description": "Company-specific sustainability metrics",
+    "order": 1,
+    "is_active": true
+}
+
+// Response
+{
+    "id": 12,
+    "code": "CUSTOM-1",
+    "name": "Custom Sustainability Metrics",
+    "description": "Company-specific sustainability metrics",
+    "is_active": true,
+    "order": 1,
+    "metrics": [],
+    "category": {
+        "id": 4,
+        "name": "Custom Reporting",
+        "code": "custom",
+        "icon": "clipboard-check",
+        "order": 4
+    }
+}
+```
+
+##### Add Metric to Form
+```json
+POST /api/esg-forms/12/add_metric/
+{
+    "name": "Renewable energy usage",
+    "description": "Percentage of total energy from renewable sources",
+    "unit_type": "percentage",
+    "requires_evidence": true,
+    "validation_rules": {"min": 0, "max": 100},
+    "location": "HK",
+    "is_required": true,
+    "order": 1,
+    "requires_time_reporting": true,
+    "reporting_frequency": "quarterly"
+}
+
+// Response
+{
+    "id": 25,
+    "name": "Renewable energy usage",
+    "description": "Percentage of total energy from renewable sources",
+    "unit_type": "percentage",
+    "custom_unit": null,
+    "requires_evidence": true,
+    "validation_rules": {"min": 0, "max": 100},
+    "location": "HK",
+    "is_required": true,
+    "order": 1,
+    "requires_time_reporting": true,
+    "reporting_frequency": "quarterly"
+}
+```
+
+##### Create ESG Metric Directly
+```json
+POST /api/esg-metrics/
+{
+    "form_id": 12,
+    "name": "Waste reduction initiatives",
+    "description": "Number of waste reduction initiatives implemented",
+    "unit_type": "count",
+    "requires_evidence": true,
+    "location": "ALL",
+    "is_required": true,
+    "order": 2
+}
+
+// Response
+{
+    "id": 26,
+    "name": "Waste reduction initiatives",
+    "description": "Number of waste reduction initiatives implemented",
+    "unit_type": "count",
+    "custom_unit": null,
+    "requires_evidence": true,
+    "validation_rules": {},
+    "location": "ALL",
+    "is_required": true,
+    "order": 2,
+    "requires_time_reporting": false,
+    "reporting_frequency": null
+}
 ```
 
 #### 4. ESG Metric Submissions

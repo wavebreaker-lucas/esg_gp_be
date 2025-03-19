@@ -3,7 +3,7 @@ from django.urls import path
 from .views.templates import (
     ESGFormViewSet, ESGFormCategoryViewSet,
     TemplateViewSet, TemplateAssignmentView, UserTemplateAssignmentView,
-    ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet
+    ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, ESGMetricViewSet
 )
 
 # Create a router for ViewSets
@@ -15,6 +15,7 @@ router.register(r'esg-categories', ESGFormCategoryViewSet, basename='esg-categor
 router.register(r'templates', TemplateViewSet, basename='template')
 router.register(r'metric-submissions', ESGMetricSubmissionViewSet, basename='metric-submission')
 router.register(r'metric-evidence', ESGMetricEvidenceViewSet, basename='metric-evidence')
+router.register(r'esg-metrics', ESGMetricViewSet, basename='esg-metric')
 
 # Export the router's URLs
 urlpatterns = router.urls

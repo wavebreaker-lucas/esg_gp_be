@@ -19,15 +19,30 @@ from ..serializers.esg import (
     ESGMetricSubmissionSerializer, ESGMetricSubmissionCreateSerializer,
     ESGMetricEvidenceSerializer, ESGMetricBatchSubmissionSerializer
 )
+from rest_framework import serializers
 
-class ESGFormViewSet(viewsets.ReadOnlyModelViewSet):
+class ESGFormViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for viewing ESG forms. Forms are predefined and can only be modified
-    through admin interface.
+    ViewSet for managing ESG forms. 
+    Baker Tilly admins can create, update, and delete forms.
+    Other users can only view forms.
     """
     queryset = ESGForm.objects.filter(is_active=True)
     serializer_class = ESGFormSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        """
+        Only Baker Tilly admins can create, update, or delete forms.
+        All authenticated users can view forms.
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), BakerTillyAdmin()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        """Create a new ESG form"""
+        serializer.save()
 
     @action(detail=True, methods=['get'])
     def metrics(self, request, pk=None):
@@ -36,6 +51,18 @@ class ESGFormViewSet(viewsets.ReadOnlyModelViewSet):
         metrics = form.metrics.all()
         serializer = ESGMetricSerializer(metrics, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, BakerTillyAdmin])
+    def add_metric(self, request, pk=None):
+        """Add a new metric to the form"""
+        form = self.get_object()
+        
+        # Create serializer with the form already set
+        serializer = ESGMetricSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(form=form)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['get'])
     def check_completion(self, request, pk=None):
@@ -240,13 +267,24 @@ class ESGFormViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-class ESGFormCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+class ESGFormCategoryViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for viewing ESG form categories with their associated forms.
+    ViewSet for managing ESG form categories with their associated forms.
+    Baker Tilly admins can create, update, and delete categories.
+    Other users can only view categories.
     """
     queryset = ESGFormCategory.objects.all()
     serializer_class = ESGFormCategorySerializer
     permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        """
+        Only Baker Tilly admins can create, update, or delete categories.
+        All authenticated users can view categories.
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), BakerTillyAdmin()]
+        return [IsAuthenticated()]
 
     def list(self, request, *args, **kwargs):
         """List all categories with their active forms"""
@@ -1096,4 +1134,48 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         
         queryset = self.get_queryset().filter(submission_id=submission_id)
         serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data) 
+        return Response(serializer.data)
+
+class ESGMetricViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing ESG metrics.
+    Baker Tilly admins can create, update, and delete metrics.
+    Other users can only view metrics.
+    """
+    queryset = ESGMetric.objects.all()
+    serializer_class = ESGMetricSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        """
+        Only Baker Tilly admins can create, update, or delete metrics.
+        All authenticated users can view metrics.
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), BakerTillyAdmin()]
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        """
+        Filter metrics by form_id query parameter if provided.
+        """
+        queryset = super().get_queryset()
+        form_id = self.request.query_params.get('form_id')
+        if form_id:
+            queryset = queryset.filter(form_id=form_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        """
+        Create a new ESG metric.
+        Requires form_id in request data unless already specified in query parameters.
+        """
+        form_id = self.request.data.get('form_id') or self.request.query_params.get('form_id')
+        if not form_id:
+            raise serializers.ValidationError({"form_id": "This field is required."})
+            
+        try:
+            form = ESGForm.objects.get(id=form_id)
+            serializer.save(form=form)
+        except ESGForm.DoesNotExist:
+            raise serializers.ValidationError({"form_id": f"Form with ID {form_id} not found."}) 

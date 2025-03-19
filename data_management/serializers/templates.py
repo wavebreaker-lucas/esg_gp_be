@@ -7,11 +7,19 @@ from ..models import (
 
 class ESGMetricSerializer(serializers.ModelSerializer):
     """Serializer for ESG metrics"""
+    form_id = serializers.PrimaryKeyRelatedField(
+        queryset=ESGForm.objects.all(),
+        write_only=True,
+        source='form',
+        required=False
+    )
+    
     class Meta:
         model = ESGMetric
         fields = ['id', 'name', 'description', 'unit_type', 'custom_unit', 
                  'requires_evidence', 'order', 'validation_rules', 'location', 'is_required',
-                 'requires_time_reporting', 'reporting_frequency']
+                 'requires_time_reporting', 'reporting_frequency', 'form_id']
+        read_only_fields = ['id']
 
 class ESGFormCategorySerializer(serializers.ModelSerializer):
     """Serializer for ESG form categories"""
@@ -23,162 +31,21 @@ class ESGFormSerializer(serializers.ModelSerializer):
     """Serializer for ESG forms with nested metrics"""
     metrics = ESGMetricSerializer(many=True, read_only=True)
     category = ESGFormCategorySerializer(read_only=True)
+    category_id = serializers.PrimaryKeyRelatedField(
+        queryset=ESGFormCategory.objects.all(),
+        write_only=True,
+        source='category'
+    )
 
     class Meta:
         model = ESGForm
-        fields = ['id', 'code', 'name', 'description', 'is_active', 'metrics', 'category', 'order']
+        fields = ['id', 'code', 'name', 'description', 'is_active', 'metrics', 'category', 'category_id', 'order']
+        read_only_fields = ['id']
 
     def create(self, validated_data):
-        """Create a new ESG form with example metrics"""
-        form = super().create(validated_data)
-        
-        # Example: Create metrics for HKEX-B2 (Health and Safety)
-        if form.code == 'HKEX-B2':
-            metrics = [
-                {
-                    'name': 'Number of work-related fatalities',
-                    'description': 'Number of deaths due to work injury',
-                    'unit_type': 'count',
-                    'requires_evidence': True,
-                    'order': 1,
-                    'location': 'HK',
-                    'is_required': False
-                },
-                {
-                    'name': 'Number of work-related fatalities',
-                    'description': 'Number of deaths due to work injury',
-                    'unit_type': 'count',
-                    'requires_evidence': True,
-                    'order': 2,
-                    'location': 'PRC',
-                    'is_required': False
-                },
-                {
-                    'name': 'Number of reported work injuries',
-                    'description': 'Total reported cases of work-related injuries',
-                    'unit_type': 'count',
-                    'requires_evidence': True,
-                    'order': 3,
-                    'location': 'HK',
-                    'is_required': False
-                },
-                {
-                    'name': 'Number of reported work injuries',
-                    'description': 'Total reported cases of work-related injuries',
-                    'unit_type': 'count',
-                    'requires_evidence': True,
-                    'order': 4,
-                    'location': 'PRC',
-                    'is_required': False
-                },
-                {
-                    'name': 'Lost days due to work injury',
-                    'description': 'Number of days lost due to work injury',
-                    'unit_type': 'days',
-                    'requires_evidence': True,
-                    'order': 5,
-                    'location': 'HK',
-                    'is_required': False
-                },
-                {
-                    'name': 'Lost days due to work injury',
-                    'description': 'Number of days lost due to work injury',
-                    'unit_type': 'days',
-                    'requires_evidence': True,
-                    'order': 6,
-                    'location': 'PRC',
-                    'is_required': False
-                }
-            ]
-            
-            for metric_data in metrics:
-                ESGMetric.objects.create(form=form, **metric_data)
-        
-        # Create metrics for HKEX-A2 (Energy and Water Consumption)
-        elif form.code == 'HKEX-A2':
-            # Electricity consumption metrics
-            electricity_metrics = [
-                {
-                    'name': 'Electricity consumption (CLP)',
-                    'description': 'Monthly electricity consumption from CLP',
-                    'unit_type': 'kWh',
-                    'requires_evidence': True,
-                    'order': 1,
-                    'location': 'HK',
-                    'is_required': False,
-                    'validation_rules': {'period': 'monthly', 'year': '2024'}
-                },
-                {
-                    'name': 'Electricity consumption (HKE)',
-                    'description': 'Monthly electricity consumption from HKE',
-                    'unit_type': 'kWh',
-                    'requires_evidence': True,
-                    'order': 2,
-                    'location': 'HK',
-                    'is_required': False,
-                    'validation_rules': {'period': 'monthly', 'year': '2024'}
-                },
-                {
-                    'name': 'Electricity consumption',
-                    'description': 'Monthly electricity consumption',
-                    'unit_type': 'kWh',
-                    'requires_evidence': True,
-                    'order': 3,
-                    'location': 'PRC',
-                    'is_required': False,
-                    'validation_rules': {'period': 'monthly', 'year': '2024'}
-                },
-            ]
-            
-            # Water consumption metrics
-            water_metrics = [
-                {
-                    'name': 'Fresh water consumption',
-                    'description': 'Monthly fresh water consumption',
-                    'unit_type': 'm3',
-                    'requires_evidence': True,
-                    'order': 4,
-                    'location': 'HK',
-                    'is_required': False,
-                    'validation_rules': {'period': 'monthly', 'year': '2024'}
-                },
-                {
-                    'name': 'Fresh water consumption',
-                    'description': 'Monthly fresh water consumption',
-                    'unit_type': 'm3',
-                    'requires_evidence': True,
-                    'order': 5,
-                    'location': 'PRC',
-                    'is_required': False,
-                    'validation_rules': {'period': 'monthly', 'year': '2024'}
-                },
-                {
-                    'name': 'Wastewater consumption',
-                    'description': 'Monthly wastewater consumption',
-                    'unit_type': 'm3',
-                    'requires_evidence': True,
-                    'order': 6,
-                    'location': 'HK',
-                    'is_required': False,
-                    'validation_rules': {'period': 'monthly', 'year': '2024'}
-                },
-                {
-                    'name': 'Wastewater consumption',
-                    'description': 'Monthly wastewater consumption',
-                    'unit_type': 'm3',
-                    'requires_evidence': True,
-                    'order': 7,
-                    'location': 'PRC',
-                    'is_required': False,
-                    'validation_rules': {'period': 'monthly', 'year': '2024'}
-                },
-            ]
-            
-            # Create all metrics
-            for metric_data in electricity_metrics + water_metrics:
-                ESGMetric.objects.create(form=form, **metric_data)
-        
-        return form
+        """Create a new ESG form"""
+        # Just create the form, don't auto-create metrics
+        return super().create(validated_data)
 
 # Used in category listing views with forms nested inside categories
 class ESGFormCategoryWithFormsSerializer(serializers.ModelSerializer):
