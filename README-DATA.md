@@ -351,6 +351,7 @@ This allows for flexible data collection patterns while maintaining data integri
 - `GET /api/esg-forms/{id}/`: Get specific form details
 - `POST /api/esg-forms/`: Create new ESG form (Baker Tilly Admin only)
 - `PUT /api/esg-forms/{id}/`: Update ESG form (Baker Tilly Admin only)
+- `PATCH /api/esg-forms/{id}/`: Partially update ESG form (Baker Tilly Admin only)
 - `DELETE /api/esg-forms/{id}/`: Delete ESG form (Baker Tilly Admin only)
 - `GET /api/esg-forms/{id}/metrics/`: Get metrics for a specific form
 - `POST /api/esg-forms/{id}/add_metric/`: Add a metric to a form (Baker Tilly Admin only)
@@ -362,6 +363,7 @@ This allows for flexible data collection patterns while maintaining data integri
 - `GET /api/esg-categories/{id}/`: Get specific category details
 - `POST /api/esg-categories/`: Create new category (Baker Tilly Admin only)
 - `PUT /api/esg-categories/{id}/`: Update category (Baker Tilly Admin only)
+- `PATCH /api/esg-categories/{id}/`: Partially update category (Baker Tilly Admin only)
 - `DELETE /api/esg-categories/{id}/`: Delete category (Baker Tilly Admin only)
 
 #### ESG Metrics
@@ -370,6 +372,7 @@ This allows for flexible data collection patterns while maintaining data integri
 - `GET /api/esg-metrics/{id}/`: Get specific metric details
 - `POST /api/esg-metrics/`: Create new metric (Baker Tilly Admin only)
 - `PUT /api/esg-metrics/{id}/`: Update metric (Baker Tilly Admin only)
+- `PATCH /api/esg-metrics/{id}/`: Partially update metric (Baker Tilly Admin only)
 - `DELETE /api/esg-metrics/{id}/`: Delete metric (Baker Tilly Admin only)
 
 #### Templates (Baker Tilly Admin only)
@@ -385,6 +388,27 @@ This allows for flexible data collection patterns while maintaining data integri
 - `GET /api/clients/{layer_id}/templates/`: Get client's template assignments
 - `POST /api/clients/{layer_id}/templates/`: Assign template to client
 - `DELETE /api/clients/{layer_id}/templates/`: Remove template assignment (requires assignment_id in request body)
+
+### API Best Practices
+
+#### PUT vs PATCH for Updates
+
+The ESG Platform API supports both PUT and PATCH for updating resources, each with a different purpose:
+
+- **PUT**: Use when updating an entire resource. You must include all required fields in the request, even if you're only changing one value. Missing fields may be reset to defaults.
+
+- **PATCH**: Use when updating only specific fields of a resource. Only the fields included in the request will be modified; all other fields will remain unchanged.
+
+Example PATCH request:
+```json
+PATCH /api/esg-metrics/26/
+{
+    "is_required": false,
+    "order": 3
+}
+```
+
+This is more efficient than PUT when you only need to update a few fields, as it requires less data to be sent and processed.
 
 ### Example Requests and Responses
 
@@ -752,6 +776,31 @@ POST /api/esg-categories/
     "code": "custom",
     "icon": "clipboard-check",
     "order": 4
+}
+```
+
+##### Partially Update ESG Metric (PATCH)
+```json
+PATCH /api/esg-metrics/26/
+{
+    "name": "Updated Metric Name",
+    "is_required": false
+}
+
+// Response
+{
+    "id": 26,
+    "name": "Updated Metric Name",
+    "description": "Number of waste reduction initiatives implemented",
+    "unit_type": "count",
+    "custom_unit": null,
+    "requires_evidence": true,
+    "validation_rules": {},
+    "location": "ALL",
+    "is_required": false,
+    "order": 2,
+    "requires_time_reporting": false,
+    "reporting_frequency": null
 }
 ```
 
