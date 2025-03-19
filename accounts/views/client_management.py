@@ -166,7 +166,8 @@ class ClientStructureView(APIView):
                         company_name=request.data['company_name'],
                         company_industry=request.data['industry'],
                         company_location=request.data.get('location', ''),
-                        shareholding_ratio=request.data['shareholding_ratio']
+                        shareholding_ratio=request.data['shareholding_ratio'],
+                        layer_type='SUBSIDIARY'  # Explicitly set the layer_type
                     )
                     # Set the creator to the Baker Tilly admin
                     subsidiary.created_by_admin = request.user
@@ -186,7 +187,8 @@ class ClientStructureView(APIView):
                         company_name=request.data['company_name'],
                         company_industry=request.data['industry'],
                         company_location=request.data.get('location', ''),
-                        shareholding_ratio=request.data['shareholding_ratio']
+                        shareholding_ratio=request.data['shareholding_ratio'],
+                        layer_type='BRANCH'  # Explicitly set the layer_type
                     )
                     # Set the creator to the Baker Tilly admin
                     branch.created_by_admin = request.user
