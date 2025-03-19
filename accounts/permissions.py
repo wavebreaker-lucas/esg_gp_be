@@ -50,7 +50,7 @@ class BakerTillyAdmin(BasePermission):
             return True
             
         # Allow access to Template objects
-        if obj.__class__.__name__ == 'Template':
+        if obj.__class__.__name__ in ['Template', 'ESGForm', 'ESGFormCategory', 'ESGMetric']:
             return True
             
         return False
