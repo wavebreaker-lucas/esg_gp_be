@@ -173,6 +173,21 @@ class ClientStructureView(APIView):
                     subsidiary.created_by_admin = request.user
                     subsidiary.save()
                     
+                    # Find the creator user of the parent group 
+                    creator_user = AppUser.objects.filter(
+                        layer=group,
+                        user__role=RoleChoices.CREATOR
+                    ).first()
+                    
+                    if creator_user:
+                        # Create an AppUser for the creator in this layer
+                        AppUser.objects.create(
+                            user=creator_user.user,
+                            name=creator_user.name,
+                            layer=subsidiary,
+                            title=creator_user.title or "Administrator"
+                        )
+                    
                     return Response({
                         'message': 'Subsidiary added successfully',
                         'subsidiary_id': subsidiary.id
@@ -193,6 +208,28 @@ class ClientStructureView(APIView):
                     # Set the creator to the Baker Tilly admin
                     branch.created_by_admin = request.user
                     branch.save()
+                    
+                    # Find the creator user of the parent subsidiary
+                    creator_user = AppUser.objects.filter(
+                        layer=subsidiary,
+                        user__role=RoleChoices.CREATOR
+                    ).first()
+                    
+                    # If no creator found in subsidiary, look in the group
+                    if not creator_user:
+                        creator_user = AppUser.objects.filter(
+                            layer=subsidiary.group_layer,
+                            user__role=RoleChoices.CREATOR
+                        ).first()
+                    
+                    if creator_user:
+                        # Create an AppUser for the creator in this layer
+                        AppUser.objects.create(
+                            user=creator_user.user,
+                            name=creator_user.name,
+                            layer=branch,
+                            title=creator_user.title or "Administrator"
+                        )
                     
                     return Response({
                         'message': 'Branch added successfully',
