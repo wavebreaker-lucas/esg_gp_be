@@ -6,6 +6,7 @@ from django.db.models import Count, Sum
 from ..permissions import BakerTillyAdmin
 from ..models import CustomUser, AppUser, GroupLayer, SubsidiaryLayer, BranchLayer, RoleChoices
 from ..serializers.models import GroupLayerSerializer, AppUserSerializer, SubsidiaryLayerSerializer, BranchLayerSerializer
+from ..services import send_email_to_user
 
 class ClientSetupView(APIView):
     """
@@ -33,10 +34,13 @@ class ClientSetupView(APIView):
                 group.created_by_admin = request.user
                 group.save()
                 
-                # 2. Create initial admin user
+                # 2. Create initial admin user with a random password
+                admin_email = request.data['admin_email']
+                admin_password = CustomUser.objects.make_random_password()
+                
                 admin_user = CustomUser.objects.create_user(
-                    email=request.data['admin_email'],
-                    password=request.data['admin_password'],
+                    email=admin_email,
+                    password=admin_password,
                     role=RoleChoices.CREATOR,
                     must_change_password=True  # Force password change on first login
                 )
@@ -49,8 +53,20 @@ class ClientSetupView(APIView):
                     title=request.data.get('admin_title', 'ESG Administrator')
                 )
                 
+                # 4. Send email with login credentials
+                email_sent = send_email_to_user(admin_email, admin_password)
+                
+                if not email_sent:
+                    # If email fails, include the password in the response
+                    return Response({
+                        'message': 'Client setup complete but email delivery failed. Please provide this password to the user manually.',
+                        'group': GroupLayerSerializer(group).data,
+                        'admin_user': AppUserSerializer(app_user).data,
+                        'admin_password': admin_password
+                    }, status=status.HTTP_201_CREATED)
+                
                 return Response({
-                    'message': 'Client setup complete',
+                    'message': 'Client setup complete. Login credentials have been emailed to the user.',
                     'group': GroupLayerSerializer(group).data,
                     'admin_user': AppUserSerializer(app_user).data
                 }, status=status.HTTP_201_CREATED)
@@ -73,10 +89,13 @@ class ClientUserManagementView(APIView):
             with transaction.atomic():
                 group = GroupLayer.objects.get(id=group_id)
                 
-                # Create user account
+                # Create user account with a random password
+                email = request.data['email']
+                user_password = CustomUser.objects.make_random_password()
+                
                 user = CustomUser.objects.create_user(
-                    email=request.data['email'],
-                    password=request.data['password'],
+                    email=email,
+                    password=user_password,
                     role=request.data['role'],
                     must_change_password=True
                 )
@@ -89,8 +108,19 @@ class ClientUserManagementView(APIView):
                     title=request.data['title']
                 )
                 
+                # Send email with login credentials
+                email_sent = send_email_to_user(email, user_password)
+                
+                if not email_sent:
+                    # If email fails, include the password in the response
+                    return Response({
+                        'message': 'User added successfully but email delivery failed. Please provide this password to the user manually.',
+                        'user': AppUserSerializer(app_user).data,
+                        'user_password': user_password
+                    }, status=status.HTTP_201_CREATED)
+                
                 return Response({
-                    'message': 'User added successfully',
+                    'message': 'User added successfully. Login credentials have been emailed to the user.',
                     'user': AppUserSerializer(app_user).data
                 }, status=status.HTTP_201_CREATED)
                 

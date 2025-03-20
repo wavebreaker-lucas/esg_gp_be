@@ -15,6 +15,152 @@ This document outlines the authentication system for the ESG Platform, including
 | `/api/reset-password/<reset_token>/` | POST | Reset password using token (forgotten password) | No |
 | `/api/change-password/` | POST | Change password when user knows current password | Yes |
 
+## User Creation and Account Setup
+
+When new users are created in the system, either as initial admin users for a new client or as additional users for an existing client, the system automatically:
+
+1. Generates a secure random password
+2. Emails the login credentials to the user's email address
+3. Sets the `must_change_password` flag to `true`
+
+This automated email-based approach provides several benefits:
+- Enhanced security through system-generated strong passwords
+- Improved user experience with immediate credential delivery
+- Reduced administrative overhead for user setup
+
+### API Endpoints for User Creation
+
+#### Create Client Setup (Initial Client and Admin User)
+
+**Endpoint:** `/api/clients/setup/`  
+**Method:** POST  
+**Authentication:** Required (Baker Tilly Admin)
+
+##### Request
+```json
+{
+  "company_name": "Example Corp",
+  "industry": "Manufacturing",
+  "location": "Singapore",
+  "admin_email": "admin@example.com",
+  "admin_name": "John Smith",
+  "admin_title": "ESG Administrator"
+}
+```
+Note: The admin password is now automatically generated and emailed to the user.
+
+##### Successful Response
+```json
+{
+  "message": "Client setup complete. Login credentials have been emailed to the user.",
+  "group": {
+    "id": 1,
+    "company_name": "Example Corp",
+    "company_industry": "Manufacturing",
+    "company_location": "Singapore",
+    "layer_type": "GROUP",
+    "shareholding_ratio": 100.00
+  },
+  "admin_user": {
+    "id": 1,
+    "name": "John Smith",
+    "title": "ESG Administrator",
+    "user": {
+      "id": 1,
+      "email": "admin@example.com",
+      "role": "CREATOR"
+    }
+  }
+}
+```
+
+##### Response when Email Delivery Fails
+```json
+{
+  "message": "Client setup complete but email delivery failed. Please provide this password to the user manually.",
+  "group": {
+    "id": 1,
+    "company_name": "Example Corp",
+    "company_industry": "Manufacturing",
+    "company_location": "Singapore",
+    "layer_type": "GROUP",
+    "shareholding_ratio": 100.00
+  },
+  "admin_user": {
+    "id": 1,
+    "name": "John Smith",
+    "title": "ESG Administrator",
+    "user": {
+      "id": 1,
+      "email": "admin@example.com",
+      "role": "CREATOR"
+    }
+  },
+  "admin_password": "generated_random_password"
+}
+```
+
+#### Add User to Client
+
+**Endpoint:** `/api/clients/<group_id>/users/`  
+**Method:** POST  
+**Authentication:** Required (Baker Tilly Admin)
+
+##### Request
+```json
+{
+  "email": "user@example.com",
+  "name": "Jane Doe",
+  "title": "ESG Manager",
+  "role": "MANAGEMENT"
+}
+```
+Note: The user password is now automatically generated and emailed to the user.
+
+##### Successful Response
+```json
+{
+  "message": "User added successfully. Login credentials have been emailed to the user.",
+  "user": {
+    "id": 2,
+    "name": "Jane Doe",
+    "title": "ESG Manager",
+    "user": {
+      "id": 2,
+      "email": "user@example.com",
+      "role": "MANAGEMENT"
+    }
+  }
+}
+```
+
+##### Response when Email Delivery Fails
+```json
+{
+  "message": "User added successfully but email delivery failed. Please provide this password to the user manually.",
+  "user": {
+    "id": 2,
+    "name": "Jane Doe",
+    "title": "ESG Manager",
+    "user": {
+      "id": 2,
+      "email": "user@example.com",
+      "role": "MANAGEMENT"
+    }
+  },
+  "user_password": "generated_random_password"
+}
+```
+
+### Email Delivery
+
+Credentials are sent using Azure Communication Services email, providing reliable delivery and monitoring capabilities. The email includes:
+- The user's email address (username)
+- The generated password
+- Instructions to change the password upon first login
+
+If email delivery fails for any reason, the system includes the generated password in the API response to administrators, ensuring credentials can still be securely provided to users through alternative channels.
+
 ## Login Flow
 
 1. User submits email and password to `/api/login/`
