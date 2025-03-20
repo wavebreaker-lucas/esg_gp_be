@@ -42,7 +42,8 @@ class ClientSetupView(APIView):
                     email=admin_email,
                     password=admin_password,
                     role=RoleChoices.CREATOR,
-                    must_change_password=True  # Force password change on first login
+                    must_change_password=True,  # Force password change on first login
+                    is_active=True  # Explicitly set user as active
                 )
                 
                 # 3. Link user to company
@@ -97,7 +98,8 @@ class ClientUserManagementView(APIView):
                     email=email,
                     password=user_password,
                     role=request.data['role'],
-                    must_change_password=True
+                    must_change_password=True,
+                    is_active=True  # Explicitly set user as active
                 )
                 
                 # Create app user profile
