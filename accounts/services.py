@@ -91,17 +91,25 @@ def send_email_to_user(email, password):
     )
 
     try:
+        print(f"Attempting to send email to {email}")
+        print(f"Using sender: {settings.DEFAULT_FROM_EMAIL}")
+        print(f"Backend: {settings.EMAIL_BACKEND}")
+        
         email_message = EmailMessage(
             subject,
             message,
             settings.DEFAULT_FROM_EMAIL,
             [email],
         )
-        email_message.send(fail_silently=False)
+        result = email_message.send(fail_silently=False)
+        print(f"Email send result: {result}")
         return True
     except Exception as e:
-        # Log the exception (you can use your logger here)
+        # Log the exception with more details
+        import traceback
         print(f"Error sending email: {str(e)}")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Traceback: {traceback.format_exc()}")
         return False
 
 def send_otp_via_email(email, otp_code):
@@ -111,13 +119,27 @@ def send_otp_via_email(email, otp_code):
     from_email = settings.DEFAULT_FROM_EMAIL
     recipient_list = [email]
 
-    send_mail(
-        subject,
-        message,
-        from_email,
-        recipient_list,
-        fail_silently=False,
-    )
+    try:
+        print(f"Attempting to send OTP email to {email}")
+        print(f"Using sender: {from_email}")
+        print(f"Backend: {settings.EMAIL_BACKEND}")
+        
+        result = send_mail(
+            subject,
+            message,
+            from_email,
+            recipient_list,
+            fail_silently=False,
+        )
+        print(f"OTP email send result: {result}")
+        return True
+    except Exception as e:
+        # Log the exception with more details
+        import traceback
+        print(f"Error sending OTP email: {str(e)}")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise  # Re-raise the exception to maintain original behavior
 
 def has_layer_access(user, layer):
     """

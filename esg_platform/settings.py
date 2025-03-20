@@ -209,6 +209,7 @@ SIMPLE_JWT = {
 # Frontend URL for password reset
 FRONTEND_URL = 'http://localhost:3000'  # Change this to your frontend URL
 
-# Email settings for development
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-DEFAULT_FROM_EMAIL = 'noreply@esgplatform.com'  # Add default sender email
+# Email settings - Updated to use Azure Communication Email
+EMAIL_BACKEND = 'django_azure_communication_email.EmailBackend'
+AZURE_COMMUNICATION_CONNECTION_STRING = 'endpoint=https://esgotp.asiapacific.communication.azure.com/;accesskey=EZkBy2hkjYx7upQGPE9heB0T1vGCx35qp2q02IBHaNwPyHuy6BLAJQQJ99BCACULyCps8SuqAAAAAZCSr13m'
+DEFAULT_FROM_EMAIL = 'DoNotReply@f6bfdda3-56dc-4725-9b46-46a3fd1a87a6.azurecomm.net'
