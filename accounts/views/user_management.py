@@ -12,7 +12,7 @@ import json
 import csv
 import io
 
-from ..models import AppUser, LayerProfile, CustomUser, CSVTemplate, RoleChoices
+from ..models import AppUser, LayerProfile, CustomUser, CSVTemplate, RoleChoices, GroupLayer, BranchLayer
 from ..serializers import AppUserSerializer
 from ..services import send_email_to_user, generate_otp_code, send_otp_via_email
 from ..permissions import CanManageAppUsers
@@ -302,6 +302,8 @@ class AppUserViewSet(ModelViewSet, CSVExportMixin, ErrorHandlingMixin):
     def get_user_table(self, request):
         """
         Get a table of users with their layer information.
+        Users can only see other users within their group hierarchy.
+        
         Query parameters:
         - group_id: Optional. Filter users by group layer (includes users in subsidiaries and branches under this group)
         - subsidiary_id: Optional. Filter users by subsidiary layer (includes users in branches under this subsidiary)
@@ -315,47 +317,79 @@ class AppUserViewSet(ModelViewSet, CSVExportMixin, ErrorHandlingMixin):
             branch_id = request.query_params.get('branch_id')
             role = request.query_params.get('role')
 
-            # Start with all users the requester has access to
-            users = AppUser.objects.select_related(
-                'user',
-                'layer'
-            ).prefetch_related(
-                'layer__grouplayer',
-                'layer__subsidiarylayer',
-                'layer__branchlayer'
-            )
-
-            # Apply filters - hierarchical approach
-            if group_id:
-                # Get all users in the group and its subsidiaries and branches
-                group_users = users.filter(layer__grouplayer__id=group_id)
+            # Determine user's groups (a user might be in multiple groups via different AppUsers)
+            user_groups = set()
+            
+            # First, handle Baker Tilly admins who can see all groups
+            if request.user.is_baker_tilly_admin or request.user.is_superuser:
+                # If a specific group is requested, filter by that group
+                if group_id:
+                    user_groups.add(int(group_id))
+                else:
+                    # Otherwise, include all groups
+                    user_groups = set(GroupLayer.objects.values_list('id', flat=True))
+            else:
+                # Regular users can only see their own group(s)
+                for app_user in request.user.app_users.select_related('layer').all():
+                    # Get the group ID depending on layer type
+                    if app_user.layer.layer_type == 'GROUP':
+                        user_groups.add(app_user.layer.grouplayer.id)
+                    elif app_user.layer.layer_type == 'SUBSIDIARY':
+                        user_groups.add(app_user.layer.subsidiarylayer.group_layer_id)
+                    elif app_user.layer.layer_type == 'BRANCH':
+                        user_groups.add(app_user.layer.branchlayer.subsidiary_layer.group_layer_id)
+                
+                # If group_id is specified, make sure it's one the user has access to
+                if group_id and int(group_id) in user_groups:
+                    user_groups = {int(group_id)}
+            
+            # If user has no groups or requested a group they don't have access to
+            if not user_groups:
+                return Response({'users': [], 'total': 0})
+            
+            # Build query for users in accessible groups
+            users = []
+            for group_id in user_groups:
+                # Get the group
+                group = GroupLayer.objects.get(id=group_id)
+                
+                # Get all users in the group
+                group_users = AppUser.objects.filter(layer=group)
                 
                 # Get subsidiary layers under this group
-                subsidiary_layers = LayerProfile.objects.filter(subsidiarylayer__group_layer_id=group_id)
-                subsidiary_users = users.filter(layer_id__in=subsidiary_layers)
+                subsidiary_layers = group.subsidiarylayer_set.all()
+                subsidiary_ids = subsidiary_layers.values_list('id', flat=True)
                 
-                # Get branch layers under subsidiaries of this group
-                branch_layers = LayerProfile.objects.filter(branchlayer__subsidiary_layer__group_layer_id=group_id)
-                branch_users = users.filter(layer_id__in=branch_layers)
+                # Filter by subsidiary if requested
+                if subsidiary_id:
+                    subsidiary_layers = subsidiary_layers.filter(id=subsidiary_id)
+                    subsidiary_ids = subsidiary_layers.values_list('id', flat=True)
+                
+                # Get users in subsidiaries
+                subsidiary_users = AppUser.objects.filter(layer_id__in=subsidiary_ids)
+                
+                # Get branch layers under these subsidiaries
+                branch_layers = BranchLayer.objects.filter(subsidiary_layer_id__in=subsidiary_ids)
+                
+                # Filter by branch if requested
+                if branch_id:
+                    branch_layers = branch_layers.filter(id=branch_id)
+                
+                # Get users in branches
+                branch_users = AppUser.objects.filter(layer_id__in=branch_layers.values_list('id', flat=True))
                 
                 # Combine all users
-                users = group_users | subsidiary_users | branch_users
-            elif subsidiary_id:
-                # Get all users in the subsidiary and its branches
-                subsidiary_users = users.filter(layer__subsidiarylayer__id=subsidiary_id)
+                all_users = group_users | subsidiary_users | branch_users
                 
-                # Get branch layers under this subsidiary
-                branch_layers = LayerProfile.objects.filter(branchlayer__subsidiary_layer_id=subsidiary_id)
-                branch_users = users.filter(layer_id__in=branch_layers)
+                # Filter by role if specified
+                if role:
+                    all_users = all_users.filter(user__role=role.upper())
                 
-                # Combine all users
-                users = subsidiary_users | branch_users
-            elif branch_id:
-                users = users.filter(layer__branchlayer__id=branch_id)
-
-            if role:
-                users = users.filter(user__role=role.upper())
-
+                # Add to our list
+                users.extend(all_users.select_related('user', 'layer').prefetch_related(
+                    'layer__grouplayer', 'layer__subsidiarylayer', 'layer__branchlayer'
+                ))
+            
             # Prepare response data
             user_table = []
             for app_user in users:
