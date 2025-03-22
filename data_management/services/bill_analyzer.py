@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class UtilityBillAnalyzer:
     """
     A service to analyze utility bills using Azure Content Understanding API.
-    Uses the multi-period analyzer to extract consumption data from bills across multiple periods.
+    Uses custom analyzers for different metrics to extract consumption data.
     """
     
     def __init__(self, endpoint, api_version, subscription_key):
@@ -30,7 +30,7 @@ class UtilityBillAnalyzer:
         self.endpoint = endpoint
         self.api_version = api_version
         self.subscription_key = subscription_key
-        self.analyzer_id = "multi-period-analyzer"  # Using multi-period analyzer
+        self.default_analyzer_id = "multi-period-analyzer"  # Default fallback analyzer
         
     def process_evidence(self, evidence_id):
         """
@@ -60,7 +60,7 @@ class UtilityBillAnalyzer:
             metric = evidence.submission.metric
             
             # Use the custom analyzer ID if available, otherwise use the default
-            analyzer_id = metric.ocr_analyzer_id if metric.ocr_analyzer_id else self.analyzer_id
+            analyzer_id = metric.ocr_analyzer_id if metric.ocr_analyzer_id else self.default_analyzer_id
             
             # Create Azure Content Understanding client
             client = AzureContentUnderstandingClient(
@@ -107,17 +107,14 @@ class UtilityBillAnalyzer:
                 evidence.ocr_data = result
                 evidence.ocr_processed = True
                 
-                # Determine the bill type based on the metric
-                bill_type = self._determine_bill_type(metric)
-                
-                # Extract consumption data
-                extracted_data = self._extract_bill_data(fields, bill_type)
+                # Extract consumption data - simplified now that we use custom analyzers
+                extracted_data = self._extract_data_from_analyzer(fields)
                 
                 if not extracted_data:
                     evidence.save()
                     return {
                         "status": "error",
-                        "message": "Could not extract relevant data from bill"
+                        "message": "Could not extract relevant data from document"
                     }
                 
                 # Update the evidence record with extracted data
@@ -174,85 +171,39 @@ class UtilityBillAnalyzer:
                 "message": f"Error processing evidence: {str(e)}"
             }
     
-    def _determine_bill_type(self, metric):
-        """
-        Determine the bill type based on the metric name.
-        
-        Args:
-            metric: ESGMetric object
-            
-        Returns:
-            str: Bill type ('ELECTRICITY', 'WATER', 'GAS', or 'UNKNOWN')
-        """
-        metric_name = metric.name.lower()
-        
-        if 'electricity' in metric_name:
-            return 'ELECTRICITY'
-        elif 'water' in metric_name:
-            return 'WATER'
-        elif 'gas' in metric_name:
-            return 'GAS'
-        else:
-            return 'UNKNOWN'
-    
-    def _extract_bill_data(self, fields, bill_type):
+    def _extract_data_from_analyzer(self, fields):
         """
         Extract relevant data from the Content Understanding API fields.
+        This is a simplified version that works with any analyzer output.
         
         Args:
             fields: Fields from Content Understanding API result
-            bill_type: Type of utility bill
             
         Returns:
             dict: Extracted data including value and period(s)
         """
         result = {
-            'bill_type': bill_type,
             'periods': []
         }
         
-        # Extract single period data (fallback)
-        if bill_type == 'ELECTRICITY':
-            consumption = fields.get("ElectricityConsumption", {}).get("valueNumber")
-            if consumption is not None:
-                result['value'] = float(consumption)
-            
-            billing_period = fields.get("BillingPeriod", {}).get("valueString")
-            if billing_period:
-                result['period_str'] = billing_period
-                # Try to convert to date
-                try:
-                    result['period'] = self._parse_date(billing_period)
-                except ValueError:
-                    pass
+        # Try standard field names first
+        # Look for consumption values in various formats
+        for consumption_field in ["Consumption", "ElectricityConsumption", "WaterConsumption", "GasConsumption"]:
+            if consumption_field in fields and "valueNumber" in fields[consumption_field]:
+                result['value'] = float(fields[consumption_field]["valueNumber"])
+                break
         
-        elif bill_type == 'WATER':
-            consumption = fields.get("WaterConsumption", {}).get("valueNumber")
-            if consumption is not None:
-                result['value'] = float(consumption)
-            
-            billing_period = fields.get("BillingPeriod", {}).get("valueString")
-            if billing_period:
-                result['period_str'] = billing_period
+        # Look for billing period in various formats
+        for period_field in ["BillingPeriod", "Period", "BillingDate"]:
+            if period_field in fields and "valueString" in fields[period_field]:
+                period_str = fields[period_field]["valueString"]
+                result['period_str'] = period_str
                 # Try to convert to date
                 try:
-                    result['period'] = self._parse_date(billing_period)
+                    result['period'] = self._parse_date(period_str)
                 except ValueError:
                     pass
-        
-        elif bill_type == 'GAS':
-            consumption = fields.get("GasConsumption", {}).get("valueNumber")
-            if consumption is not None:
-                result['value'] = float(consumption)
-            
-            billing_period = fields.get("BillingPeriod", {}).get("valueString")
-            if billing_period:
-                result['period_str'] = billing_period
-                # Try to convert to date
-                try:
-                    result['period'] = self._parse_date(billing_period)
-                except ValueError:
-                    pass
+                break
                     
         # Try to extract multiple billing periods
         if "MultipleBillingPeriods" in fields and "valueString" in fields["MultipleBillingPeriods"]:
@@ -265,16 +216,28 @@ class UtilityBillAnalyzer:
                     standardized_data = []
                     for period in multiple_periods:
                         if isinstance(period, dict):
-                            # Get period value
-                            period_value = period.get("period", period.get("請表日期", "Unknown"))
+                            # Try different key names for period and consumption
+                            period_value = None
+                            for key in ["period", "請表日期", "billingPeriod", "date"]:
+                                if key in period:
+                                    period_value = period[key]
+                                    break
+                            
+                            if not period_value:
+                                continue
                             
                             # Convert to MM/YYYY format
                             formatted_period = self._convert_to_month_year_format(period_value)
                             
-                            # Get consumption value
-                            consumption_value = self._parse_consumption(
-                                period.get("consumption", period.get("用電度數", "0"))
-                            )
+                            # Try different key names for consumption
+                            consumption_value = None
+                            for key in ["consumption", "用電度數", "value", "amount"]:
+                                if key in period:
+                                    consumption_value = self._parse_consumption(period[key])
+                                    break
+                            
+                            if consumption_value is None:
+                                continue
                             
                             # Create standardized period object
                             standardized_period = {
