@@ -199,6 +199,16 @@ class ESGMetricEvidence(models.Model):
     uploaded_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     description = models.TextField(blank=True)
+    
+    # OCR-related fields
+    is_utility_bill = models.BooleanField(default=False, help_text="Whether this evidence is a utility bill for OCR processing")
+    ocr_processed = models.BooleanField(default=False, help_text="Whether OCR processing has been attempted")
+    extracted_value = models.FloatField(null=True, blank=True, help_text="Value extracted by OCR")
+    extracted_period = models.DateField(null=True, blank=True, help_text="Reporting period extracted by OCR")
+    ocr_data = models.JSONField(null=True, blank=True, help_text="Raw data extracted by OCR")
+    was_manually_edited = models.BooleanField(default=False, help_text="Whether the OCR result was manually edited")
+    edited_at = models.DateTimeField(null=True, blank=True, help_text="When the OCR result was edited")
+    edited_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='edited_evidence', help_text="Who edited the OCR result")
 
     def __str__(self):
         return f"Evidence for {self.submission.metric.name}" 
