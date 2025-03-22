@@ -87,6 +87,12 @@ class ESGMetric(models.Model):
         blank=True,
         help_text="Required frequency of reporting for time-based metrics"
     )
+    ocr_analyzer_id = models.CharField(
+        max_length=100, 
+        blank=True, 
+        null=True,
+        help_text="Custom analyzer ID for OCR processing of this metric's evidence"
+    )
 
     class Meta:
         ordering = ['form', 'order']

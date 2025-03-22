@@ -56,6 +56,12 @@ class UtilityBillAnalyzer:
             # Get the file path
             file_path = evidence.file.path
             
+            # Get the metric and determine the analyzer to use
+            metric = evidence.submission.metric
+            
+            # Use the custom analyzer ID if available, otherwise use the default
+            analyzer_id = metric.ocr_analyzer_id if metric.ocr_analyzer_id else self.analyzer_id
+            
             # Create Azure Content Understanding client
             client = AzureContentUnderstandingClient(
                 self.endpoint,
@@ -63,9 +69,10 @@ class UtilityBillAnalyzer:
                 subscription_key=self.subscription_key
             )
             
-            # Begin analysis
+            # Begin analysis with the appropriate analyzer
             try:
-                response = client.begin_analyze(self.analyzer_id, file_path)
+                logger.info(f"Using analyzer ID: {analyzer_id} for metric: {metric.name}")
+                response = client.begin_analyze(analyzer_id, file_path)
                 logger.info(f"Analysis started for evidence {evidence_id}, operation URL: {response.headers.get('operation-location')}")
                 
                 # Poll until completion
@@ -101,7 +108,6 @@ class UtilityBillAnalyzer:
                 evidence.ocr_processed = True
                 
                 # Determine the bill type based on the metric
-                metric = evidence.submission.metric
                 bill_type = self._determine_bill_type(metric)
                 
                 # Extract consumption data
