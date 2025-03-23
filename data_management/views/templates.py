@@ -717,10 +717,15 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         self._check_form_completion(submission)
         return submission
 
-    def _check_form_completion(self, submission):
+    def _check_form_completion(self, submission_or_assignment):
         """Check if a form is complete after a submission is added or updated"""
         # Get the template assignment
-        assignment = submission.assignment
+        if hasattr(submission_or_assignment, 'assignment'):
+            # If we were passed a submission
+            assignment = submission_or_assignment.assignment
+        else:
+            # If we were passed an assignment directly
+            assignment = submission_or_assignment
         
         # Get all metrics for the forms in this template
         metrics = ESGMetric.objects.filter(
