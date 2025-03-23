@@ -9,6 +9,7 @@ from ...models.templates import ESGMetricEvidence, ESGMetricSubmission, ESGMetri
 from ...serializers.esg import ESGMetricEvidenceSerializer
 from ...services.bill_analyzer import UtilityBillAnalyzer
 from accounts.permissions import BakerTillyAdmin
+from accounts.models import LayerProfile
 
 
 class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
@@ -30,9 +31,10 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             return queryset
         
         # Other users can only see their own evidence or evidence for their group's submissions
+        user_layers = LayerProfile.objects.filter(app_users__user=user)
         return queryset.filter(
             models.Q(uploaded_by=user) | 
-            models.Q(submission__assignment__layer__in=user.layers.all())
+            models.Q(submission__assignment__layer__in=user_layers)
         )
 
     def create(self, request, *args, **kwargs):
@@ -125,7 +127,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         if not (request.user.is_staff or request.user.is_superuser or 
                 request.user.is_baker_tilly_admin or 
                 request.user == submission.submitted_by or
-                request.user.layers.filter(id=submission.assignment.layer.id).exists()):
+                LayerProfile.objects.filter(id=submission.assignment.layer.id, app_users__user=request.user).exists()):
             return Response({'error': 'You do not have permission to view this submission'}, status=403)
         
         # Get evidence for this submission
@@ -212,7 +214,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             if not (request.user.is_staff or request.user.is_superuser or 
                     request.user.is_baker_tilly_admin or 
                     request.user == submission.submitted_by or
-                    request.user.layers.filter(id=submission.assignment.layer.id).exists()):
+                    LayerProfile.objects.filter(id=submission.assignment.layer.id, app_users__user=request.user).exists()):
                 return Response({'error': 'You do not have permission to modify this submission'}, status=403)
                 
         except ESGMetricSubmission.DoesNotExist:
@@ -277,6 +279,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Metric not found'}, status=404)
         
         # Find evidence for this metric (both directly attached and standalone with intended_metric_id)
+        user_layers = LayerProfile.objects.filter(app_users__user=request.user)
         evidence = ESGMetricEvidence.objects.filter(
             models.Q(submission__metric=metric) |
             models.Q(
@@ -285,7 +288,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             )
         ).filter(
             models.Q(uploaded_by=request.user) | 
-            models.Q(submission__assignment__layer__in=request.user.layers.all())
+            models.Q(submission__assignment__layer__in=user_layers)
         )
         
         serializer = self.get_serializer(evidence, many=True)
