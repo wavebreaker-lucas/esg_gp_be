@@ -33,7 +33,7 @@ def attach_evidence_to_submissions(submissions, user):
         evidence_files = ESGMetricEvidence.objects.filter(
             submission__isnull=True,
             uploaded_by=user,
-            intended_metric_id=metric_id
+            intended_metric__id=metric_id
         )
         
         for evidence in evidence_files:

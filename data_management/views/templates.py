@@ -723,9 +723,11 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         if hasattr(submission_or_assignment, 'assignment'):
             # If we were passed a submission
             assignment = submission_or_assignment.assignment
+            submitter = submission_or_assignment.submitted_by
         else:
             # If we were passed an assignment directly
             assignment = submission_or_assignment
+            submitter = None  # We don't know who to attribute the completion to
         
         # Get all metrics for the forms in this template
         metrics = ESGMetric.objects.filter(
@@ -776,7 +778,16 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 if form_metrics_submitted and not form_selection.is_completed:
                     form_selection.is_completed = True
                     form_selection.completed_at = timezone.now()
-                    form_selection.completed_by = submission.submitted_by
+                    # If we have a submitter, use that, otherwise try to find a recent submitter
+                    if submitter:
+                        form_selection.completed_by = submitter
+                    else:
+                        # Try to get the most recent submitter for a metric in this form
+                        recent_submission = submissions.filter(
+                            metric__form=form_selection.form
+                        ).order_by('-submitted_at').first()
+                        if recent_submission:
+                            form_selection.completed_by = recent_submission.submitted_by
                     form_selection.save()
 
     def perform_destroy(self, instance):
