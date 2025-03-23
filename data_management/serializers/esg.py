@@ -220,4 +220,20 @@ class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
                 except ESGMetricSubmission.DoesNotExist:
                     pass
         
+        return data
+
+class ESGMetricSubmissionVerifySerializer(serializers.Serializer):
+    """Serializer for verifying ESG metric submissions"""
+    verification_notes = serializers.CharField(required=False, allow_blank=True)
+    
+    def validate(self, data):
+        """Ensure the user has permission to verify submissions"""
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user'):
+            raise serializers.ValidationError("Authentication required")
+            
+        user = request.user
+        if not (user.is_staff or user.is_superuser or user.is_baker_tilly_admin):
+            raise serializers.ValidationError("Only Baker Tilly admins can verify submissions")
+            
         return data 

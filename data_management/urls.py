@@ -1,27 +1,20 @@
+from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from django.urls import path
-from .views.templates import (
-    ESGFormViewSet, ESGFormCategoryViewSet,
-    TemplateViewSet, TemplateAssignmentView, UserTemplateAssignmentView,
-    ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, ESGMetricViewSet
-)
+from . import views
+from .views import modules  # Import our newly modularized views
 
-# Create a router for ViewSets
 router = DefaultRouter()
+router.register(r'forms', views.ESGFormViewSet, 'esgform')
+router.register(r'form-categories', views.ESGFormCategoryViewSet, 'esgformcategory')
+router.register(r'metrics', views.ESGMetricViewSet, 'esgmetric')
+router.register(r'templates', views.TemplateViewSet, 'template')
+router.register(r'metric-submissions', views.ESGMetricSubmissionViewSet, 'esgmetricsubmission')
+router.register(r'metric-evidence', views.ESGMetricEvidenceViewSet, 'esgmetricevidence')
 
-# Register ViewSets with the router
-router.register(r'esg-forms', ESGFormViewSet, basename='esg-form')
-router.register(r'esg-categories', ESGFormCategoryViewSet, basename='esg-category')
-router.register(r'templates', TemplateViewSet, basename='template')
-router.register(r'metric-submissions', ESGMetricSubmissionViewSet, basename='metric-submission')
-router.register(r'metric-evidence', ESGMetricEvidenceViewSet, basename='metric-evidence')
-router.register(r'esg-metrics', ESGMetricViewSet, basename='esg-metric')
-
-# Export the router's URLs
-urlpatterns = router.urls
-
-# Add non-ViewSet URLs
-urlpatterns += [
-    path('user-templates/', UserTemplateAssignmentView.as_view(), name='user-templates'),
-    path('user-templates/<int:assignment_id>/', UserTemplateAssignmentView.as_view(), name='user-template-detail'),
+urlpatterns = [
+    path('api/', include(router.urls)),
+    # Add non-ViewSet APIs
+    path('api/layer/<int:layer_id>/templates/', views.TemplateAssignmentView.as_view(), name='layer-templates'),
+    path('api/user-templates/', views.UserTemplateAssignmentView.as_view(), name='user-templates'),
+    path('api/user-templates/<int:assignment_id>/', views.UserTemplateAssignmentView.as_view(), name='user-template-detail'),
 ] 

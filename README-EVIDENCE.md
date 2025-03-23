@@ -125,6 +125,25 @@ Evidence attachment happens at two critical points in the workflow:
 
 This approach ensures that evidence is attached at the most logical points in the user workflow, where users are actively working with specific forms or metrics.
 
+#### Implementation Architecture
+
+The evidence attachment functionality has been modularized to improve maintainability:
+
+1. **Dedicated Service Module** - Evidence attachment logic is encapsulated in the `data_management/services/evidence.py` module through the `attach_evidence_to_submissions` function, which:
+   - Takes submissions and user as parameters
+   - Groups submissions by metric
+   - Matches standalone evidence with the appropriate submissions
+   - Returns the count of attached evidence files
+
+2. **Modular ViewSets** - The views have been modularized into smaller, focused components:
+   - `ESGMetricEvidenceViewSet` resides in `data_management/views/modules/evidence.py`
+   - The ViewSet handles all evidence-specific operations like upload, OCR processing, and attachment
+   - This modularization makes the codebase more maintainable and easier to understand
+
+3. **Service Integration** - The evidence attachment service is used by:
+   - The `batch_submit` endpoint in `ESGMetricSubmissionViewSet` when `auto_attach_evidence=true`
+   - The `complete_form` endpoint to attach evidence when a form is completed
+
 ### Frontend Implementation
 
 ```javascript
