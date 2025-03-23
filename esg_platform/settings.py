@@ -172,14 +172,13 @@ USE_AZURE_STORAGE = os.getenv('USE_AZURE_STORAGE', 'False') == 'True'
 
 if USE_AZURE_STORAGE:
     INSTALLED_APPS += ['storages']
-    DEFAULT_FILE_STORAGE = 'storages.backends.azure_storage.AzureStorage'
+    DEFAULT_FILE_STORAGE = 'data_management.services.storage.ESGAzureStorage'
     AZURE_ACCOUNT_NAME = os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore')
     AZURE_ACCOUNT_KEY = os.getenv('AZURE_STORAGE_ACCOUNT_KEY')
     AZURE_CONTAINER = os.getenv('AZURE_STORAGE_CONTAINER', 'esg-evidence')
     AZURE_CUSTOM_DOMAIN = f'{AZURE_ACCOUNT_NAME}.blob.core.windows.net'
     AZURE_LOCATION = 'esg_evidence'
     AZURE_SSL = True
-    MEDIA_URL = f'https://{AZURE_CUSTOM_DOMAIN}/{AZURE_CONTAINER}/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
