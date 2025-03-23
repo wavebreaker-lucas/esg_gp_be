@@ -146,12 +146,8 @@ class UtilityBillAnalyzer:
                         period_str = first_period.get("period")
                         if period_str and "/" in period_str:
                             try:
-                                month, year = period_str.split("/")
-                                # Create date for last day of the month
-                                import calendar
-                                last_day = calendar.monthrange(int(year), int(month))[1]
-                                evidence.extracted_period = datetime(int(year), int(month), last_day).date()
-                            except (ValueError, IndexError):
+                                evidence.extracted_period = self._mm_yyyy_to_date(period_str)
+                            except ValueError:
                                 evidence.extracted_period = datetime.now().date()
                     else:
                         # Use single period data if available
@@ -299,12 +295,8 @@ class UtilityBillAnalyzer:
             formatted = self._convert_to_month_year_format(date_str)
             if formatted and "/" in formatted:
                 try:
-                    month, year = formatted.split("/")
-                    # Create date for last day of the month
-                    import calendar
-                    last_day = calendar.monthrange(int(year), int(month))[1]
-                    return datetime(int(year), int(month), last_day).date()
-                except (ValueError, IndexError):
+                    return self._mm_yyyy_to_date(formatted)
+                except ValueError:
                     pass
             
             # If all else fails, raise
@@ -385,6 +377,31 @@ class UtilityBillAnalyzer:
                 pass
                 
         return 0  # Default if parsing fails
+
+    def _mm_yyyy_to_date(self, period_str):
+        """
+        Convert a MM/YYYY formatted string to a date object representing the last day of that month.
+        
+        Args:
+            period_str: String in MM/YYYY format (e.g. "01/2023")
+            
+        Returns:
+            datetime.date: Date object for the last day of the month
+            
+        Raises:
+            ValueError: If the string cannot be parsed
+        """
+        if period_str and "/" in period_str:
+            try:
+                month, year = period_str.split("/")
+                # Create date for last day of the month
+                import calendar
+                last_day = calendar.monthrange(int(year), int(month))[1]
+                return datetime(int(year), int(month), last_day).date()
+            except (ValueError, IndexError):
+                raise ValueError(f"Could not parse MM/YYYY string: {period_str}")
+        else:
+            raise ValueError(f"String not in MM/YYYY format: {period_str}")
 
 
 class AzureContentUnderstandingClient:
