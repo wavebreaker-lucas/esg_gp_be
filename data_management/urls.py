@@ -1,20 +1,24 @@
-from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from django.urls import path
 from . import views
-from .views import modules  # Import our newly modularized views
 
+# Create a router for ViewSets
 router = DefaultRouter()
-router.register(r'forms', views.ESGFormViewSet, 'esgform')
-router.register(r'form-categories', views.ESGFormCategoryViewSet, 'esgformcategory')
-router.register(r'metrics', views.ESGMetricViewSet, 'esgmetric')
-router.register(r'templates', views.TemplateViewSet, 'template')
-router.register(r'metric-submissions', views.ESGMetricSubmissionViewSet, 'esgmetricsubmission')
-router.register(r'metric-evidence', views.ESGMetricEvidenceViewSet, 'esgmetricevidence')
 
-urlpatterns = [
-    path('api/', include(router.urls)),
-    # Add non-ViewSet APIs
-    path('api/layer/<int:layer_id>/templates/', views.TemplateAssignmentView.as_view(), name='layer-templates'),
-    path('api/user-templates/', views.UserTemplateAssignmentView.as_view(), name='user-templates'),
-    path('api/user-templates/<int:assignment_id>/', views.UserTemplateAssignmentView.as_view(), name='user-template-detail'),
+# Register ViewSets with the router
+router.register(r'esg-forms', views.ESGFormViewSet, basename='esg-form')
+router.register(r'esg-categories', views.ESGFormCategoryViewSet, basename='esg-category')
+router.register(r'templates', views.TemplateViewSet, basename='template')
+router.register(r'metric-submissions', views.ESGMetricSubmissionViewSet, basename='metric-submission')
+router.register(r'metric-evidence', views.ESGMetricEvidenceViewSet, basename='metric-evidence')
+router.register(r'esg-metrics', views.ESGMetricViewSet, basename='esg-metric')
+
+# Export the router's URLs
+urlpatterns = router.urls
+
+# Add non-ViewSet URLs
+urlpatterns += [
+    path('user-templates/', views.UserTemplateAssignmentView.as_view(), name='user-templates'),
+    path('user-templates/<int:assignment_id>/', views.UserTemplateAssignmentView.as_view(), name='user-template-detail'),
+    path('layer/<int:layer_id>/templates/', views.TemplateAssignmentView.as_view(), name='layer-templates'),
 ] 
