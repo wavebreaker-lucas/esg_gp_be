@@ -91,10 +91,34 @@ Evidence files can be stored in two ways:
      - `413 Request Entity Too Large`: File exceeds size limit (default 10MB, configurable in settings)
      - `net::ERR_CONNECTION_RESET`: May indicate network issues or proxy limitations
 
-2. **Get Evidence by Metric**
+2. **Get Evidence by Metric** (Confirmation Endpoint)
    - `GET /api/metric-evidence/by_metric/?metric_id=123`
-   - Returns all evidence files (both standalone and attached) related to a specific metric
-   - Useful for showing available evidence when filling out forms
+   - **Use for user confirmation:** This is the primary endpoint to let users confirm their uploads
+   - Returns all evidence files related to a specific metric:
+     - Files directly uploaded for this metric (standalone)
+     - Files attached to submissions for this metric
+   - Response includes:
+     - File URLs (with SAS tokens if using Azure storage)
+     - Upload dates and times
+     - Filename and description
+     - OCR processing status and results if available
+   - Perfect for showing users the evidence they've just uploaded
+   - Example response:
+     ```json
+     [
+       {
+         "id": 1,
+         "file": "https://storage-url.com/esg-evidence/file1.jpg?token=...",
+         "filename": "file1.jpg",
+         "uploaded_at": "2025-03-24T01:03:25Z",
+         "is_standalone": true,
+         "description": "",
+         "is_processed_by_ocr": false,
+         "uploaded_by": "user@example.com",
+         "metric_id": 123
+       }
+     ]
+     ```
 
 3. **Attach Standalone Evidence to Submission**
    - `POST /api/metric-evidence/{id}/attach_to_submission/`
