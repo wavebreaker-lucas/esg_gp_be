@@ -51,24 +51,24 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'file', 'filename', 'file_type', 
             'uploaded_by', 'uploaded_by_name', 'uploaded_at', 'description',
-            'is_utility_bill', 'ocr_processed', 'extracted_value', 
-            'extracted_period', 'was_manually_edited', 'edited_at', 
-            'edited_by', 'edited_by_name'
+            'enable_ocr_processing', 'is_processed_by_ocr', 'extracted_value', 
+            'period', 'was_manually_edited', 'edited_at', 
+            'edited_by', 'edited_by_name', 'submission'
         ]
         read_only_fields = [
-            'uploaded_by', 'uploaded_at', 'ocr_processed', 
-            'extracted_value', 'extracted_period', 'was_manually_edited',
+            'uploaded_by', 'uploaded_at', 'is_processed_by_ocr', 
+            'extracted_value', 'period', 'was_manually_edited',
             'edited_at', 'edited_by'
         ]
     
     def get_uploaded_by_name(self, obj):
         if obj.uploaded_by:
-            return obj.uploaded_by.get_full_name() or obj.uploaded_by.email
+            return obj.uploaded_by.email
         return None
         
     def get_edited_by_name(self, obj):
         if obj.edited_by:
-            return obj.edited_by.get_full_name() or obj.edited_by.email
+            return obj.edited_by.email
         return None
 
 class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
