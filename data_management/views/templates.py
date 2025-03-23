@@ -650,6 +650,7 @@ class UserTemplateAssignmentView(views.APIView):
                     'due_date': assignment.due_date,
                     'reporting_period_start': assignment.reporting_period_start,
                     'reporting_period_end': assignment.reporting_period_end,
+                    'reporting_year': assignment.reporting_year,
                     'forms': forms_data
                 }
                 

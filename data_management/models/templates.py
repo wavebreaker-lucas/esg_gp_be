@@ -154,6 +154,7 @@ class TemplateAssignment(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     reporting_period_start = models.DateField()
     reporting_period_end = models.DateField()
+    reporting_year = models.PositiveIntegerField(default=2025, help_text="The year this reporting data represents (e.g., 2024)")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
 
     class Meta:
