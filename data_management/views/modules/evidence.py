@@ -107,7 +107,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         # Add OCR processing URL if enabled
         if evidence.enable_ocr_processing:
             response_data['ocr_processing_url'] = request.build_absolute_uri(
-                reverse('esgmetricevidence-process-ocr', args=[evidence.id])
+                reverse('metric-evidence-process-ocr', args=[evidence.id])
             )
         
         return Response(response_data, status=201)
@@ -143,7 +143,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         if evidence.is_processed_by_ocr:
             return Response({'message': 'This file has already been processed with OCR',
                             'ocr_results_url': request.build_absolute_uri(
-                                reverse('esgmetricevidence-ocr-results', args=[evidence.id])
+                                reverse('metric-evidence-ocr-results', args=[evidence.id])
                             )}, status=200)
         
         # Check if OCR is enabled
@@ -164,7 +164,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         return Response({
             'message': 'OCR processing successful',
             'ocr_results_url': request.build_absolute_uri(
-                reverse('esgmetricevidence-ocr-results', args=[evidence.id])
+                reverse('metric-evidence-ocr-results', args=[evidence.id])
             ),
             'extracted_value': evidence.extracted_value,
             'period': evidence.period
