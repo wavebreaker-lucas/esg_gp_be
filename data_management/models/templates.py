@@ -207,7 +207,7 @@ class ESGMetricEvidence(models.Model):
     description = models.TextField(blank=True)
     
     # OCR-related fields
-    is_utility_bill = models.BooleanField(default=False, help_text="Whether this evidence is a utility bill for OCR processing")
+    enable_ocr_processing = models.BooleanField(default=False, help_text="User option to enable OCR data extraction for this evidence file")
     ocr_processed = models.BooleanField(default=False, help_text="Whether OCR processing has been attempted")
     extracted_value = models.FloatField(null=True, blank=True, help_text="Value extracted by OCR")
     extracted_period = models.DateField(null=True, blank=True, help_text="Reporting period extracted by OCR")

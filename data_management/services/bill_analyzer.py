@@ -46,11 +46,11 @@ class UtilityBillAnalyzer:
             # Get the evidence record
             evidence = ESGMetricEvidence.objects.get(id=evidence_id)
             
-            # Check if this is marked as a utility bill
-            if not evidence.is_utility_bill:
+            # Check if OCR processing is enabled for this file
+            if not evidence.enable_ocr_processing:
                 return {
                     "status": "error",
-                    "message": "Evidence is not marked as a utility bill"
+                    "message": "OCR processing is not enabled for this evidence file"
                 }
                 
             # Get the file path

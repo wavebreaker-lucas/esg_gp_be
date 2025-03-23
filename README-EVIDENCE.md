@@ -26,8 +26,8 @@ This allows specific Azure Content Understanding analyzers to be assigned to dif
 The `ESGMetricEvidence` model includes fields for OCR processing:
 
 ```python
-is_utility_bill = models.BooleanField(default=False, 
-    help_text="Whether this evidence is a utility bill for OCR processing")
+enable_ocr_processing = models.BooleanField(default=False, 
+    help_text="User option to enable OCR data extraction for this evidence file")
 ocr_processed = models.BooleanField(default=False, 
     help_text="Whether OCR processing has been attempted")
 extracted_value = models.FloatField(null=True, blank=True, 
@@ -94,7 +94,7 @@ ESGMetric.objects.filter(name__contains="Electricity").update(
 
 ### Processing Flow
 
-1. **Upload**: User uploads a utility bill and marks it as a utility bill
+1. **Upload**: User uploads a file and enables OCR processing
 2. **Processing**: The system processes the file with the appropriate analyzer
 3. **Extraction**: Consumption values and billing periods are extracted
 4. **Application**: The data can be applied to metric submissions
