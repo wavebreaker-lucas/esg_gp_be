@@ -10,6 +10,7 @@ from django.utils import timezone
 from data_management.models import ESGMetricEvidence, ESGMetric
 from typing import Callable, Dict, Any, List
 from tempfile import NamedTemporaryFile
+from copy import deepcopy
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,32 @@ class UtilityBillAnalyzer:
         
         if not all([self.endpoint, self.api_version, self.subscription_key]):
             logger.warning("Azure Content Understanding API credentials not fully configured")
+        
+    def test_process_evidence(self, evidence):
+        """
+        Test OCR processing on an evidence file without saving results to the database.
+        This is useful for development and testing purposes.
+        
+        Args:
+            evidence: An ESGMetricEvidence object to process
+            
+        Returns:
+            tuple: (success: bool, result: dict) where success indicates if OCR processing succeeded
+                  and result contains either the extracted data or an error message
+        """
+        # Create a copy of the evidence object to prevent modifying the original
+        evidence_copy = deepcopy(evidence)
+        
+        # Override the save method to prevent database writes
+        original_save = evidence_copy.save
+        evidence_copy.save = lambda *args, **kwargs: None
+        
+        try:
+            # Run the regular process_evidence method with our no-op save
+            return self.process_evidence(evidence_copy)
+        finally:
+            # Restore the original save method
+            evidence_copy.save = original_save
         
     def process_evidence(self, evidence):
         """
@@ -72,11 +99,24 @@ class UtilityBillAnalyzer:
                     file_path = evidence.file.path
                     logger.info(f"Using local file path: {file_path}")
                 
-                # Get the metric and determine the analyzer to use
-                metric = evidence.submission.metric
+                # Determine analyzer ID
+                analyzer_id = self.default_analyzer_id
                 
-                # Use the custom analyzer ID if available, otherwise use the default
-                analyzer_id = metric.ocr_analyzer_id if metric.ocr_analyzer_id else self.default_analyzer_id
+                # For evidence with a submission, use the metric's analyzer
+                if evidence.submission and evidence.submission.metric and evidence.submission.metric.ocr_analyzer_id:
+                    analyzer_id = evidence.submission.metric.ocr_analyzer_id
+                    logger.info(f"Using metric-specific analyzer: {analyzer_id}")
+                # For standalone evidence, check if metric_id was stored in ocr_data
+                elif evidence.ocr_data and 'intended_metric_id' in evidence.ocr_data:
+                    try:
+                        metric_id = evidence.ocr_data.get('intended_metric_id')
+                        if metric_id:
+                            metric = ESGMetric.objects.get(id=metric_id)
+                            if metric.ocr_analyzer_id:
+                                analyzer_id = metric.ocr_analyzer_id
+                                logger.info(f"Using standalone metric analyzer: {analyzer_id}")
+                    except ESGMetric.DoesNotExist:
+                        logger.warning(f"Intended metric {metric_id} not found, using default analyzer")
                 
                 # Create Azure Content Understanding client
                 client = AzureContentUnderstandingClient(
@@ -87,7 +127,8 @@ class UtilityBillAnalyzer:
                 
                 # Begin analysis with the appropriate analyzer
                 try:
-                    logger.info(f"Using analyzer ID: {analyzer_id} for metric: {metric.name}")
+                    metric_name = evidence.submission.metric.name if evidence.submission else "standalone file"
+                    logger.info(f"Using analyzer ID: {analyzer_id} for: {metric_name}")
                     response = client.begin_analyze(analyzer_id, file_path)
                     logger.info(f"Analysis started for evidence {evidence.id}, operation URL: {response.headers.get('operation-location')}")
                     
@@ -117,7 +158,12 @@ class UtilityBillAnalyzer:
                 try:
                     fields = result["result"]["contents"][0]["fields"]
                     
-                    # Store the complete OCR data
+                    # Store the complete OCR data, but preserve any existing metadata
+                    existing_metadata = evidence.ocr_data or {}
+                    if isinstance(existing_metadata, dict) and 'intended_metric_id' in existing_metadata:
+                        # Keep the intended_metric_id in the result
+                        result['intended_metric_id'] = existing_metadata['intended_metric_id']
+                    
                     evidence.ocr_data = result
                     evidence.is_processed_by_ocr = True
                     

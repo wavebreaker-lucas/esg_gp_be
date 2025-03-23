@@ -22,6 +22,7 @@ from ..serializers.esg import (
 from rest_framework import serializers
 from django.conf import settings
 from ..services.bill_analyzer import UtilityBillAnalyzer
+from django.urls import reverse
 
 class ESGFormViewSet(viewsets.ModelViewSet):
     """
@@ -1421,46 +1422,55 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """
-        Upload an evidence file for an ESG metric submission.
-        This is the standard upload endpoint without OCR processing.
+        Universal upload endpoint for evidence files.
+        Can be used with or without a submission_id.
+        
+        POST parameters:
+        - file: The evidence file to upload (required)
+        - submission_id: (Optional) ID of the submission to attach evidence to
+        - metric_id: (Optional) ID of the metric this evidence relates to
+        - enable_ocr_processing: (Optional) Boolean to enable OCR processing
+        - description: (Optional) Description of the evidence
         """
-        # Get required parameters
+        # Check for file upload
+        if 'file' not in request.FILES:
+            return Response({"error": "No file was uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        uploaded_file = request.FILES['file']
+        
+        # Check if attaching to a submission
         submission_id = request.data.get('submission_id')
-        if not submission_id:
-            return Response(
-                {"error": "submission_id is required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        submission = None
         
-        # Get the uploaded file
-        uploaded_file = request.FILES.get('file')
-        if not uploaded_file:
-            return Response(
-                {"error": "No file provided"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if submission_id:
+            try:
+                submission = ESGMetricSubmission.objects.get(id=submission_id)
+                # Add additional permission checks if needed
+            except ESGMetricSubmission.DoesNotExist:
+                return Response({"error": f"Submission with ID {submission_id} does not exist"}, 
+                               status=status.HTTP_400_BAD_REQUEST)
         
-        # Validate submission exists and user has access
-        try:
-            submission = ESGMetricSubmission.objects.get(id=submission_id)
-            
-            # Check if the user has access to this submission
-            # (Implement your access control logic here)
-            
-        except ESGMetricSubmission.DoesNotExist:
-            return Response(
-                {"error": "Submission not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
+        # Validate metric_id if provided
+        metric_id = request.data.get('metric_id')
+        ocr_data = {}
+        
+        if metric_id:
+            try:
+                metric = ESGMetric.objects.get(id=metric_id)
+                # Store metric_id for standalone uploads
+                if not submission:
+                    ocr_data = {'intended_metric_id': metric_id}
+            except ESGMetric.DoesNotExist:
+                return Response({"error": f"Metric with ID {metric_id} does not exist"}, 
+                               status=status.HTTP_400_BAD_REQUEST)
         
         # Prepare file metadata
         filename = uploaded_file.name
         file_type = filename.split('.')[-1].lower()
-        
-        # Check if OCR processing is requested (optional parameter)
-        enable_ocr_processing = request.data.get('enable_ocr_processing') == 'true'
         
         # Create evidence record
+        enable_ocr = request.data.get('enable_ocr_processing', 'false').lower() == 'true'
+        
         evidence = ESGMetricEvidence.objects.create(
             submission=submission,
             file=uploaded_file,
@@ -1468,75 +1478,104 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             file_type=file_type,
             uploaded_by=request.user,
             description=request.data.get('description', ''),
-            enable_ocr_processing=enable_ocr_processing
+            enable_ocr_processing=enable_ocr,
+            ocr_data=ocr_data
         )
         
-        # Return the evidence info
-        serializer = self.get_serializer(evidence)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-    @action(detail=False, methods=['post'])
-    def upload_with_ocr(self, request):
-        """
-        Upload a file and enable OCR processing in a single step.
-        Convenience endpoint for utility bill uploads that need OCR processing.
-        """
-        # Get required parameters
-        submission_id = request.data.get('submission_id')
-        if not submission_id:
-            return Response(
-                {"error": "submission_id is required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Get the uploaded file
-        uploaded_file = request.FILES.get('file')
-        if not uploaded_file:
-            return Response(
-                {"error": "No file provided"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Validate submission exists and user has access
-        try:
-            submission = ESGMetricSubmission.objects.get(id=submission_id)
-            
-            # Check if the user has access to this submission
-            # (Implement your access control logic here)
-            
-        except ESGMetricSubmission.DoesNotExist:
-            return Response(
-                {"error": "Submission not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # Prepare file metadata
-        filename = uploaded_file.name
-        file_type = filename.split('.')[-1].lower()
-        
-        # Create evidence record with OCR processing enabled
-        evidence = ESGMetricEvidence.objects.create(
-            submission=submission,
-            file=uploaded_file,
-            filename=filename,
-            file_type=file_type,
-            uploaded_by=request.user,
-            description=request.data.get('description', ''),
-            enable_ocr_processing=True
-        )
-        
-        # Return the evidence info with a note about OCR processing
+        # Prepare response
         serializer = self.get_serializer(evidence)
         response_data = serializer.data
-        response_data['ocr_status'] = 'pending'
-        response_data['message'] = 'File uploaded successfully. OCR processing has been enabled.'
         
-        # Include a reference to the process_ocr endpoint for later use
-        response_data['process_ocr_url'] = request.build_absolute_uri(
-            f'/api/metric-evidence/{evidence.id}/process_ocr/'
-        )
+        # Add additional context based on the upload type
+        if not submission:
+            response_data["is_standalone"] = True
+            response_data["message"] = "Evidence file uploaded as standalone file"
+        else:
+            response_data["is_standalone"] = False
+            response_data["message"] = "Evidence file uploaded and attached to submission"
+        
+        # If OCR processing is enabled, provide the URL for processing
+        if enable_ocr:
+            process_ocr_url = reverse('esgmetricevidence-process-ocr', args=[evidence.id])
+            response_data["ocr_processing_url"] = process_ocr_url
         
         return Response(response_data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def attach_to_submission(self, request, pk=None):
+        """
+        Attach a standalone evidence file to a submission.
+        
+        POST parameters:
+        - submission_id: ID of the submission to attach evidence to
+        - apply_ocr_data: (Optional) Boolean to apply OCR data to the submission
+        """
+        try:
+            evidence = ESGMetricEvidence.objects.get(pk=pk)
+            
+            # Check if already attached to a submission
+            if evidence.submission is not None:
+                return Response(
+                    {"error": "This evidence is already attached to a submission"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get required parameters
+            submission_id = request.data.get('submission_id')
+            if not submission_id:
+                return Response(
+                    {"error": "submission_id is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate submission exists and user has access
+            try:
+                submission = ESGMetricSubmission.objects.get(id=submission_id)
+                
+                # Check if the user has access to this submission
+                # (Implement your access control logic here)
+                
+            except ESGMetricSubmission.DoesNotExist:
+                return Response(
+                    {"error": "Submission not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Attach evidence to submission
+            evidence.submission = submission
+            evidence.save(update_fields=['submission'])
+            
+            # If OCR has been processed and data extracted, offer to apply to submission
+            if evidence.is_processed_by_ocr and evidence.extracted_value is not None:
+                
+                # Apply OCR data to submission if requested
+                if request.data.get('apply_ocr_data') == 'true':
+                    submission.value = evidence.extracted_value
+                    if evidence.period and submission.reporting_period is None:
+                        submission.reporting_period = evidence.period
+                    submission.save(update_fields=['value', 'reporting_period'])
+                    
+                    return Response({
+                        "status": "success",
+                        "message": "Evidence attached to submission and OCR data applied",
+                        "submission_id": submission.id,
+                        "evidence_id": evidence.id,
+                        "value": evidence.extracted_value,
+                        "period": evidence.period
+                    }, status=status.HTTP_200_OK)
+            
+            return Response({
+                "status": "success",
+                "message": "Evidence attached to submission",
+                "submission_id": submission.id,
+                "evidence_id": evidence.id
+            }, status=status.HTTP_200_OK)
+                
+        except ESGMetricEvidence.DoesNotExist:
+            return Response(
+                {"error": "Evidence not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 class ESGMetricViewSet(viewsets.ModelViewSet):
     """
