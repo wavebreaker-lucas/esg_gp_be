@@ -30,11 +30,30 @@ def attach_evidence_to_submissions(submissions, user):
     # Find all standalone evidence files for these metrics
     for metric_id, subs in submissions_by_metric.items():
         # Get standalone evidence for this metric
+        # Use more flexible search to find the intended_metric_id anywhere in the JSON
         evidence_files = ESGMetricEvidence.objects.filter(
             submission__isnull=True,
             uploaded_by=user,
-            ocr_data__icontains=f'"intended_metric_id": "{metric_id}"'
+            ocr_data__icontains=f'"intended_metric_id":"{metric_id}"'
         )
+        
+        # If the first search doesn't find anything, try with spaces
+        if not evidence_files.exists():
+            evidence_files = ESGMetricEvidence.objects.filter(
+                submission__isnull=True,
+                uploaded_by=user,
+                ocr_data__icontains=f'"intended_metric_id": "{metric_id}"'
+            )
+            
+        # If still nothing, try another variation (with or without quotes)
+        if not evidence_files.exists():
+            evidence_files = ESGMetricEvidence.objects.filter(
+                submission__isnull=True,
+                uploaded_by=user,
+                ocr_data__icontains=f'intended_metric_id'
+            ).filter(
+                ocr_data__icontains=metric_id
+            )
         
         for evidence in evidence_files:
             # Find the best submission to attach to based on reporting period
