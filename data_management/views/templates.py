@@ -1100,7 +1100,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         """
         Universal upload endpoint for evidence files.
         All evidence is initially created as standalone (without a submission).
-        If a metric_id is provided, it's stored in ocr_data for later use.
+        Accepts a period parameter to specify the reporting period for the evidence.
         """
         # Check for required file
         if 'file' not in request.FILES:
@@ -1117,6 +1117,16 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             except ESGMetric.DoesNotExist:
                 return Response({'error': 'Metric not found'}, status=404)
         
+        # Handle optional period parameter
+        period = None
+        period_str = request.data.get('period')
+        if period_str:
+            try:
+                from datetime import datetime
+                period = datetime.strptime(period_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response({'error': 'Invalid period format. Use YYYY-MM-DD'}, status=400)
+        
         # Create standalone evidence record
         evidence = ESGMetricEvidence.objects.create(
             file=file_obj,
@@ -1124,7 +1134,8 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             file_type=file_obj.content_type,
             uploaded_by=request.user,
             description=request.data.get('description', ''),
-            enable_ocr_processing=request.data.get('enable_ocr_processing') == 'true'
+            enable_ocr_processing=request.data.get('enable_ocr_processing') == 'true',
+            period=period  # Set the user-provided period
         )
         
         # Store metric_id in ocr_data for later use
@@ -1148,7 +1159,8 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             'filename': evidence.filename,
             'uploaded_at': evidence.uploaded_at,
             'is_standalone': True,
-            'metric_id': metric_id
+            'metric_id': metric_id,
+            'period': period
         }
         
         # Add OCR processing URL if enabled

@@ -75,6 +75,7 @@ Evidence files can be stored in two ways:
    - Parameters:
      - `file`: The evidence file to upload (required)
      - `metric_id`: (Optional) ID of the metric this evidence relates to
+     - `period`: (Optional) Reporting period in YYYY-MM-DD format
      - `enable_ocr_processing`: (Optional) Set to 'true' to enable OCR
      - `description`: (Optional) Description of the evidence
    - Response:
@@ -109,17 +110,19 @@ Evidence files can be stored in two ways:
 The system supports a streamlined workflow where users can upload evidence files directly from each metric in the form:
 
 1. For each ESG metric, users can upload supporting evidence files
-2. All evidence is initially created as standalone (no submission association)
-3. When a form is submitted, evidence files are automatically attached to the appropriate submissions
+2. Users select the reporting period for each evidence file
+3. All evidence is initially created as standalone (no submission association)
+4. When a form is submitted, evidence files are automatically attached to the appropriate submissions based on the period
 
 ### Frontend Implementation
 
 ```javascript
-// Example: Upload evidence for a specific metric
-function uploadEvidenceForMetric(metricId, files, enableOcr = true) {
+// Example: Upload evidence for a specific metric with period
+function uploadEvidenceForMetric(metricId, files, period, enableOcr = true) {
   const formData = new FormData();
   formData.append('file', files[0]);
   formData.append('metric_id', metricId);
+  formData.append('period', period); // Format: YYYY-MM-DD
   formData.append('enable_ocr_processing', enableOcr ? 'true' : 'false');
   
   return fetch('/api/metric-evidence/', {
@@ -168,6 +171,7 @@ function submitMetrics(assignmentId, metricsData) {
    {
      "file": [file data],
      "metric_id": 456,
+     "period": "2023-04-30",
      "enable_ocr_processing": "true"
    }
    ```
@@ -183,7 +187,7 @@ function submitMetrics(assignmentId, metricsData) {
    ```
    
 4. When the form is submitted, the system will:
-   - Automatically attach the evidence to the appropriate submission
+   - Automatically attach the evidence to the appropriate submission based on matching periods
    - Apply OCR data to the submission value if not already set
 
 ## Testing OCR Processing
@@ -212,12 +216,13 @@ python manage.py test_ocr 123 --format json
 
 ## Best Practices for Evidence Management
 
-1. **Use per-metric uploads** to organize evidence files by the metrics they support
-2. **Enable OCR for utility bills** to automatically extract consumption data and period
-3. **Let the system handle attachments** during form submission to reduce manual steps
-4. **Set appropriate analyzer IDs** for metrics to improve extraction accuracy
-5. **Review OCR results** before submitting forms
-6. **Use period matching** by ensuring evidence periods match the reporting periods of submissions
+1. **Always specify the reporting period** when uploading evidence files
+2. **Use per-metric uploads** to organize evidence files by the metrics they support
+3. **Enable OCR for utility bills** to automatically extract consumption data and period
+4. **Let the system handle attachments** during form submission to reduce manual steps
+5. **Set appropriate analyzer IDs** for metrics to improve extraction accuracy
+6. **Review OCR results** before submitting forms
+7. **Use period matching** by ensuring evidence periods match the reporting periods of submissions
 
 ## Technical Implementation Details
 
