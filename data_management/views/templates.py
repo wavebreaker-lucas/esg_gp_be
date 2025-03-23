@@ -23,6 +23,7 @@ from rest_framework import serializers
 from django.conf import settings
 from ..services.bill_analyzer import UtilityBillAnalyzer
 from django.urls import reverse
+from django.db import models
 
 class ESGFormViewSet(viewsets.ModelViewSet):
     """
@@ -683,401 +684,393 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        """
-        Filter submissions based on user's access to template assignments.
-        """
+        # Base queryset
+        queryset = ESGMetricSubmission.objects.all()
+        
+        # Filter by user's permissions
         user = self.request.user
         
-        # Get all layers (groups) the user belongs to
-        user_app_users = AppUser.objects.filter(user=user).select_related('layer')
-        user_layers = [app_user.layer for app_user in user_app_users]
+        # Admin users can see all submissions
+        if user.is_staff or user.is_superuser or user.is_baker_tilly_admin:
+            return queryset
         
-        # Get all accessible layer IDs including parent groups
-        accessible_layer_ids = set()
-        for layer in user_layers:
-            # Add the current layer
-            accessible_layer_ids.add(layer.id)
-            
-            # Add parent layers based on layer type
-            if hasattr(layer, 'branchlayer'):
-                # For branch layer, add subsidiary and group
-                subsidiary = layer.branchlayer.subsidiary_layer
-                accessible_layer_ids.add(subsidiary.id)
-                accessible_layer_ids.add(subsidiary.group_layer.id)
-            elif hasattr(layer, 'subsidiarylayer'):
-                # For subsidiary layer, add group
-                accessible_layer_ids.add(layer.subsidiarylayer.group_layer.id)
-        
-        # Filter submissions by assignments to accessible layers
-        return ESGMetricSubmission.objects.filter(
-            assignment__layer_id__in=accessible_layer_ids
-        ).select_related(
-            'assignment', 'metric', 'submitted_by', 'verified_by'
-        ).prefetch_related('evidence')
+        # Other users can only see submissions for their layers
+        return queryset.filter(
+            assignment__layer__in=user.layers.all()
+        )
 
     def get_serializer_class(self):
-        """
-        Use different serializers for list/retrieve vs create/update.
-        """
-        if self.action in ['create', 'update', 'partial_update']:
-            return ESGMetricSubmissionCreateSerializer
-        return ESGMetricSubmissionSerializer
+        if self.action == 'verify':
+            return ESGMetricSubmissionVerifySerializer
+        return self.serializer_class
 
     def perform_create(self, serializer):
-        """
-        Set the submitted_by field to the current user.
-        """
-        serializer.save(submitted_by=self.request.user)
-        
-        # Update assignment status to IN_PROGRESS if it's PENDING
-        assignment = serializer.instance.assignment
-        if assignment.status == 'PENDING':
-            assignment.status = 'IN_PROGRESS'
-            assignment.save(update_fields=['status'])
-            
-        # Check if the form is now complete
-        self._check_form_completion(serializer.instance)
-            
+        submission = serializer.save(submitted_by=self.request.user)
+        # Check if form is complete after new submission
+        self._check_form_completion(submission)
+        return submission
+
     def _check_form_completion(self, submission):
-        """
-        Helper method to check if a form is complete after a submission.
-        If all required metrics for a form are submitted, mark the form as completed.
-        """
-        # Get the form for this metric
-        form = submission.metric.form
+        """Check if a form is complete after a submission is added or updated"""
+        # Get the template assignment
         assignment = submission.assignment
         
-        try:
-            # Find the form selection for this form in the template
-            form_selection = TemplateFormSelection.objects.get(
-                template=assignment.template,
-                form=form
-            )
+        # Get all metrics for the forms in this template
+        metrics = ESGMetric.objects.filter(
+            form__in=assignment.template.selected_forms.all()
+        )
+        
+        # Get all submissions for this assignment
+        submissions = ESGMetricSubmission.objects.filter(
+            assignment=assignment
+        )
+        
+        # Check if all required metrics have submissions
+        all_required_metrics_submitted = True
+        for metric in metrics:
+            if metric.is_required:
+                # For time-based metrics, we need to check if there's a submission
+                # for each time period
+                if metric.requires_time_reporting:
+                    # Implementation depends on your business rules for time periods
+                    # This is a simplified check
+                    metric_submissions = submissions.filter(metric=metric)
+                    if not metric_submissions.exists():
+                        all_required_metrics_submitted = False
+                        break
+                else:
+                    # For regular metrics, we need at least one submission
+                    has_submission = submissions.filter(metric=metric).exists()
+                    if not has_submission:
+                        all_required_metrics_submitted = False
+                        break
+        
+        # Update assignment status if all required metrics are submitted
+        if all_required_metrics_submitted and assignment.status in ['PENDING', 'IN_PROGRESS']:
+            assignment.status = 'SUBMITTED'
+            assignment.completed_at = timezone.now()
+            assignment.save()
             
-            # If the form is already completed, no need to check again
-            if form_selection.is_completed:
-                return
+            # Update any form selection completions
+            for form_selection in assignment.template.templateformselection_set.all():
+                form_metrics = metrics.filter(form=form_selection.form)
+                form_metrics_submitted = True
                 
-            # Get all required metrics for this form that apply to the selected regions
-            required_metrics = []
-            for metric in form.metrics.filter(is_required=True):
-                if metric.location == 'ALL' or metric.location in form_selection.regions:
-                    required_metrics.append(metric.id)
-                    
-            # Check if all required metrics have submissions
-            submitted_metrics = ESGMetricSubmission.objects.filter(
-                assignment=assignment,
-                metric__form=form
-            ).values_list('metric_id', flat=True)
-            
-            # If all required metrics are submitted, mark the form as completed
-            if set(required_metrics).issubset(set(submitted_metrics)):
-                form_selection.is_completed = True
-                form_selection.completed_at = timezone.now()
-                form_selection.completed_by = self.request.user
-                form_selection.save()
+                for metric in form_metrics:
+                    if metric.is_required and not submissions.filter(metric=metric).exists():
+                        form_metrics_submitted = False
+                        break
                 
-                # Check if all forms in the template are completed
-                all_forms_completed = all(
-                    selection.is_completed 
-                    for selection in assignment.template.templateformselection_set.all()
-                )
-                
-                # If all forms are completed, update the assignment status
-                if all_forms_completed and assignment.status != 'SUBMITTED':
-                    assignment.status = 'SUBMITTED'
-                    assignment.completed_at = timezone.now()
-                    assignment.save()
-                    
-        except TemplateFormSelection.DoesNotExist:
-            # This form is not part of the template, so we can't mark it as completed
-            pass
+                if form_metrics_submitted and not form_selection.is_completed:
+                    form_selection.is_completed = True
+                    form_selection.completed_at = timezone.now()
+                    form_selection.completed_by = submission.submitted_by
+                    form_selection.save()
 
     def perform_destroy(self, instance):
-        """
-        Check if the user has permission to delete this submission.
-        Users can only delete their own submissions, while Baker Tilly admins can delete any.
-        """
-        user = self.request.user
-        if instance.submitted_by == user or user.is_baker_tilly_admin:
-            instance.delete()
-        else:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("You do not have permission to delete this submission.")
+        # Store assignment before deleting
+        assignment = instance.assignment
+        
+        # Call parent method to delete
+        super().perform_destroy(instance)
+        
+        # Re-check form completion status
+        self._check_form_completion(assignment)
 
     @action(detail=False, methods=['post'])
     @transaction.atomic
     def batch_submit(self, request):
         """
-        Submit multiple metric values at once for a template assignment.
+        Submit multiple metric values at once.
+        
+        POST parameters:
+        - assignment_id: The ID of the template assignment
+        - submissions: List of submission objects with metric_id, value, and optional reporting_period
+        - auto_attach_evidence: (Optional) Boolean to automatically attach standalone evidence
         """
-        serializer = ESGMetricBatchSubmissionSerializer(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
+        # Validate assignment_id
+        assignment_id = request.data.get('assignment_id')
+        if not assignment_id:
+            return Response({'error': 'assignment_id is required'}, status=400)
         
-        assignment_id = serializer.validated_data['assignment_id']
-        submissions_data = serializer.validated_data['submissions']
-        assignment = serializer.context['assignment']
+        try:
+            assignment = TemplateAssignment.objects.get(id=assignment_id)
+        except TemplateAssignment.DoesNotExist:
+            return Response({'error': 'Assignment not found'}, status=404)
         
-        # Check if user has access to this assignment
-        user_app_users = AppUser.objects.filter(user=request.user).select_related('layer')
-        user_layers = [app_user.layer.id for app_user in user_app_users]
+        # Check permissions
+        if not (request.user.is_staff or request.user.is_superuser or 
+                request.user.is_baker_tilly_admin or 
+                request.user == assignment.assigned_to or
+                request.user.layers.filter(id=assignment.layer.id).exists()):
+            return Response({'error': 'You do not have permission to submit for this assignment'}, status=403)
         
-        # Also check parent layers
-        for app_user in user_app_users:
-            layer = app_user.layer
-            if hasattr(layer, 'branchlayer'):
-                user_layers.append(layer.branchlayer.subsidiary_layer.id)
-                user_layers.append(layer.branchlayer.subsidiary_layer.group_layer.id)
-            elif hasattr(layer, 'subsidiarylayer'):
-                user_layers.append(layer.subsidiarylayer.group_layer.id)
+        # Get submissions data
+        submissions_data = request.data.get('submissions', [])
+        if not submissions_data:
+            return Response({'error': 'No submissions provided'}, status=400)
         
-        if assignment.layer.id not in user_layers:
-            return Response(
-                {"error": "You do not have access to this template assignment"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        # Create or update submissions
+        created_submissions = []
+        updated_submissions = []
         
-        # Process each submission
-        results = []
-        submissions_by_form = {}  # Track submissions by form to check completion
-        
-        for submission_data in submissions_data:
-            metric_id = submission_data.pop('metric_id')
+        for sub_data in submissions_data:
+            metric_id = sub_data.get('metric_id')
+            value = sub_data.get('value')
+            text_value = sub_data.get('text_value')
+            reporting_period = sub_data.get('reporting_period')
+            notes = sub_data.get('notes', '')
             
+            # Validate metric exists
             try:
                 metric = ESGMetric.objects.get(id=metric_id)
-                form_id = metric.form_id
-                
-                # Add to form tracking
-                if form_id not in submissions_by_form:
-                    submissions_by_form[form_id] = []
-                submissions_by_form[form_id].append(metric_id)
-                
-                # Check if submission already exists with the same reporting period
-                reporting_period = submission_data.get('reporting_period')
-                
-                try:
-                    # Try to find an existing submission with the same metric and reporting period
-                    submission = ESGMetricSubmission.objects.get(
-                        assignment_id=assignment_id,
-                        metric_id=metric_id,
-                        reporting_period=reporting_period
-                    )
-                    
-                    # Update existing submission
-                    for key, value in submission_data.items():
-                        setattr(submission, key, value)
-                    
-                    submission.submitted_by = request.user
-                    submission.save()
-                    
-                except ESGMetricSubmission.DoesNotExist:
-                    # Create new submission
-                    submission = ESGMetricSubmission.objects.create(
-                        assignment_id=assignment_id,
-                        metric_id=metric_id,
-                        submitted_by=request.user,
-                        **submission_data
-                    )
-                
-                results.append({
-                    'metric_id': metric_id,
-                    'submission_id': submission.id,
-                    'status': 'success',
-                    'reporting_period': reporting_period
-                })
-                
             except ESGMetric.DoesNotExist:
-                results.append({
-                    'metric_id': metric_id,
-                    'status': 'error',
-                    'message': f"Metric with ID {metric_id} not found"
-                })
-        
-        # Update assignment status to IN_PROGRESS if it's PENDING
-        if assignment.status == 'PENDING':
-            assignment.status = 'IN_PROGRESS'
-            assignment.save(update_fields=['status'])
-        
-        # Check form completion for each form that had submissions
-        forms_completed = []
-        for form_id in submissions_by_form.keys():
+                return Response({
+                    'error': f'Metric with ID {metric_id} not found'
+                }, status=400)
+            
+            # Check if submission already exists for this metric/period
             try:
-                form = ESGForm.objects.get(id=form_id)
-                form_selection = TemplateFormSelection.objects.get(
-                    template=assignment.template,
-                    form=form
+                existing = ESGMetricSubmission.objects.get(
+                    assignment=assignment,
+                    metric=metric,
+                    reporting_period=reporting_period
                 )
                 
-                # If the form is already completed, skip it
-                if form_selection.is_completed:
-                    continue
-                    
-                # Get all required metrics for this form that apply to the selected regions
-                required_metrics = []
-                for metric in form.metrics.filter(is_required=True):
-                    if metric.location == 'ALL' or metric.location in form_selection.regions:
-                        required_metrics.append(metric.id)
-                        
-                # Check if all required metrics have submissions
-                submitted_metrics = ESGMetricSubmission.objects.filter(
+                # Update existing submission
+                existing.value = value
+                existing.text_value = text_value
+                existing.notes = notes
+                existing.save()
+                updated_submissions.append(existing)
+                
+            except ESGMetricSubmission.DoesNotExist:
+                # Create new submission
+                submission = ESGMetricSubmission.objects.create(
                     assignment=assignment,
-                    metric__form=form
-                ).values_list('metric_id', flat=True)
-                
-                # If all required metrics are submitted, mark the form as completed
-                if set(required_metrics).issubset(set(submitted_metrics)):
-                    form_selection.is_completed = True
-                    form_selection.completed_at = timezone.now()
-                    form_selection.completed_by = request.user
-                    form_selection.save()
-                    forms_completed.append(form.name)
-                    
-            except (ESGForm.DoesNotExist, TemplateFormSelection.DoesNotExist):
-                # Skip if form doesn't exist or isn't part of the template
-                continue
-                
-        # Check if all forms in the template are completed
-        all_forms_completed = all(
-            selection.is_completed 
-            for selection in assignment.template.templateformselection_set.all()
-        )
+                    metric=metric,
+                    value=value,
+                    text_value=text_value,
+                    reporting_period=reporting_period,
+                    notes=notes,
+                    submitted_by=request.user
+                )
+                created_submissions.append(submission)
         
-        # If all forms are completed, update the assignment status
-        if all_forms_completed and assignment.status != 'SUBMITTED':
-            assignment.status = 'SUBMITTED'
-            assignment.completed_at = timezone.now()
+        # Update assignment status
+        if assignment.status in ['PENDING', 'IN_PROGRESS']:
+            assignment.status = 'IN_PROGRESS'
             assignment.save()
         
+        # Check if form is now complete
+        if created_submissions:
+            self._check_form_completion(created_submissions[0])
+        elif updated_submissions:
+            self._check_form_completion(updated_submissions[0])
+        
+        # Automatically attach standalone evidence files if requested
+        if request.data.get('auto_attach_evidence') == 'true':
+            self._attach_evidence_to_submissions(
+                created_submissions + updated_submissions, 
+                request.user
+            )
+        
         return Response({
-            'assignment_id': assignment_id,
-            'results': results,
-            'forms_completed': forms_completed,
-            'all_forms_completed': all_forms_completed,
+            'status': 'success',
+            'message': f'Created {len(created_submissions)} and updated {len(updated_submissions)} submissions',
             'assignment_status': assignment.status
         })
+    
+    def _attach_evidence_to_submissions(self, submissions, user):
+        """
+        Automatically attach relevant standalone evidence to the given submissions.
+        This is called after batch submission to link any pending evidence files.
+        """
+        if not submissions:
+            return
+        
+        # Group submissions by metric
+        submissions_by_metric = {}
+        for submission in submissions:
+            metric_id = str(submission.metric.id)
+            if metric_id not in submissions_by_metric:
+                submissions_by_metric[metric_id] = []
+            submissions_by_metric[metric_id].append(submission)
+        
+        # Find all standalone evidence files for these metrics
+        for metric_id, subs in submissions_by_metric.items():
+            # Get standalone evidence for this metric
+            evidence_files = ESGMetricEvidence.objects.filter(
+                submission__isnull=True,
+                uploaded_by=user,
+                ocr_data__icontains=f'"intended_metric_id": "{metric_id}"'
+            )
+            
+            for evidence in evidence_files:
+                # Find the best submission to attach to based on reporting period
+                best_submission = None
+                
+                # If evidence has a period, try to match it
+                if evidence.period and evidence.period is not None:
+                    for sub in subs:
+                        if sub.reporting_period == evidence.period:
+                            best_submission = sub
+                            break
+                
+                # If no period match or no period, use the first submission
+                if not best_submission and subs:
+                    best_submission = subs[0]
+                
+                # Attach evidence to submission if found
+                if best_submission:
+                    evidence.submission = best_submission
+                    evidence.save()
+                    
+                    # Apply OCR data if available and submission has no value
+                    if (evidence.is_processed_by_ocr and 
+                        evidence.extracted_value is not None and
+                        (best_submission.value is None or best_submission.value == 0)):
+                        
+                        best_submission.value = evidence.extracted_value
+                        if evidence.period and not best_submission.reporting_period:
+                            best_submission.reporting_period = evidence.period
+                        best_submission.save()
 
     @action(detail=False, methods=['get'])
     def by_assignment(self, request):
-        """
-        Get all submissions for a specific template assignment.
-        """
+        """Get all submissions for a specific assignment"""
         assignment_id = request.query_params.get('assignment_id')
         if not assignment_id:
-            return Response(
-                {"error": "assignment_id query parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'assignment_id is required'}, status=400)
         
-        # Check if user has access to this assignment
-        queryset = self.get_queryset().filter(assignment_id=assignment_id)
-        if not queryset.exists():
-            # Check if assignment exists but has no submissions
-            try:
-                assignment = TemplateAssignment.objects.get(id=assignment_id)
-                # If we get here, the assignment exists but has no submissions
-                return Response([])
-            except TemplateAssignment.DoesNotExist:
-                return Response(
-                    {"error": "Template assignment not found or you do not have access to it"},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+        try:
+            assignment = TemplateAssignment.objects.get(id=assignment_id)
+        except TemplateAssignment.DoesNotExist:
+            return Response({'error': 'Assignment not found'}, status=404)
         
-        serializer = self.get_serializer(queryset, many=True)
+        # Check permissions
+        if not (request.user.is_staff or request.user.is_superuser or 
+                request.user.is_baker_tilly_admin or 
+                request.user == assignment.assigned_to or
+                request.user.layers.filter(id=assignment.layer.id).exists()):
+            return Response({'error': 'You do not have permission to view this assignment'}, status=403)
+        
+        # Get all submissions for this assignment
+        submissions = ESGMetricSubmission.objects.filter(assignment=assignment)
+        serializer = self.get_serializer(submissions, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def verify(self, request, pk=None):
-        """
-        Verify a metric submission (Baker Tilly admin only).
-        """
-        if not request.user.is_baker_tilly_admin:
-            return Response(
-                {"error": "Only Baker Tilly admins can verify submissions"},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
+        """Verify a submission (for Baker Tilly admins)"""
         submission = self.get_object()
-        verification_notes = request.data.get('verification_notes', '')
         
+        # Only Baker Tilly admins can verify submissions
+        if not (request.user.is_staff or request.user.is_superuser or request.user.is_baker_tilly_admin):
+            return Response({'error': 'Only Baker Tilly admins can verify submissions'}, status=403)
+        
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Update verification status
         submission.is_verified = True
         submission.verified_by = request.user
         submission.verified_at = timezone.now()
-        submission.verification_notes = verification_notes
+        submission.verification_notes = serializer.validated_data.get('verification_notes', '')
         submission.save()
         
-        serializer = self.get_serializer(submission)
-        return Response(serializer.data)
+        return Response({
+            'status': 'success',
+            'message': 'Submission verified successfully'
+        })
 
     @action(detail=False, methods=['post'])
     @transaction.atomic
     def submit_template(self, request):
         """
-        Mark a template assignment as submitted when all forms are completed.
-        This is the final step in the submission process after completing all forms.
+        Submit a complete template and mark it as submitted.
+        
+        POST parameters:
+        - assignment_id: The ID of the template assignment
         """
+        # Validate assignment_id
         assignment_id = request.data.get('assignment_id')
         if not assignment_id:
-            return Response(
-                {"error": "assignment_id is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'assignment_id is required'}, status=400)
         
         try:
-            # Get the assignment and check user access
             assignment = TemplateAssignment.objects.get(id=assignment_id)
-            
-            # Check if user has access to this assignment
-            user_app_users = AppUser.objects.filter(user=request.user).select_related('layer')
-            user_layers = [app_user.layer.id for app_user in user_app_users]
-            
-            # Also check parent layers
-            for app_user in user_app_users:
-                layer = app_user.layer
-                if hasattr(layer, 'branchlayer'):
-                    user_layers.append(layer.branchlayer.subsidiary_layer.id)
-                    user_layers.append(layer.branchlayer.subsidiary_layer.group_layer.id)
-                elif hasattr(layer, 'subsidiarylayer'):
-                    user_layers.append(layer.subsidiarylayer.group_layer.id)
-            
-            if assignment.layer.id not in user_layers:
-                return Response(
-                    {"error": "You do not have access to this template assignment"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-            
-            # Check if all forms in the template are completed
-            form_selections = assignment.template.templateformselection_set.all()
-            incomplete_forms = [
-                selection.form.name
-                for selection in form_selections
-                if not selection.is_completed
-            ]
-            
-            if incomplete_forms:
-                return Response({
-                    "error": "Cannot submit template with incomplete forms",
-                    "incomplete_forms": incomplete_forms
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Update assignment status to SUBMITTED
-            assignment.status = 'SUBMITTED'
-            assignment.completed_at = timezone.now()
-            assignment.save()
-            
-            return Response({
-                "message": "Template successfully submitted",
-                "assignment_id": assignment.id,
-                "status": assignment.status,
-                "completed_at": assignment.completed_at
-            })
-            
         except TemplateAssignment.DoesNotExist:
-            return Response(
-                {"error": "Template assignment not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({'error': 'Assignment not found'}, status=404)
+        
+        # Check permissions
+        if not (request.user.is_staff or request.user.is_superuser or 
+                request.user.is_baker_tilly_admin or 
+                request.user == assignment.assigned_to or
+                request.user.layers.filter(id=assignment.layer.id).exists()):
+            return Response({'error': 'You do not have permission to submit this template'}, status=403)
+        
+        # Get all metrics for the forms in this template
+        metrics = ESGMetric.objects.filter(
+            form__in=assignment.template.selected_forms.all()
+        )
+        
+        # Get all submissions for this assignment
+        submissions = ESGMetricSubmission.objects.filter(
+            assignment=assignment
+        )
+        
+        # Check if all required metrics have submissions
+        missing_metrics = []
+        for metric in metrics:
+            if metric.is_required:
+                # For time-based metrics, we need at least one submission
+                # (In a real application, you might have more complex time period validation)
+                has_submission = submissions.filter(metric=metric).exists()
+                if not has_submission:
+                    missing_metrics.append({
+                        'id': metric.id,
+                        'name': metric.name,
+                        'form': metric.form.name
+                    })
+        
+        if missing_metrics:
+            return Response({
+                'status': 'incomplete',
+                'message': 'Template is incomplete. Missing required metrics.',
+                'missing_metrics': missing_metrics
+            }, status=400)
+        
+        # Automatically attach all standalone evidence to submissions
+        self._attach_evidence_to_submissions(list(submissions), request.user)
+        
+        # Update assignment status
+        assignment.status = 'SUBMITTED'
+        assignment.completed_at = timezone.now()
+        assignment.save()
+        
+        # Update form selections
+        for form_selection in assignment.template.templateformselection_set.all():
+            form_metrics = metrics.filter(form=form_selection.form)
+            form_metrics_submitted = True
+            
+            for metric in form_metrics:
+                if metric.is_required and not submissions.filter(metric=metric).exists():
+                    form_metrics_submitted = False
+                    break
+            
+            if form_metrics_submitted:
+                form_selection.is_completed = True
+                form_selection.completed_at = timezone.now()
+                form_selection.completed_by = request.user
+                form_selection.save()
+        
+        return Response({
+            'status': 'success',
+            'message': 'Template submitted successfully',
+            'assignment_status': assignment.status
+        })
 
 class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
     """
@@ -1085,497 +1078,258 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ESGMetricEvidenceSerializer
     permission_classes = [IsAuthenticated]
-    
+
     def get_queryset(self):
-        """
-        Filter evidence files based on user's access to submissions.
-        """
+        # Base queryset
+        queryset = ESGMetricEvidence.objects.all()
+        
+        # Filter by user's permissions
         user = self.request.user
         
-        # Get all layers (groups) the user belongs to
-        user_app_users = AppUser.objects.filter(user=user).select_related('layer')
-        user_layers = [app_user.layer for app_user in user_app_users]
+        # Admin users can see all evidence
+        if user.is_staff or user.is_superuser or user.is_baker_tilly_admin:
+            return queryset
         
-        # Get all accessible layer IDs including parent groups
-        accessible_layer_ids = set()
-        for layer in user_layers:
-            # Add the current layer
-            accessible_layer_ids.add(layer.id)
-            
-            # Add parent layers based on layer type
-            if hasattr(layer, 'branchlayer'):
-                # For branch layer, add subsidiary and group
-                subsidiary = layer.branchlayer.subsidiary_layer
-                accessible_layer_ids.add(subsidiary.id)
-                accessible_layer_ids.add(subsidiary.group_layer.id)
-            elif hasattr(layer, 'subsidiarylayer'):
-                # For subsidiary layer, add group
-                accessible_layer_ids.add(layer.subsidiarylayer.group_layer.id)
-        
-        # Filter evidence by submissions for assignments to accessible layers
-        return ESGMetricEvidence.objects.filter(
-            submission__assignment__layer_id__in=accessible_layer_ids
-        ).select_related('submission', 'uploaded_by')
-    
-    def perform_create(self, serializer):
-        """
-        Set the uploaded_by field to the current user.
-        """
-        serializer.save(uploaded_by=self.request.user)
-    
-    @action(detail=False, methods=['get'])
-    def by_submission(self, request):
-        """
-        Get all evidence files for a specific submission.
-        """
-        submission_id = request.query_params.get('submission_id')
-        if not submission_id:
-            return Response(
-                {"error": "submission_id query parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        queryset = self.get_queryset().filter(submission_id=submission_id)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def process_ocr(self, request, pk=None):
-        """
-        Process an uploaded evidence file with OCR.
-        This endpoint triggers the Azure Content Understanding OCR processing for a utility bill.
-        """
-        try:
-            evidence = ESGMetricEvidence.objects.get(pk=pk)
-            
-            # Check if the user has access to this evidence
-            # (Implement your access control logic here)
-            
-            # Enable OCR processing for this evidence
-            evidence.enable_ocr_processing = True
-            evidence.save(update_fields=['enable_ocr_processing'])
-            
-            # Process the evidence with OCR
-            analyzer = UtilityBillAnalyzer()
-            success, result = analyzer.process_evidence(evidence)
-            
-            if success:
-                return Response({
-                    "status": "success",
-                    "message": "OCR processing completed successfully",
-                    "extracted_value": evidence.extracted_value,
-                    "period": evidence.period.strftime('%Y-%m-%d') if evidence.period else None,
-                    "additional_periods": result.get('additional_periods', [])
-                }, status=status.HTTP_200_OK)
-            else:
-                return Response({
-                    "status": "error",
-                    "message": result.get('error', 'OCR processing failed')
-                }, status=status.HTTP_400_BAD_REQUEST)
-                
-        except ESGMetricEvidence.DoesNotExist:
-            return Response(
-                {"error": "Evidence not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {"error": f"OCR processing error: {str(e)}"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    
-    @action(detail=True, methods=['get'])
-    def ocr_results(self, request, pk=None):
-        """
-        Get the OCR processing results for an evidence file.
-        """
-        try:
-            evidence = ESGMetricEvidence.objects.get(pk=pk)
-            
-            # Check if the user has access to this evidence
-            # (Implement your access control logic here)
-            
-            # Check if OCR processing was enabled
-            if not evidence.enable_ocr_processing:
-                return Response({
-                    "status": "not_applicable",
-                    "message": "OCR processing was not enabled for this file"
-                }, status=status.HTTP_200_OK)
-            
-            # Check if OCR processing has been completed
-            if evidence.is_processed_by_ocr:
-                return Response({
-                    "status": "success",
-                    "extracted_value": evidence.extracted_value,
-                    "period": evidence.period.strftime('%Y-%m-%d') if evidence.period else None
-                }, status=status.HTTP_200_OK)
-            else:
-                # OCR processing was enabled but not yet completed
-                return Response({
-                    "status": "pending",
-                    "message": "OCR processing has not yet completed"
-                }, status=status.HTTP_200_OK)
-                
-        except ESGMetricEvidence.DoesNotExist:
-            return Response(
-                {"error": "Evidence not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {"error": f"Error retrieving OCR results: {str(e)}"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @action(detail=True, methods=['post'])
-    def apply_ocr_to_submission(self, request, pk=None):
-        """
-        Apply OCR-extracted values to the related submission.
-        
-        This endpoint updates the ESGMetricSubmission with values extracted by OCR,
-        and tracks whether the user edited these values.
-        """
-        evidence = self.get_object()
-        submission = evidence.submission
-        
-        # Check if this is an OCR-processed evidence
-        if not evidence.ocr_processed or not evidence.is_utility_bill:
-            return Response(
-                {"error": "This evidence has not been processed with OCR"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Get values from request
-        value = request.data.get('value')
-        reporting_period = request.data.get('reporting_period')
-        
-        # Determine if values were manually edited
-        was_edited = False
-        
-        # Check if value was manually edited
-        if value is not None and evidence.extracted_value is not None:
-            try:
-                if abs(float(value) - evidence.extracted_value) > 0.001:
-                    was_edited = True
-            except (ValueError, TypeError):
-                # If we can't compare them, assume they're different
-                was_edited = True
-        
-        # Check if period was manually edited
-        if reporting_period is not None and evidence.extracted_period is not None:
-            from dateutil.parser import parse
-            try:
-                submitted_date = parse(reporting_period).date()
-                if submitted_date != evidence.extracted_period:
-                    was_edited = True
-            except (ValueError, TypeError):
-                # If we can't parse or compare them, assume they're different
-                was_edited = True
-        
-        # Update the evidence record to track edits
-        if was_edited:
-            evidence.was_manually_edited = True
-            evidence.edited_at = timezone.now()
-            evidence.edited_by = request.user
-            evidence.save()
-        
-        # Update the submission with the provided values
-        if value is not None:
-            try:
-                submission.value = float(value)
-            except (ValueError, TypeError):
-                return Response(
-                    {"error": "Invalid value format"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        
-        if reporting_period is not None:
-            from dateutil.parser import parse
-            try:
-                submission.reporting_period = parse(reporting_period).date()
-            except (ValueError, TypeError):
-                return Response(
-                    {"error": "Invalid reporting_period format"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        
-        submission.save()
-        
-        # Return updated submission and evidence
-        return Response({
-            "status": "success",
-            "was_edited": was_edited,
-            "submission": ESGMetricSubmissionSerializer(submission).data,
-            "evidence": self.get_serializer(evidence).data
-        })
-    
-    @action(detail=True, methods=['post'])
-    def apply_multiple_periods(self, request, pk=None):
-        """
-        Apply multiple billing periods from OCR data to create multiple submissions.
-        
-        This endpoint handles utility bills that contain multiple billing periods,
-        creating or updating submissions for each period.
-        """
-        evidence = self.get_object()
-        original_submission = evidence.submission
-        
-        # Check if this is an OCR-processed evidence with multiple periods
-        if not evidence.ocr_processed or not evidence.is_utility_bill:
-            return Response(
-                {"error": "This evidence has not been processed with OCR"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Get the periods data
-        periods = request.data.get('periods', [])
-        if not periods:
-            return Response(
-                {"error": "No period data provided"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Track if any values were edited
-        was_edited = False
-        
-        # Get original periods from OCR data for comparison
-        original_periods = {}
-        if evidence.ocr_data and 'raw_data' in evidence.ocr_data and 'periods' in evidence.ocr_data['raw_data']:
-            for period in evidence.ocr_data['raw_data']['periods']:
-                if 'period' in period and 'consumption' in period:
-                    original_periods[period['period']] = period['consumption']
-        
-        # Process each period
-        results = []
-        from dateutil.parser import parse
-        
-        for period_data in periods:
-            period_str = period_data.get('period')
-            consumption = period_data.get('consumption')
-            
-            # Skip invalid data
-            if not period_str or consumption is None:
-                continue
-            
-            # Convert period to date
-            try:
-                period_date = parse(period_str).date() if isinstance(period_str, str) else period_str
-            except ValueError:
-                continue
-            
-            # Check if this period was edited
-            period_edited = False
-            if period_str in original_periods:
-                try:
-                    orig_consumption = float(original_periods[period_str])
-                    new_consumption = float(consumption)
-                    if abs(orig_consumption - new_consumption) > 0.001:
-                        period_edited = True
-                        was_edited = True
-                except (ValueError, TypeError):
-                    # If we can't compare, assume they're different
-                    period_edited = True
-                    was_edited = True
-            
-            # Create or update submission for this period
-            try:
-                # Try to find existing submission for this period
-                period_submission = ESGMetricSubmission.objects.get(
-                    assignment=original_submission.assignment,
-                    metric=original_submission.metric,
-                    reporting_period=period_date
-                )
-            except ESGMetricSubmission.DoesNotExist:
-                # Create new submission for this period
-                period_submission = ESGMetricSubmission.objects.create(
-                    assignment=original_submission.assignment,
-                    metric=original_submission.metric,
-                    reporting_period=period_date,
-                    submitted_by=request.user
-                )
-            
-            # Update the value
-            period_submission.value = float(consumption)
-            period_submission.save()
-            
-            # Add to results
-            results.append({
-                "period": period_date,
-                "value": consumption,
-                "submission_id": period_submission.id,
-                "was_edited": period_edited
-            })
-        
-        # Update evidence record if any values were edited
-        if was_edited:
-            evidence.was_manually_edited = True
-            evidence.edited_at = timezone.now()
-            evidence.edited_by = request.user
-            evidence.save()
-        
-        return Response({
-            "status": "success",
-            "was_edited": was_edited,
-            "message": f"{len(results)} periods processed",
-            "periods": results
-        })
+        # Other users can only see their own evidence or evidence for their group's submissions
+        return queryset.filter(
+            models.Q(uploaded_by=user) | 
+            models.Q(submission__assignment__layer__in=user.layers.all())
+        )
 
     def create(self, request, *args, **kwargs):
         """
         Universal upload endpoint for evidence files.
-        Can be used with or without a submission_id.
-        
-        POST parameters:
-        - file: The evidence file to upload (required)
-        - submission_id: (Optional) ID of the submission to attach evidence to
-        - metric_id: (Optional) ID of the metric this evidence relates to
-        - enable_ocr_processing: (Optional) Boolean to enable OCR processing
-        - description: (Optional) Description of the evidence
+        All evidence is initially created as standalone (without a submission).
+        If a metric_id is provided, it's stored in ocr_data for later use.
         """
-        # Check for file upload
+        # Check for required file
         if 'file' not in request.FILES:
-            return Response({"error": "No file was uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'No file provided'}, status=400)
         
-        uploaded_file = request.FILES['file']
+        file_obj = request.FILES['file']
         
-        # Check if attaching to a submission
-        submission_id = request.data.get('submission_id')
-        submission = None
-        
-        if submission_id:
-            try:
-                submission = ESGMetricSubmission.objects.get(id=submission_id)
-                # Add additional permission checks if needed
-            except ESGMetricSubmission.DoesNotExist:
-                return Response({"error": f"Submission with ID {submission_id} does not exist"}, 
-                               status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validate metric_id if provided
+        # Handle optional metric_id - use for OCR analyzer selection
         metric_id = request.data.get('metric_id')
-        ocr_data = {}
-        
+        metric = None
         if metric_id:
             try:
                 metric = ESGMetric.objects.get(id=metric_id)
-                # Store metric_id for standalone uploads
-                if not submission:
-                    ocr_data = {'intended_metric_id': metric_id}
             except ESGMetric.DoesNotExist:
-                return Response({"error": f"Metric with ID {metric_id} does not exist"}, 
-                               status=status.HTTP_400_BAD_REQUEST)
+                return Response({'error': 'Metric not found'}, status=404)
         
-        # Prepare file metadata
-        filename = uploaded_file.name
-        file_type = filename.split('.')[-1].lower()
-        
-        # Create evidence record
-        enable_ocr = request.data.get('enable_ocr_processing', 'false').lower() == 'true'
-        
+        # Create standalone evidence record
         evidence = ESGMetricEvidence.objects.create(
-            submission=submission,
-            file=uploaded_file,
-            filename=filename,
-            file_type=file_type,
+            file=file_obj,
+            filename=file_obj.name,
+            file_type=file_obj.content_type,
             uploaded_by=request.user,
             description=request.data.get('description', ''),
-            enable_ocr_processing=enable_ocr,
-            ocr_data=ocr_data
+            enable_ocr_processing=request.data.get('enable_ocr_processing') == 'true'
         )
         
+        # Store metric_id in ocr_data for later use
+        if metric_id:
+            # Initialize ocr_data if needed
+            if not evidence.ocr_data:
+                evidence.ocr_data = {}
+            
+            # Ensure ocr_data is a dict
+            if not isinstance(evidence.ocr_data, dict):
+                evidence.ocr_data = {}
+                
+            # Store the metric_id
+            evidence.ocr_data['intended_metric_id'] = metric_id
+            evidence.save()
+        
         # Prepare response
-        serializer = self.get_serializer(evidence)
-        response_data = serializer.data
+        response_data = {
+            'id': evidence.id,
+            'file': request.build_absolute_uri(evidence.file.url) if evidence.file else None,
+            'filename': evidence.filename,
+            'uploaded_at': evidence.uploaded_at,
+            'is_standalone': True,
+            'metric_id': metric_id
+        }
         
-        # Add additional context based on the upload type
-        if not submission:
-            response_data["is_standalone"] = True
-            response_data["message"] = "Evidence file uploaded as standalone file"
-        else:
-            response_data["is_standalone"] = False
-            response_data["message"] = "Evidence file uploaded and attached to submission"
+        # Add OCR processing URL if enabled
+        if evidence.enable_ocr_processing:
+            response_data['ocr_processing_url'] = request.build_absolute_uri(
+                reverse('esgmetricevidence-process-ocr', args=[evidence.id])
+            )
         
-        # If OCR processing is enabled, provide the URL for processing
-        if enable_ocr:
-            process_ocr_url = reverse('esgmetricevidence-process-ocr', args=[evidence.id])
-            response_data["ocr_processing_url"] = process_ocr_url
+        return Response(response_data, status=201)
+
+    @action(detail=False, methods=['get'])
+    def by_submission(self, request):
+        submission_id = request.query_params.get('submission_id')
+        if not submission_id:
+            return Response({'error': 'submission_id is required'}, status=400)
         
-        return Response(response_data, status=status.HTTP_201_CREATED)
+        try:
+            submission = ESGMetricSubmission.objects.get(id=submission_id)
+        except ESGMetricSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=404)
+        
+        # Check permissions
+        if not (request.user.is_staff or request.user.is_superuser or 
+                request.user.is_baker_tilly_admin or 
+                request.user == submission.submitted_by or
+                request.user.layers.filter(id=submission.assignment.layer.id).exists()):
+            return Response({'error': 'You do not have permission to view this submission'}, status=403)
+        
+        # Get evidence for this submission
+        evidence = ESGMetricEvidence.objects.filter(submission=submission)
+        serializer = self.get_serializer(evidence, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def process_ocr(self, request, pk=None):
+        evidence = self.get_object()
+        
+        # Check if already processed
+        if evidence.is_processed_by_ocr:
+            return Response({'message': 'This file has already been processed with OCR',
+                            'ocr_results_url': request.build_absolute_uri(
+                                reverse('esgmetricevidence-ocr-results', args=[evidence.id])
+                            )}, status=200)
+        
+        # Check if OCR is enabled
+        if not evidence.enable_ocr_processing:
+            return Response({'error': 'OCR processing is not enabled for this evidence'}, status=400)
+        
+        # Initialize bill analyzer service
+        analyzer = UtilityBillAnalyzer()
+        
+        # Process the evidence
+        success, result = analyzer.process_evidence(evidence)
+        
+        if not success:
+            return Response({'error': result.get('error', 'Unknown error during OCR processing')}, 
+                           status=400)
+        
+        # Return success with results URL
+        return Response({
+            'message': 'OCR processing successful',
+            'ocr_results_url': request.build_absolute_uri(
+                reverse('esgmetricevidence-ocr-results', args=[evidence.id])
+            ),
+            'extracted_value': evidence.extracted_value,
+            'period': evidence.period
+        }, status=200)
+
+    @action(detail=True, methods=['get'])
+    def ocr_results(self, request, pk=None):
+        evidence = self.get_object()
+        
+        if not evidence.is_processed_by_ocr:
+            return Response({'error': 'This file has not been processed with OCR'}, status=400)
+        
+        # Return OCR results
+        return Response({
+            'id': evidence.id,
+            'filename': evidence.filename,
+            'extracted_value': evidence.extracted_value,
+            'period': evidence.period,
+            'additional_periods': evidence.ocr_data.get('additional_periods', []) 
+                                 if isinstance(evidence.ocr_data, dict) else [],
+            'raw_ocr_data': evidence.ocr_data,
+            'is_processed_by_ocr': evidence.is_processed_by_ocr
+        })
 
     @action(detail=True, methods=['post'])
     def attach_to_submission(self, request, pk=None):
         """
         Attach a standalone evidence file to a submission.
-        
-        POST parameters:
-        - submission_id: ID of the submission to attach evidence to
-        - apply_ocr_data: (Optional) Boolean to apply OCR data to the submission
+        Optionally applies OCR data to the submission values.
         """
+        evidence = self.get_object()
+        
+        # Check if already attached
+        if evidence.submission is not None:
+            return Response({'error': 'This evidence is already attached to a submission'}, status=400)
+        
+        # Get required submission_id
+        submission_id = request.data.get('submission_id')
+        if not submission_id:
+            return Response({'error': 'submission_id is required'}, status=400)
+        
+        # Verify submission exists and user has access
         try:
-            evidence = ESGMetricEvidence.objects.get(pk=pk)
+            submission = ESGMetricSubmission.objects.get(id=submission_id)
             
-            # Check if already attached to a submission
-            if evidence.submission is not None:
-                return Response(
-                    {"error": "This evidence is already attached to a submission"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Get required parameters
-            submission_id = request.data.get('submission_id')
-            if not submission_id:
-                return Response(
-                    {"error": "submission_id is required"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Validate submission exists and user has access
-            try:
-                submission = ESGMetricSubmission.objects.get(id=submission_id)
+            # Check permissions
+            if not (request.user.is_staff or request.user.is_superuser or 
+                    request.user.is_baker_tilly_admin or 
+                    request.user == submission.submitted_by or
+                    request.user.layers.filter(id=submission.assignment.layer.id).exists()):
+                return Response({'error': 'You do not have permission to modify this submission'}, status=403)
                 
-                # Check if the user has access to this submission
-                # (Implement your access control logic here)
-                
-            except ESGMetricSubmission.DoesNotExist:
-                return Response(
-                    {"error": "Submission not found"}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
+        except ESGMetricSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=404)
+        
+        # Attach evidence to submission
+        evidence.submission = submission
+        evidence.save()
+        
+        # Apply OCR data if requested and available
+        if (request.data.get('apply_ocr_data') == 'true' and 
+            evidence.is_processed_by_ocr and 
+            evidence.extracted_value is not None):
             
-            # Attach evidence to submission
-            evidence.submission = submission
-            evidence.save(update_fields=['submission'])
+            # Update submission value
+            submission.value = evidence.extracted_value
             
-            # If OCR has been processed and data extracted, offer to apply to submission
-            if evidence.is_processed_by_ocr and evidence.extracted_value is not None:
+            # Update period if available
+            if evidence.period:
+                submission.reporting_period = evidence.period
                 
-                # Apply OCR data to submission if requested
-                if request.data.get('apply_ocr_data') == 'true':
-                    submission.value = evidence.extracted_value
-                    if evidence.period and submission.reporting_period is None:
-                        submission.reporting_period = evidence.period
-                    submission.save(update_fields=['value', 'reporting_period'])
-                    
-                    return Response({
-                        "status": "success",
-                        "message": "Evidence attached to submission and OCR data applied",
-                        "submission_id": submission.id,
-                        "evidence_id": evidence.id,
-                        "value": evidence.extracted_value,
-                        "period": evidence.period
-                    }, status=status.HTTP_200_OK)
+            submission.save()
             
             return Response({
-                "status": "success",
-                "message": "Evidence attached to submission",
-                "submission_id": submission.id,
-                "evidence_id": evidence.id
-            }, status=status.HTTP_200_OK)
-                
-        except ESGMetricEvidence.DoesNotExist:
-            return Response(
-                {"error": "Evidence not found"}, 
-                status=status.HTTP_404_NOT_FOUND
+                'message': 'Evidence attached to submission and OCR data applied',
+                'submission_id': submission.id,
+                'value_updated': True,
+                'new_value': submission.value,
+                'period_updated': evidence.period is not None,
+                'new_period': submission.reporting_period
+            })
+        
+        # Return success without applying OCR data
+        return Response({
+            'message': 'Evidence attached to submission successfully',
+            'submission_id': submission.id,
+            'value_updated': False
+        })
+
+    @action(detail=False, methods=['get'])
+    def by_metric(self, request):
+        """
+        Get standalone evidence files for a specific metric.
+        Useful for showing available evidence when filling out a form.
+        """
+        metric_id = request.query_params.get('metric_id')
+        if not metric_id:
+            return Response({'error': 'metric_id is required'}, status=400)
+        
+        try:
+            metric = ESGMetric.objects.get(id=metric_id)
+        except ESGMetric.DoesNotExist:
+            return Response({'error': 'Metric not found'}, status=404)
+        
+        # Find evidence for this metric (both directly attached and standalone with intended_metric_id)
+        evidence = ESGMetricEvidence.objects.filter(
+            models.Q(submission__metric=metric) |
+            models.Q(
+                submission__isnull=True,
+                ocr_data__icontains=f'"intended_metric_id": "{metric_id}"'
             )
+        ).filter(
+            models.Q(uploaded_by=request.user) | 
+            models.Q(submission__assignment__layer__in=request.user.layers.all())
+        )
+        
+        serializer = self.get_serializer(evidence, many=True)
+        return Response(serializer.data)
 
 class ESGMetricViewSet(viewsets.ModelViewSet):
     """

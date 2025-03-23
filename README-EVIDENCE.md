@@ -74,16 +74,20 @@ Evidence files can be stored in two ways:
    - `POST /api/metric-evidence/`
    - Parameters:
      - `file`: The evidence file to upload (required)
-     - `submission_id`: (Optional) ID of the submission to attach to
      - `metric_id`: (Optional) ID of the metric this evidence relates to
      - `enable_ocr_processing`: (Optional) Set to 'true' to enable OCR
      - `description`: (Optional) Description of the evidence
    - Response:
      - Returns the created evidence record with additional metadata
-     - Includes `is_standalone: true|false` to indicate if it's attached to a submission
+     - Includes `is_standalone: true`
      - Includes `ocr_processing_url` if OCR processing is enabled
 
-2. **Attach Standalone Evidence to Submission**
+2. **Get Evidence by Metric**
+   - `GET /api/metric-evidence/by_metric/?metric_id=123`
+   - Returns all evidence files (both standalone and attached) related to a specific metric
+   - Useful for showing available evidence when filling out forms
+
+3. **Attach Standalone Evidence to Submission**
    - `POST /api/metric-evidence/{id}/attach_to_submission/`
    - Requires `submission_id` parameter
    - Optional: `apply_ocr_data=true|false` to apply OCR data to the submission
@@ -100,69 +104,87 @@ Evidence files can be stored in two ways:
    - `GET /api/metric-evidence/{id}/ocr_results/`
    - Retrieves the current OCR processing status and results
 
-3. **Apply OCR Data to Submission**
-   - `POST /api/metric-evidence/{id}/apply_ocr_to_submission/`
-   - Applies OCR-extracted data to the linked submission
-   - Optional parameters to override extracted values
+## Per-Metric Evidence Upload Workflow
 
-## Upload and Processing Workflows
+The system supports a streamlined workflow where users can upload evidence files directly from each metric in the form:
 
-### Standard Workflow
-1. Upload evidence with `submission_id` to attach directly to a submission:
+1. For each ESG metric, users can upload supporting evidence files
+2. All evidence is initially created as standalone (no submission association)
+3. When a form is submitted, evidence files are automatically attached to the appropriate submissions
+
+### Frontend Implementation
+
+```javascript
+// Example: Upload evidence for a specific metric
+function uploadEvidenceForMetric(metricId, files, enableOcr = true) {
+  const formData = new FormData();
+  formData.append('file', files[0]);
+  formData.append('metric_id', metricId);
+  formData.append('enable_ocr_processing', enableOcr ? 'true' : 'false');
+  
+  return fetch('/api/metric-evidence/', {
+    method: 'POST',
+    body: formData
+  }).then(response => response.json());
+}
+
+// Example: Get evidence for a specific metric
+function getEvidenceForMetric(metricId) {
+  return fetch(`/api/metric-evidence/by_metric/?metric_id=${metricId}`)
+    .then(response => response.json());
+}
+```
+
+### Automatic Evidence Attachment
+
+The system automatically attaches standalone evidence files to submissions when:
+
+1. Users submit individual metrics via `batch_submit` with `auto_attach_evidence=true`
+2. Users submit a complete template via `submit_template` endpoint
+
+```javascript
+// Example: Submit metrics with auto-attachment of evidence
+function submitMetrics(assignmentId, metricsData) {
+  const payload = {
+    assignment_id: assignmentId,
+    submissions: metricsData,
+    auto_attach_evidence: true
+  };
+  
+  return fetch('/api/metric-submissions/batch_submit/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(response => response.json());
+}
+```
+
+## OCR Processing Flow
+
+### Upload with OCR Processing
+1. Upload evidence for a specific metric with OCR enabled:
    ```
    POST /api/metric-evidence/
    {
      "file": [file data],
-     "submission_id": 123
-   }
-   ```
-
-### OCR Workflow with Existing Submission
-1. Upload evidence with OCR enabled and attach to submission:
-   ```
-   POST /api/metric-evidence/
-   {
-     "file": [file data],
-     "submission_id": 123,
+     "metric_id": 456,
      "enable_ocr_processing": "true"
    }
    ```
-2. Process OCR using the returned processing URL:
+   
+2. Process OCR (either immediately or later):
    ```
    POST /api/metric-evidence/{id}/process_ocr/
    ```
+   
 3. Review OCR results:
    ```
    GET /api/metric-evidence/{id}/ocr_results/
    ```
-
-### OCR-First Workflow (Standalone Evidence)
-1. Upload evidence as standalone with OCR enabled:
-   ```
-   POST /api/metric-evidence/
-   {
-     "file": [file data],
-     "metric_id": 456,  # Optional but helpful for OCR analyzer selection
-     "enable_ocr_processing": "true"
-   }
-   ```
-2. Process OCR:
-   ```
-   POST /api/metric-evidence/{id}/process_ocr/
-   ```
-3. Review OCR results:
-   ```
-   GET /api/metric-evidence/{id}/ocr_results/
-   ```
-4. Create a submission with the extracted data (frontend workflow)
-5. Attach evidence to the submission:
-   ```
-   POST /api/metric-evidence/{id}/attach_to_submission/
-   {
-     "submission_id": 123,
-     "apply_ocr_data": "true"
-   }
-   ```
+   
+4. When the form is submitted, the system will:
+   - Automatically attach the evidence to the appropriate submission
+   - Apply OCR data to the submission value if not already set
 
 ## Testing OCR Processing
 
@@ -190,21 +212,25 @@ python manage.py test_ocr 123 --format json
 
 ## Best Practices for Evidence Management
 
-1. **Use the universal upload endpoint** for all evidence file uploads, with or without a submission.
-2. **Process OCR** before attaching to submissions when possible to allow for review.
-3. **Set appropriate analyzer IDs** for metrics to improve extraction accuracy.
-4. **Review OCR results** before applying to submissions.
-5. **Track manual edits** to OCR data for audit purposes.
+1. **Use per-metric uploads** to organize evidence files by the metrics they support
+2. **Enable OCR for utility bills** to automatically extract consumption data and period
+3. **Let the system handle attachments** during form submission to reduce manual steps
+4. **Set appropriate analyzer IDs** for metrics to improve extraction accuracy
+5. **Review OCR results** before submitting forms
+6. **Use period matching** by ensuring evidence periods match the reporting periods of submissions
 
 ## Technical Implementation Details
 
-1. The OCR processing flow checks for `enable_ocr_processing=True` before attempting OCR.
-2. For standalone evidence, the `ocr_data` field stores the intended metric ID.
-3. When processing OCR, the system:
-   - Uses the submission's metric analyzer ID if available
-   - For standalone evidence, looks up the metric by ID stored in ocr_data
-   - Falls back to the default analyzer
-4. The OCR analyzer may extract multiple billing periods, which are returned in the API response.
+1. All evidence is initially created as standalone (without a submission)
+2. The `metric_id` is stored in the `ocr_data` field as `intended_metric_id`
+3. During form submission, evidence is matched to submissions by:
+   - First matching by period (if available)
+   - Falling back to first submission for that metric if no period match
+4. OCR data can be automatically applied to submissions during attachment
+5. The OCR analyzer is selected based on:
+   - The metric's `ocr_analyzer_id` for standalone evidence
+   - The submission's metric analyzer ID for attached evidence
+   - A default analyzer as fallback
 
 ## Migration Notes
 
@@ -215,5 +241,5 @@ python manage.py test_ocr 123 --format json
    ```
 
 2. Database changes:
-   - New field `submission` on `ESGMetricEvidence` is now nullable
-   - Field renames: `ocr_processed` → `is_processed_by_ocr`, `extracted_period` → `period` 
+   - The `submission` field on `ESGMetricEvidence` is now nullable to support standalone evidence
+   - Field renames for clarity: `ocr_processed` → `is_processed_by_ocr`, `extracted_period` → `period` 
