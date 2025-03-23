@@ -220,10 +220,11 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                     required_metrics.append(metric.id)
                     
             # Check if all required metrics have submissions
-            submitted_metrics = ESGMetricSubmission.objects.filter(
+            submissions = ESGMetricSubmission.objects.filter(
                 assignment=assignment,
                 metric__form=form
-            ).values_list('metric_id', flat=True)
+            )
+            submitted_metrics = submissions.values_list('metric_id', flat=True)
             
             missing_metrics = set(required_metrics) - set(submitted_metrics)
             
@@ -237,6 +238,9 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                     "error": "Cannot complete form with missing required metrics",
                     "missing_metrics": list(missing_metric_names)
                 }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Automatically attach evidence files related to this form's submissions
+            self._attach_evidence_to_submissions(list(submissions), request.user)
                 
             # Mark the form as completed
             form_selection.is_completed = True
@@ -884,7 +888,8 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
     def _attach_evidence_to_submissions(self, submissions, user):
         """
         Automatically attach relevant standalone evidence to the given submissions.
-        This is called after batch submission to link any pending evidence files.
+        This is called during form completion and batch submission to link any pending evidence files.
+        Note: This only attaches the evidence files, it does NOT apply OCR data automatically.
         """
         if not submissions:
             return
@@ -926,15 +931,9 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     evidence.submission = best_submission
                     evidence.save()
                     
-                    # Apply OCR data if available and submission has no value
-                    if (evidence.is_processed_by_ocr and 
-                        evidence.extracted_value is not None and
-                        (best_submission.value is None or best_submission.value == 0)):
-                        
-                        best_submission.value = evidence.extracted_value
-                        if evidence.period and not best_submission.reporting_period:
-                            best_submission.reporting_period = evidence.period
-                        best_submission.save()
+                    # We intentionally do NOT apply OCR data automatically
+                    # Users need to explicitly choose to use OCR data by calling attach_to_submission
+                    # with apply_ocr_data=true
 
     @action(detail=False, methods=['get'])
     def by_assignment(self, request):
@@ -1042,8 +1041,8 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 'missing_metrics': missing_metrics
             }, status=400)
         
-        # Automatically attach all standalone evidence to submissions
-        self._attach_evidence_to_submissions(list(submissions), request.user)
+        # Evidence attachment is now handled at form completion stage
+        # No need to call _attach_evidence_to_submissions here
         
         # Update assignment status
         assignment.status = 'SUBMITTED'
@@ -1284,10 +1283,18 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         evidence.save()
         
         # Apply OCR data if requested and available
-        if (request.data.get('apply_ocr_data') == 'true' and 
-            evidence.is_processed_by_ocr and 
-            evidence.extracted_value is not None):
-            
+        apply_ocr = request.data.get('apply_ocr_data') == 'true'
+        if apply_ocr and evidence.is_processed_by_ocr and evidence.extracted_value is not None:
+            # Check if submission already has a value
+            if submission.value == 0:
+                # Warn that we're overriding a zero value, but proceed if explicitly requested
+                warning = "Overriding an explicit zero value with OCR data"
+            elif submission.value is not None:
+                # Warn that we're overriding a non-zero value
+                warning = f"Overriding existing value {submission.value} with OCR data"
+            else:
+                warning = None
+                
             # Update submission value
             submission.value = evidence.extracted_value
             
@@ -1303,7 +1310,8 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                 'value_updated': True,
                 'new_value': submission.value,
                 'period_updated': evidence.period is not None,
-                'new_period': submission.reporting_period
+                'new_period': submission.reporting_period,
+                'warning': warning
             })
         
         # Return success without applying OCR data
