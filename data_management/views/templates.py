@@ -20,6 +20,8 @@ from ..serializers.esg import (
     ESGMetricEvidenceSerializer, ESGMetricBatchSubmissionSerializer
 )
 from rest_framework import serializers
+from django.conf import settings
+from ..services.bill_analyzer import UtilityBillAnalyzer
 
 class ESGFormViewSet(viewsets.ModelViewSet):
     """
@@ -1135,6 +1137,317 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         queryset = self.get_queryset().filter(submission_id=submission_id)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['post'])
+    def upload_with_ocr(self, request):
+        """
+        Upload a file and process it with OCR.
+        
+        This endpoint handles both file upload and OCR processing in one call.
+        """
+        # Get required parameters
+        submission_id = request.data.get('submission_id')
+        if not submission_id:
+            return Response(
+                {"error": "submission_id is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get the uploaded file
+        uploaded_file = request.FILES.get('file')
+        if not uploaded_file:
+            return Response(
+                {"error": "No file provided"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate submission exists and user has access
+        try:
+            submission = ESGMetricSubmission.objects.get(id=submission_id)
+            
+            # Check user has access to this submission
+            user_app_users = AppUser.objects.filter(user=request.user).values_list('layer_id', flat=True)
+            if submission.assignment.layer.id not in user_app_users:
+                return Response(
+                    {"error": "You do not have access to this submission"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        except ESGMetricSubmission.DoesNotExist:
+            return Response(
+                {"error": "Submission not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Process the file
+        filename = uploaded_file.name
+        file_type = filename.split('.')[-1].lower()
+        
+        # Check if this is meant to be OCR processed
+        is_utility_bill = request.data.get('is_utility_bill') == 'true'
+        
+        # Create evidence record
+        evidence = ESGMetricEvidence.objects.create(
+            submission=submission,
+            file=uploaded_file,
+            filename=filename,
+            file_type=file_type,
+            uploaded_by=request.user,
+            description=request.data.get('description', ''),
+            is_utility_bill=is_utility_bill
+        )
+        
+        # If this is a utility bill, process it with OCR
+        if is_utility_bill:
+            # Get Azure credentials from settings
+            endpoint = settings.AZURE_CONTENT_UNDERSTANDING_ENDPOINT
+            api_version = settings.AZURE_CONTENT_UNDERSTANDING_API_VERSION
+            subscription_key = settings.AZURE_CONTENT_UNDERSTANDING_KEY
+            
+            # Create analyzer and process evidence
+            analyzer = UtilityBillAnalyzer(
+                endpoint=endpoint,
+                api_version=api_version,
+                subscription_key=subscription_key
+            )
+            
+            ocr_result = analyzer.process_evidence(evidence.id)
+            
+            # Return both the evidence info and OCR results
+            serializer = self.get_serializer(evidence)
+            response_data = serializer.data
+            response_data['ocr_result'] = ocr_result
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
+        else:
+            # For regular uploads, just return the evidence info
+            serializer = self.get_serializer(evidence)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=['get'])
+    def ocr_results(self, request, pk=None):
+        """
+        Get OCR results for an evidence file.
+        
+        This endpoint returns the extracted values and periods from OCR processing,
+        which can be displayed to the user before applying to the submission.
+        """
+        evidence = self.get_object()
+        
+        # Check if this evidence has been OCR processed
+        if not evidence.ocr_processed or not evidence.is_utility_bill:
+            return Response(
+                {"error": "This evidence has not been processed with OCR"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Format the response
+        response_data = {
+            "evidence_id": evidence.id,
+            "submission_id": evidence.submission_id,
+            "status": "success",
+            "extracted_value": evidence.extracted_value,
+            "extracted_period": evidence.extracted_period,
+            "was_manually_edited": evidence.was_manually_edited
+        }
+        
+        # Add multiple periods if available
+        if evidence.ocr_data and 'all_periods' in evidence.ocr_data:
+            response_data["all_periods"] = evidence.ocr_data['all_periods']
+        
+        return Response(response_data)
+    
+    @action(detail=True, methods=['post'])
+    def apply_ocr_to_submission(self, request, pk=None):
+        """
+        Apply OCR-extracted values to the related submission.
+        
+        This endpoint updates the ESGMetricSubmission with values extracted by OCR,
+        and tracks whether the user edited these values.
+        """
+        evidence = self.get_object()
+        submission = evidence.submission
+        
+        # Check if this is an OCR-processed evidence
+        if not evidence.ocr_processed or not evidence.is_utility_bill:
+            return Response(
+                {"error": "This evidence has not been processed with OCR"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get values from request
+        value = request.data.get('value')
+        reporting_period = request.data.get('reporting_period')
+        
+        # Determine if values were manually edited
+        was_edited = False
+        
+        # Check if value was manually edited
+        if value is not None and evidence.extracted_value is not None:
+            try:
+                if abs(float(value) - evidence.extracted_value) > 0.001:
+                    was_edited = True
+            except (ValueError, TypeError):
+                # If we can't compare them, assume they're different
+                was_edited = True
+        
+        # Check if period was manually edited
+        if reporting_period is not None and evidence.extracted_period is not None:
+            from dateutil.parser import parse
+            try:
+                submitted_date = parse(reporting_period).date()
+                if submitted_date != evidence.extracted_period:
+                    was_edited = True
+            except (ValueError, TypeError):
+                # If we can't parse or compare them, assume they're different
+                was_edited = True
+        
+        # Update the evidence record to track edits
+        if was_edited:
+            evidence.was_manually_edited = True
+            evidence.edited_at = timezone.now()
+            evidence.edited_by = request.user
+            evidence.save()
+        
+        # Update the submission with the provided values
+        if value is not None:
+            try:
+                submission.value = float(value)
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "Invalid value format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        if reporting_period is not None:
+            from dateutil.parser import parse
+            try:
+                submission.reporting_period = parse(reporting_period).date()
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "Invalid reporting_period format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        submission.save()
+        
+        # Return updated submission and evidence
+        return Response({
+            "status": "success",
+            "was_edited": was_edited,
+            "submission": ESGMetricSubmissionSerializer(submission).data,
+            "evidence": self.get_serializer(evidence).data
+        })
+    
+    @action(detail=True, methods=['post'])
+    def apply_multiple_periods(self, request, pk=None):
+        """
+        Apply multiple billing periods from OCR data to create multiple submissions.
+        
+        This endpoint handles utility bills that contain multiple billing periods,
+        creating or updating submissions for each period.
+        """
+        evidence = self.get_object()
+        original_submission = evidence.submission
+        
+        # Check if this is an OCR-processed evidence with multiple periods
+        if not evidence.ocr_processed or not evidence.is_utility_bill:
+            return Response(
+                {"error": "This evidence has not been processed with OCR"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get the periods data
+        periods = request.data.get('periods', [])
+        if not periods:
+            return Response(
+                {"error": "No period data provided"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Track if any values were edited
+        was_edited = False
+        
+        # Get original periods from OCR data for comparison
+        original_periods = {}
+        if evidence.ocr_data and 'raw_data' in evidence.ocr_data and 'periods' in evidence.ocr_data['raw_data']:
+            for period in evidence.ocr_data['raw_data']['periods']:
+                if 'period' in period and 'consumption' in period:
+                    original_periods[period['period']] = period['consumption']
+        
+        # Process each period
+        results = []
+        from dateutil.parser import parse
+        
+        for period_data in periods:
+            period_str = period_data.get('period')
+            consumption = period_data.get('consumption')
+            
+            # Skip invalid data
+            if not period_str or consumption is None:
+                continue
+            
+            # Convert period to date
+            try:
+                period_date = parse(period_str).date() if isinstance(period_str, str) else period_str
+            except ValueError:
+                continue
+            
+            # Check if this period was edited
+            period_edited = False
+            if period_str in original_periods:
+                try:
+                    orig_consumption = float(original_periods[period_str])
+                    new_consumption = float(consumption)
+                    if abs(orig_consumption - new_consumption) > 0.001:
+                        period_edited = True
+                        was_edited = True
+                except (ValueError, TypeError):
+                    # If we can't compare, assume they're different
+                    period_edited = True
+                    was_edited = True
+            
+            # Create or update submission for this period
+            try:
+                # Try to find existing submission for this period
+                period_submission = ESGMetricSubmission.objects.get(
+                    assignment=original_submission.assignment,
+                    metric=original_submission.metric,
+                    reporting_period=period_date
+                )
+            except ESGMetricSubmission.DoesNotExist:
+                # Create new submission for this period
+                period_submission = ESGMetricSubmission.objects.create(
+                    assignment=original_submission.assignment,
+                    metric=original_submission.metric,
+                    reporting_period=period_date,
+                    submitted_by=request.user
+                )
+            
+            # Update the value
+            period_submission.value = float(consumption)
+            period_submission.save()
+            
+            # Add to results
+            results.append({
+                "period": period_date,
+                "value": consumption,
+                "submission_id": period_submission.id,
+                "was_edited": period_edited
+            })
+        
+        # Update evidence record if any values were edited
+        if was_edited:
+            evidence.was_manually_edited = True
+            evidence.edited_at = timezone.now()
+            evidence.edited_by = request.user
+            evidence.save()
+        
+        return Response({
+            "status": "success",
+            "was_edited": was_edited,
+            "message": f"{len(results)} periods processed",
+            "periods": results
+        })
 
 class ESGMetricViewSet(viewsets.ModelViewSet):
     """

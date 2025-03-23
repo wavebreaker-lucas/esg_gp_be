@@ -44,18 +44,31 @@ class DataEditLogSerializer(serializers.ModelSerializer):
 class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
     """Serializer for ESG metric evidence files"""
     uploaded_by_name = serializers.SerializerMethodField()
+    edited_by_name = serializers.SerializerMethodField()
     
     class Meta:
         model = ESGMetricEvidence
         fields = [
             'id', 'file', 'filename', 'file_type', 
-            'uploaded_by', 'uploaded_by_name', 'uploaded_at', 'description'
+            'uploaded_by', 'uploaded_by_name', 'uploaded_at', 'description',
+            'is_utility_bill', 'ocr_processed', 'extracted_value', 
+            'extracted_period', 'was_manually_edited', 'edited_at', 
+            'edited_by', 'edited_by_name'
         ]
-        read_only_fields = ['uploaded_by', 'uploaded_at']
+        read_only_fields = [
+            'uploaded_by', 'uploaded_at', 'ocr_processed', 
+            'extracted_value', 'extracted_period', 'was_manually_edited',
+            'edited_at', 'edited_by'
+        ]
     
     def get_uploaded_by_name(self, obj):
         if obj.uploaded_by:
             return obj.uploaded_by.get_full_name() or obj.uploaded_by.email
+        return None
+        
+    def get_edited_by_name(self, obj):
+        if obj.edited_by:
+            return obj.edited_by.get_full_name() or obj.edited_by.email
         return None
 
 class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
