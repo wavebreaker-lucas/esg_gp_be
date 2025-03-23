@@ -58,14 +58,22 @@ The `UtilityBillAnalyzer` class in `data_management/services/bill_analyzer.py` i
 - Handling multiple billing periods for time-based metrics
 - Saving extracted data back to the `ESGMetricEvidence` record
 
-### 4. API Endpoints for OCR Integration
+### 4. API Endpoints for Evidence Management
 
-Four API endpoints have been added to the `ESGMetricEvidenceViewSet`:
+#### Standard Evidence Endpoints
 
-- `upload_with_ocr`: Upload and process a utility bill with OCR
-- `ocr_results`: Get OCR results for an evidence file
-- `apply_ocr_to_submission`: Apply OCR data to a submission with edit tracking
-- `apply_multiple_periods`: Apply multiple billing periods from a utility bill
+- `GET /api/metric-evidence/`: List all accessible evidence files
+- `POST /api/metric-evidence/`: Upload evidence for a metric submission
+- `GET /api/metric-evidence/{id}/`: Get details of a specific evidence file
+- `DELETE /api/metric-evidence/{id}/`: Delete an evidence file
+- `GET /api/metric-evidence/by_submission/?submission_id={id}`: Get all evidence for a submission
+
+#### OCR-Specific Endpoints
+
+- `POST /api/metric-evidence/upload_with_ocr/`: Upload and process a utility bill with OCR
+- `GET /api/metric-evidence/{id}/ocr_results/`: Get OCR results for an evidence file
+- `POST /api/metric-evidence/{id}/apply_ocr_to_submission/`: Apply OCR data to a submission with edit tracking
+- `POST /api/metric-evidence/{id}/apply_multiple_periods/`: Apply multiple billing periods from a utility bill
 
 ## Usage
 
@@ -108,12 +116,72 @@ For utility bills that contain consumption history (like electricity bills with 
 2. These can be applied to create multiple submissions with different reporting periods
 3. This is particularly useful for metrics that require monthly or quarterly reporting
 
+#### How Multiple Periods Work
+
+When a utility bill contains data for multiple billing periods:
+
+1. The OCR system looks for a field called "MultipleBillingPeriods" in the analyzer output
+2. It parses this field as a JSON list of periods, each with a date and consumption value
+3. For database storage, only the first period is automatically applied to the `extracted_value` and `extracted_period` fields
+4. All periods are returned in the API response in the `all_periods` field
+5. Users can selectively apply specific periods to different submissions using the `apply_multiple_periods` endpoint
+
+This means you can upload a single utility bill file (e.g., a quarterly or annual statement) once, and then apply different billing periods to the appropriate monthly submissions.
+
+#### Evidence-Submission Relationship
+
+The `ESGMetricEvidence` model links to a specific `ESGMetricSubmission` via a foreign key:
+
+```python
+submission = models.ForeignKey(ESGMetricSubmission, on_delete=models.CASCADE, related_name='evidence')
+```
+
+This means:
+- For single-period bills: One evidence file is linked to one submission record
+- For multi-period bills: Users have two options:
+  1. Upload separate bills for each period (one evidence per submission)
+  2. Upload one bill with multiple periods and selectively apply periods to different submissions
+
+The second approach is more efficient as it requires only one file upload and OCR processing operation.
+
 ## Best Practices
 
-1. **Create Custom Analyzers**: For best results, create custom Azure Content Understanding analyzers for each utility provider
-2. **Assign Specific Analyzers**: Set the `ocr_analyzer_id` field for metrics corresponding to specific utility providers
-3. **User Verification**: Always have users verify the extracted data before final submission
-4. **Track Edits**: Use the `was_manually_edited` flag to track when users have modified OCR-extracted values
+### Evidence Management
+
+1. **File Organization**: 
+   - Use descriptive filenames for utility bills (e.g., "clp_electricity_jan2023.pdf")
+   - Consider standardizing naming conventions for easier identification
+
+2. **OCR Processing**:
+   - Enable OCR processing only for structured documents like utility bills
+   - For unstructured documents, manual data entry may be more reliable
+
+3. **Evidence Types**:
+   - Utility bills: Enable OCR processing for automated data extraction
+   - Reports and certificates: Use standard file uploads without OCR
+   - Raw data files: Consider custom import tools instead of OCR
+
+4. **Custom Analyzers**: For best results, create custom Azure Content Understanding analyzers for each utility provider
+
+5. **User Verification**: Always have users verify the extracted data before final submission
+
+6. **Track Edits**: Use the `was_manually_edited` flag to track when users have modified OCR-extracted values
+
+### For Time-Based Metrics
+
+1. **Multiple Periods**:
+   - For metrics requiring monthly data, upload quarterly bills that contain multiple months
+   - Use the `apply_multiple_periods` endpoint to create separate submissions for each month
+   - This reduces the number of file uploads needed
+
+2. **Period Verification**:
+   - Ensure the extracted periods match your reporting periods
+   - The system attempts to standardize dates to MM/YYYY format
+   - Manual verification is still recommended for critical data
+
+3. **Single vs. Multiple Uploads**:
+   - Single upload with multiple periods: More efficient, requires less storage, one OCR operation
+   - Multiple individual uploads: Simpler tracking, but requires more storage and processing
 
 ## Technical Implementation
 
@@ -126,6 +194,293 @@ The OCR process uses Azure Content Understanding API to analyze documents. The s
 5. Saves the extracted data to the evidence record
 6. Provides endpoints for applying the data to submissions
 
+### Multiple Period Extraction Logic
+
+The core logic for extracting multiple billing periods is in the `_extract_data_from_analyzer` method:
+
+```python
+# Try to extract multiple billing periods
+if "MultipleBillingPeriods" in fields and "valueString" in fields["MultipleBillingPeriods"]:
+    multiple_periods_str = fields["MultipleBillingPeriods"]["valueString"]
+    
+    # Try to parse as JSON
+    try:
+        multiple_periods = json.loads(multiple_periods_str)
+        if isinstance(multiple_periods, list) and multiple_periods:
+            standardized_data = []
+            for period in multiple_periods:
+                # Process each period and standardize the format
+                # Extract period date and consumption value
+                # Add to standardized_data list
+            
+            if standardized_data:
+                result['periods'] = standardized_data
+```
+
+This extracts a list of periods from the OCR result, each with a standardized period date and consumption value.
+
+## API Endpoints
+
+### Standard Evidence Management
+
+#### 1. List Evidence Files
+
+```
+GET /api/metric-evidence/
+```
+
+Returns a list of all evidence files the user has access to. Can be filtered by various parameters.
+
+Parameters:
+- `submission_id` (optional): Filter by submission ID
+- `uploaded_by` (optional): Filter by uploader ID
+
+Response:
+```json
+[
+  {
+    "id": 1,
+    "file": "/media/esg_evidence/2023/04/electricity_bill.pdf",
+    "filename": "electricity_bill.pdf",
+    "file_type": "application/pdf",
+    "uploaded_by": 3,
+    "uploaded_by_name": "john.doe@example.com",
+    "uploaded_at": "2023-04-15T10:35:00Z",
+    "description": "Electricity bill for April 2023",
+    "enable_ocr_processing": true,
+    "ocr_processed": true,
+    "extracted_value": 120.5,
+    "extracted_period": "2023-04-30"
+  },
+  {
+    "id": 2,
+    "file": "/media/esg_evidence/2023/05/water_bill.pdf",
+    "filename": "water_bill.pdf",
+    "file_type": "application/pdf",
+    "uploaded_by": 3,
+    "uploaded_by_name": "john.doe@example.com",
+    "uploaded_at": "2023-05-15T10:35:00Z",
+    "description": "Water bill for May 2023",
+    "enable_ocr_processing": false,
+    "ocr_processed": false,
+    "extracted_value": null,
+    "extracted_period": null
+  }
+]
+```
+
+#### 2. Upload Evidence File (Standard)
+
+```
+POST /api/metric-evidence/
+```
+
+Uploads an evidence file for a metric submission without OCR processing.
+
+Parameters:
+- `submission_id`: ID of the metric submission
+- `file`: The file to upload
+- `description` (optional): Description of the evidence
+
+Response:
+```json
+{
+  "id": 3,
+  "file": "/media/esg_evidence/2023/06/gas_bill.pdf",
+  "filename": "gas_bill.pdf",
+  "file_type": "application/pdf",
+  "uploaded_by": 3,
+  "uploaded_by_name": "john.doe@example.com",
+  "uploaded_at": "2023-06-15T10:35:00Z",
+  "description": "Gas bill for June 2023",
+  "enable_ocr_processing": false,
+  "ocr_processed": false
+}
+```
+
+#### 3. Get Evidence Details
+
+```
+GET /api/metric-evidence/{id}/
+```
+
+Returns details for a specific evidence file.
+
+Response:
+```json
+{
+  "id": 1,
+  "file": "/media/esg_evidence/2023/04/electricity_bill.pdf",
+  "filename": "electricity_bill.pdf",
+  "file_type": "application/pdf",
+  "uploaded_by": 3,
+  "uploaded_by_name": "john.doe@example.com",
+  "uploaded_at": "2023-04-15T10:35:00Z",
+  "description": "Electricity bill for April 2023",
+  "submission": {
+    "id": 1,
+    "metric": {
+      "id": 5,
+      "name": "Electricity consumption (CLP)",
+      "unit_type": "kWh"
+    }
+  },
+  "enable_ocr_processing": true,
+  "ocr_processed": true,
+  "extracted_value": 120.5,
+  "extracted_period": "2023-04-30",
+  "was_manually_edited": false
+}
+```
+
+#### 4. Delete Evidence File
+
+```
+DELETE /api/metric-evidence/{id}/
+```
+
+Deletes an evidence file. Returns a 204 No Content response on success.
+
+#### 5. Get Evidence Files by Submission
+
+```
+GET /api/metric-evidence/by_submission/?submission_id={id}
+```
+
+Returns all evidence files for a specific submission.
+
+Response:
+```json
+[
+  {
+    "id": 1,
+    "file": "/media/esg_evidence/2023/04/electricity_bill.pdf",
+    "filename": "electricity_bill.pdf",
+    "file_type": "application/pdf",
+    "uploaded_by": 3,
+    "uploaded_by_name": "john.doe@example.com",
+    "uploaded_at": "2023-04-15T10:35:00Z",
+    "description": "Electricity bill for April 2023",
+    "enable_ocr_processing": true,
+    "ocr_processed": true,
+    "extracted_value": 120.5,
+    "extracted_period": "2023-04-30"
+  }
+]
+```
+
+### OCR-Specific Endpoints
+
+#### 1. Upload with OCR
+
+```
+POST /api/metric-evidence/upload_with_ocr/
+```
+
+Parameters:
+- `submission_id`: ID of the metric submission
+- `file`: The file to upload
+- `enable_ocr_processing`: Boolean to enable OCR (default: true)
+- `description`: Optional description
+
+Response:
+```json
+{
+  "id": 1,
+  "file": "/media/evidence/bill.pdf",
+  "ocr_status": "processing",
+  "message": "File uploaded successfully. OCR processing started."
+}
+```
+
+#### 2. Get OCR Results
+
+```
+GET /api/metric-evidence/{id}/ocr_results/
+```
+
+Response:
+```json
+{
+  "status": "success",
+  "value": 120.5,
+  "period": "2023-01-31",
+  "all_periods": [
+    {"period": "01/2023", "consumption": 120.5},
+    {"period": "02/2023", "consumption": 115.2},
+    {"period": "03/2023", "consumption": 130.8}
+  ]
+}
+```
+
+#### 3. Apply OCR Data to Submission
+
+```
+POST /api/metric-evidence/{id}/apply_ocr_to_submission/
+```
+
+Parameters:
+- `value`: Optional value to override extracted value
+- `reporting_period`: Optional period to override extracted period
+
+Response:
+```json
+{
+  "submission_id": 1,
+  "metric_id": 5,
+  "value": 120.5,
+  "reporting_period": "2023-01-31",
+  "was_manually_edited": false,
+  "message": "OCR data applied successfully"
+}
+```
+
+#### 4. Apply Multiple Periods
+
+```
+POST /api/metric-evidence/{id}/apply_multiple_periods/
+```
+
+Parameters:
+- `periods`: List of periods to apply with submission details
+  ```json
+  [
+    {
+      "period_index": 0,
+      "reporting_period": "2023-01-31",
+      "override_value": null
+    },
+    {
+      "period_index": 1,
+      "reporting_period": "2023-02-28",
+      "override_value": 116.0
+    }
+  ]
+  ```
+
+Response:
+```json
+{
+  "message": "Multiple periods applied successfully",
+  "results": [
+    {
+      "submission_id": 1,
+      "metric_id": 5,
+      "value": 120.5,
+      "reporting_period": "2023-01-31",
+      "was_manually_edited": false
+    },
+    {
+      "submission_id": 2,
+      "metric_id": 5,
+      "value": 116.0,
+      "reporting_period": "2023-02-28",
+      "was_manually_edited": true
+    }
+  ]
+}
+```
+
 ## Error Handling
 
 The system includes comprehensive error handling for:
@@ -134,4 +489,25 @@ The system includes comprehensive error handling for:
 - Date and consumption value parsing errors
 - Multiple billing periods handling
 
-All errors are logged for troubleshooting, and the raw OCR results are always stored for reference. 
+All errors are logged for troubleshooting, and the raw OCR results are always stored for reference.
+
+## User Experience Considerations
+
+1. **Upload Process**:
+   - Present a clear option to enable OCR processing for appropriate file types
+   - Show processing status and feedback during OCR operations
+
+2. **Reviewing OCR Results**:
+   - Display extracted data clearly with original values
+   - Allow users to verify and correct extracted data before applying
+   - For multi-period bills, show all extracted periods with a selection mechanism
+
+3. **Time-Based Reporting**:
+   - For metrics with `requires_time_reporting=True`, show calendar controls
+   - Integrate OCR period selection with reporting period selection
+   - When applying multiple periods, show the mapping between extracted periods and reporting periods
+
+4. **Error Handling**:
+   - Provide clear error messages when OCR fails or extracts incomplete data
+   - Offer fallback to manual data entry when needed
+   - Log OCR processing attempts for troubleshooting 
