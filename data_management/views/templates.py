@@ -701,8 +701,9 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             return queryset
         
         # Other users can only see submissions for their layers
+        user_layers = LayerProfile.objects.filter(app_users__user=user)
         return queryset.filter(
-            assignment__layer__in=user.layers.all()
+            assignment__layer__in=user_layers
         )
 
     def get_serializer_class(self):
@@ -808,7 +809,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         if not (request.user.is_staff or request.user.is_superuser or 
                 request.user.is_baker_tilly_admin or 
                 request.user == assignment.assigned_to or
-                request.user.layers.filter(id=assignment.layer.id).exists()):
+                LayerProfile.objects.filter(id=assignment.layer.id, app_users__user=request.user).exists()):
             return Response({'error': 'You do not have permission to submit for this assignment'}, status=403)
         
         # Get submissions data
@@ -903,7 +904,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         if not (request.user.is_staff or request.user.is_superuser or 
                 request.user.is_baker_tilly_admin or 
                 request.user == assignment.assigned_to or
-                request.user.layers.filter(id=assignment.layer.id).exists()):
+                LayerProfile.objects.filter(id=assignment.layer.id, app_users__user=request.user).exists()):
             return Response({'error': 'You do not have permission to view this assignment'}, status=403)
         
         # Get all submissions for this assignment
@@ -959,7 +960,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         if not (request.user.is_staff or request.user.is_superuser or 
                 request.user.is_baker_tilly_admin or 
                 request.user == assignment.assigned_to or
-                request.user.layers.filter(id=assignment.layer.id).exists()):
+                LayerProfile.objects.filter(id=assignment.layer.id, app_users__user=request.user).exists()):
             return Response({'error': 'You do not have permission to submit this template'}, status=403)
         
         # Get all metrics for the forms in this template
