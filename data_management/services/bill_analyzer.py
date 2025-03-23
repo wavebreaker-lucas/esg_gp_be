@@ -141,14 +141,7 @@ class UtilityBillAnalyzer:
                     if "periods" in extracted_data and extracted_data["periods"]:
                         first_period = extracted_data["periods"][0]
                         evidence.extracted_value = first_period.get("consumption")
-                        
-                        # Convert period string (MM/YYYY) to date object (last day of month)
-                        period_str = first_period.get("period")
-                        if period_str and "/" in period_str:
-                            try:
-                                evidence.extracted_period = self._mm_yyyy_to_date(period_str)
-                            except ValueError:
-                                evidence.extracted_period = datetime.now().date()
+                        evidence.extracted_period = first_period.get("period")
                     else:
                         # Use single period data if available
                         evidence.extracted_value = extracted_data.get("value")
@@ -262,9 +255,18 @@ class UtilityBillAnalyzer:
                             if consumption_value is None:
                                 continue
                             
+                            # Convert period string to date object 
+                            period_date = None
+                            try:
+                                period_date = self._mm_yyyy_to_date(formatted_period)
+                            except ValueError:
+                                # If we can't parse the date, skip this period
+                                continue
+                            
                             # Create standardized period object
                             standardized_period = {
-                                "period": formatted_period,
+                                "period_str": formatted_period,
+                                "period": period_date,
                                 "consumption": consumption_value
                             }
                             
