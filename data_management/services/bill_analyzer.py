@@ -9,6 +9,7 @@ from django.conf import settings
 from django.utils import timezone
 from data_management.models import ESGMetricEvidence, ESGMetric
 from typing import Callable, Dict, Any, List
+from tempfile import NamedTemporaryFile
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class UtilityBillAnalyzer:
     Uses custom analyzers for different metrics to extract consumption data.
     """
     
-    def __init__(self, endpoint, api_version, subscription_key):
+    def __init__(self, endpoint=None, api_version=None, subscription_key=None):
         """
         Initialize with Azure Content Understanding API credentials.
         
@@ -27,10 +28,14 @@ class UtilityBillAnalyzer:
             api_version: API version to use
             subscription_key: Subscription key for the API
         """
-        self.endpoint = endpoint
-        self.api_version = api_version
-        self.subscription_key = subscription_key
-        self.default_analyzer_id = "multi-period-analyzer"  # Default fallback analyzer
+        # Use provided values or fall back to settings
+        self.endpoint = endpoint or settings.AZURE_CONTENT_UNDERSTANDING.get('ENDPOINT')
+        self.api_version = api_version or settings.AZURE_CONTENT_UNDERSTANDING.get('API_VERSION')
+        self.subscription_key = subscription_key or settings.AZURE_CONTENT_UNDERSTANDING.get('KEY')
+        self.default_analyzer_id = "multi-period-analyzer"  # Default analyzer ID matching settings
+        
+        if not all([self.endpoint, self.api_version, self.subscription_key]):
+            logger.warning("Azure Content Understanding API credentials not fully configured")
         
     def process_evidence(self, evidence_id):
         """
@@ -52,112 +57,134 @@ class UtilityBillAnalyzer:
                     "status": "error",
                     "message": "OCR processing is not enabled for this evidence file"
                 }
-                
-            # Get the file path
-            file_path = evidence.file.path
             
-            # Get the metric and determine the analyzer to use
-            metric = evidence.submission.metric
+            # Prepare file for processing - handle both local files and Azure Blob Storage
+            temp_file = None
+            file_path = None
             
-            # Use the custom analyzer ID if available, otherwise use the default
-            analyzer_id = metric.ocr_analyzer_id if metric.ocr_analyzer_id else self.default_analyzer_id
-            
-            # Create Azure Content Understanding client
-            client = AzureContentUnderstandingClient(
-                self.endpoint,
-                self.api_version,
-                subscription_key=self.subscription_key
-            )
-            
-            # Begin analysis with the appropriate analyzer
             try:
-                logger.info(f"Using analyzer ID: {analyzer_id} for metric: {metric.name}")
-                response = client.begin_analyze(analyzer_id, file_path)
-                logger.info(f"Analysis started for evidence {evidence_id}, operation URL: {response.headers.get('operation-location')}")
+                if hasattr(settings, 'USE_AZURE_STORAGE') and settings.USE_AZURE_STORAGE:
+                    # For Azure Blob Storage, download to a temporary file
+                    temp_file = NamedTemporaryFile(delete=False, suffix=os.path.splitext(evidence.filename)[1])
+                    temp_file.write(evidence.file.read())
+                    temp_file.close()
+                    file_path = temp_file.name
+                    logger.info(f"Downloaded blob to temporary file: {file_path}")
+                else:
+                    # For local storage, use the file path directly
+                    file_path = evidence.file.path
+                    logger.info(f"Using local file path: {file_path}")
                 
-                # Poll until completion
-                result = client.poll_result(
-                    response,
-                    timeout_seconds=60 * 5,  # 5 minute timeout
-                    polling_interval_seconds=2,
+                # Get the metric and determine the analyzer to use
+                metric = evidence.submission.metric
+                
+                # Use the custom analyzer ID if available, otherwise use the default
+                analyzer_id = metric.ocr_analyzer_id if metric.ocr_analyzer_id else self.default_analyzer_id
+                
+                # Create Azure Content Understanding client
+                client = AzureContentUnderstandingClient(
+                    self.endpoint,
+                    self.api_version,
+                    subscription_key=self.subscription_key
                 )
-            except Exception as e:
-                logger.exception(f"Error during OCR processing: {str(e)}")
-                evidence.ocr_processed = True  # Mark as processed even if failed
-                evidence.save()
-                return {
-                    "status": "error",
-                    "message": f"OCR processing failed: {str(e)}"
-                }
-            
-            if result.get("status") != "Succeeded" or "result" not in result:
-                evidence.ocr_processed = True
-                evidence.ocr_data = result  # Store the raw result anyway
-                evidence.save()
-                return {
-                    "status": "error",
-                    "message": "OCR processing did not succeed"
-                }
-            
-            # Extract data from result
-            try:
-                fields = result["result"]["contents"][0]["fields"]
                 
-                # Store the complete OCR data
-                evidence.ocr_data = result
-                evidence.ocr_processed = True
-                
-                # Extract consumption data - simplified now that we use custom analyzers
-                extracted_data = self._extract_data_from_analyzer(fields)
-                
-                if not extracted_data:
+                # Begin analysis with the appropriate analyzer
+                try:
+                    logger.info(f"Using analyzer ID: {analyzer_id} for metric: {metric.name}")
+                    response = client.begin_analyze(analyzer_id, file_path)
+                    logger.info(f"Analysis started for evidence {evidence_id}, operation URL: {response.headers.get('operation-location')}")
+                    
+                    # Poll until completion
+                    result = client.poll_result(
+                        response,
+                        timeout_seconds=60 * 5,  # 5 minute timeout
+                        polling_interval_seconds=2,
+                    )
+                except Exception as e:
+                    logger.exception(f"Error during OCR processing: {str(e)}")
+                    evidence.ocr_processed = True  # Mark as processed even if failed
                     evidence.save()
                     return {
                         "status": "error",
-                        "message": "Could not extract relevant data from document"
+                        "message": f"OCR processing failed: {str(e)}"
                     }
                 
-                # Update the evidence record with extracted data
-                # For simplicity, we'll use the first period if multiple periods were found
-                if "periods" in extracted_data and extracted_data["periods"]:
-                    first_period = extracted_data["periods"][0]
-                    evidence.extracted_value = first_period.get("consumption")
+                if result.get("status") != "Succeeded" or "result" not in result:
+                    evidence.ocr_processed = True
+                    evidence.ocr_data = result  # Store the raw result anyway
+                    evidence.save()
+                    return {
+                        "status": "error",
+                        "message": "OCR processing did not succeed"
+                    }
+                
+                # Extract data from result
+                try:
+                    fields = result["result"]["contents"][0]["fields"]
                     
-                    # Convert period string (MM/YYYY) to date object (last day of month)
-                    period_str = first_period.get("period")
-                    if period_str and "/" in period_str:
-                        try:
-                            month, year = period_str.split("/")
-                            # Create date for last day of the month
-                            import calendar
-                            last_day = calendar.monthrange(int(year), int(month))[1]
-                            evidence.extracted_period = datetime(int(year), int(month), last_day).date()
-                        except (ValueError, IndexError):
-                            evidence.extracted_period = datetime.now().date()
-                else:
-                    # Use single period data if available
-                    evidence.extracted_value = extracted_data.get("value")
-                    evidence.extracted_period = extracted_data.get("period")
-                
-                evidence.save()
-                
-                return {
-                    "status": "success",
-                    "value": evidence.extracted_value,
-                    "period": evidence.extracted_period,
-                    "all_periods": extracted_data.get("periods", []),
-                    "raw_data": extracted_data
-                }
-                
-            except Exception as e:
-                logger.exception(f"Error extracting data from OCR result: {str(e)}")
-                evidence.ocr_processed = True
-                evidence.ocr_data = result
-                evidence.save()
-                return {
-                    "status": "error",
-                    "message": f"Error extracting data from OCR result: {str(e)}"
-                }
+                    # Store the complete OCR data
+                    evidence.ocr_data = result
+                    evidence.ocr_processed = True
+                    
+                    # Extract consumption data - simplified now that we use custom analyzers
+                    extracted_data = self._extract_data_from_analyzer(fields)
+                    
+                    if not extracted_data:
+                        evidence.save()
+                        return {
+                            "status": "error",
+                            "message": "Could not extract relevant data from document"
+                        }
+                    
+                    # Update the evidence record with extracted data
+                    # For simplicity, we'll use the first period if multiple periods were found
+                    if "periods" in extracted_data and extracted_data["periods"]:
+                        first_period = extracted_data["periods"][0]
+                        evidence.extracted_value = first_period.get("consumption")
+                        
+                        # Convert period string (MM/YYYY) to date object (last day of month)
+                        period_str = first_period.get("period")
+                        if period_str and "/" in period_str:
+                            try:
+                                month, year = period_str.split("/")
+                                # Create date for last day of the month
+                                import calendar
+                                last_day = calendar.monthrange(int(year), int(month))[1]
+                                evidence.extracted_period = datetime(int(year), int(month), last_day).date()
+                            except (ValueError, IndexError):
+                                evidence.extracted_period = datetime.now().date()
+                    else:
+                        # Use single period data if available
+                        evidence.extracted_value = extracted_data.get("value")
+                        evidence.extracted_period = extracted_data.get("period")
+                    
+                    evidence.save()
+                    
+                    return {
+                        "status": "success",
+                        "value": evidence.extracted_value,
+                        "period": evidence.extracted_period,
+                        "all_periods": extracted_data.get("periods", []),
+                        "raw_data": extracted_data
+                    }
+                    
+                except Exception as e:
+                    logger.exception(f"Error extracting data from OCR result: {str(e)}")
+                    evidence.ocr_processed = True
+                    evidence.ocr_data = result
+                    evidence.save()
+                    return {
+                        "status": "error",
+                        "message": f"Error extracting data from OCR result: {str(e)}"
+                    }
+            finally:
+                # Clean up temporary file if we created one
+                if temp_file and os.path.exists(temp_file.name):
+                    try:
+                        os.unlink(temp_file.name)
+                        logger.info(f"Deleted temporary file: {temp_file.name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete temporary file {temp_file.name}: {str(e)}")
             
         except ESGMetricEvidence.DoesNotExist:
             return {

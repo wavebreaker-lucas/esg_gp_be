@@ -159,6 +159,24 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Media files (Uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Azure Blob Storage Configuration
+USE_AZURE_STORAGE = os.getenv('USE_AZURE_STORAGE', 'False') == 'True'
+
+if USE_AZURE_STORAGE:
+    INSTALLED_APPS += ['storages']
+    DEFAULT_FILE_STORAGE = 'storages.backends.azure_storage.AzureStorage'
+    AZURE_ACCOUNT_NAME = os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore')
+    AZURE_ACCOUNT_KEY = os.getenv('AZURE_STORAGE_ACCOUNT_KEY')
+    AZURE_CONTAINER = os.getenv('AZURE_STORAGE_CONTAINER', 'esg-evidence')
+    AZURE_CUSTOM_DOMAIN = f'{AZURE_ACCOUNT_NAME}.blob.core.windows.net'
+    AZURE_LOCATION = 'esg_evidence'
+    AZURE_SSL = True
+    MEDIA_URL = f'https://{AZURE_CUSTOM_DOMAIN}/{AZURE_CONTAINER}/'
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
@@ -213,3 +231,10 @@ FRONTEND_URL = 'http://localhost:3000'  # Change this to your frontend URL
 EMAIL_BACKEND = 'django_azure_communication_email.EmailBackend'
 AZURE_COMMUNICATION_CONNECTION_STRING = 'endpoint=https://esgotp.asiapacific.communication.azure.com/;accesskey=EZkBy2hkjYx7upQGPE9heB0T1vGCx35qp2q02IBHaNwPyHuy6BLAJQQJ99BCACULyCps8SuqAAAAAZCSr13m'
 DEFAULT_FROM_EMAIL = 'DoNotReply@f6bfdda3-56dc-4725-9b46-46a3fd1a87a6.azurecomm.net'
+
+# Azure Content Understanding API Settings
+AZURE_CONTENT_UNDERSTANDING = {
+    'ENDPOINT': os.getenv('AZURE_CONTENT_UNDERSTANDING_ENDPOINT'),
+    'API_VERSION': os.getenv('AZURE_CONTENT_UNDERSTANDING_API_VERSION', '2023-07-31'),
+    'KEY': os.getenv('AZURE_CONTENT_UNDERSTANDING_KEY'),
+}
