@@ -37,25 +37,22 @@ class UtilityBillAnalyzer:
         if not all([self.endpoint, self.api_version, self.subscription_key]):
             logger.warning("Azure Content Understanding API credentials not fully configured")
         
-    def process_evidence(self, evidence_id):
+    def process_evidence(self, evidence):
         """
         Process an evidence file with OCR and extract relevant utility data.
         
         Args:
-            evidence_id: ID of the ESGMetricEvidence object to process
+            evidence: An ESGMetricEvidence object to process
             
         Returns:
-            dict: Results of the OCR processing with status and extracted data
+            tuple: (success: bool, result: dict) where success indicates if OCR processing succeeded
+                  and result contains either the extracted data or an error message
         """
         try:
-            # Get the evidence record
-            evidence = ESGMetricEvidence.objects.get(id=evidence_id)
-            
             # Check if OCR processing is enabled for this file
             if not evidence.enable_ocr_processing:
-                return {
-                    "status": "error",
-                    "message": "OCR processing is not enabled for this evidence file"
+                return False, {
+                    "error": "OCR processing is not enabled for this evidence file"
                 }
             
             # Prepare file for processing - handle both local files and Azure Blob Storage
@@ -92,7 +89,7 @@ class UtilityBillAnalyzer:
                 try:
                     logger.info(f"Using analyzer ID: {analyzer_id} for metric: {metric.name}")
                     response = client.begin_analyze(analyzer_id, file_path)
-                    logger.info(f"Analysis started for evidence {evidence_id}, operation URL: {response.headers.get('operation-location')}")
+                    logger.info(f"Analysis started for evidence {evidence.id}, operation URL: {response.headers.get('operation-location')}")
                     
                     # Poll until completion
                     result = client.poll_result(
@@ -102,20 +99,18 @@ class UtilityBillAnalyzer:
                     )
                 except Exception as e:
                     logger.exception(f"Error during OCR processing: {str(e)}")
-                    evidence.ocr_processed = True  # Mark as processed even if failed
+                    evidence.is_processed_by_ocr = True  # Mark as processed even if failed
                     evidence.save()
-                    return {
-                        "status": "error",
-                        "message": f"OCR processing failed: {str(e)}"
+                    return False, {
+                        "error": f"OCR processing failed: {str(e)}"
                     }
                 
                 if result.get("status") != "Succeeded" or "result" not in result:
-                    evidence.ocr_processed = True
+                    evidence.is_processed_by_ocr = True
                     evidence.ocr_data = result  # Store the raw result anyway
                     evidence.save()
-                    return {
-                        "status": "error",
-                        "message": "OCR processing did not succeed"
+                    return False, {
+                        "error": "OCR processing did not succeed"
                     }
                 
                 # Extract data from result
@@ -124,16 +119,15 @@ class UtilityBillAnalyzer:
                     
                     # Store the complete OCR data
                     evidence.ocr_data = result
-                    evidence.ocr_processed = True
+                    evidence.is_processed_by_ocr = True
                     
                     # Extract consumption data - simplified now that we use custom analyzers
                     extracted_data = self._extract_data_from_analyzer(fields)
                     
                     if not extracted_data:
                         evidence.save()
-                        return {
-                            "status": "error",
-                            "message": "Could not extract relevant data from document"
+                        return False, {
+                            "error": "Could not extract relevant data from document"
                         }
                     
                     # Update the evidence record with extracted data
@@ -141,30 +135,33 @@ class UtilityBillAnalyzer:
                     if "periods" in extracted_data and extracted_data["periods"]:
                         first_period = extracted_data["periods"][0]
                         evidence.extracted_value = first_period.get("consumption")
-                        evidence.extracted_period = first_period.get("period")
+                        evidence.period = first_period.get("period")
                     else:
                         # Use single period data if available
                         evidence.extracted_value = extracted_data.get("value")
-                        evidence.extracted_period = extracted_data.get("period")
+                        evidence.period = extracted_data.get("period")
                     
                     evidence.save()
                     
-                    return {
-                        "status": "success",
-                        "value": evidence.extracted_value,
-                        "period": evidence.extracted_period,
-                        "all_periods": extracted_data.get("periods", []),
-                        "raw_data": extracted_data
+                    # Return success with additional periods if available
+                    additional_periods = []
+                    if "periods" in extracted_data and len(extracted_data["periods"]) > 1:
+                        # Skip first period as it's already saved to the evidence
+                        additional_periods = extracted_data["periods"][1:]
+                    
+                    return True, {
+                        "extracted_value": evidence.extracted_value,
+                        "period": evidence.period,
+                        "additional_periods": additional_periods
                     }
                     
                 except Exception as e:
                     logger.exception(f"Error extracting data from OCR result: {str(e)}")
-                    evidence.ocr_processed = True
+                    evidence.is_processed_by_ocr = True
                     evidence.ocr_data = result
                     evidence.save()
-                    return {
-                        "status": "error",
-                        "message": f"Error extracting data from OCR result: {str(e)}"
+                    return False, {
+                        "error": f"Error extracting data from OCR result: {str(e)}"
                     }
             finally:
                 # Clean up temporary file if we created one
@@ -175,16 +172,10 @@ class UtilityBillAnalyzer:
                     except Exception as e:
                         logger.warning(f"Failed to delete temporary file {temp_file.name}: {str(e)}")
             
-        except ESGMetricEvidence.DoesNotExist:
-            return {
-                "status": "error",
-                "message": f"Evidence with ID {evidence_id} not found"
-            }
         except Exception as e:
-            logger.exception(f"Error processing evidence {evidence_id}: {str(e)}")
-            return {
-                "status": "error",
-                "message": f"Error processing evidence: {str(e)}"
+            logger.exception(f"Error processing evidence {evidence.id}: {str(e)}")
+            return False, {
+                "error": f"Error processing evidence: {str(e)}"
             }
     
     def _extract_data_from_analyzer(self, fields):

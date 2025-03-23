@@ -1138,124 +1138,94 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
     
-    @action(detail=False, methods=['post'])
-    def upload_with_ocr(self, request):
+    @action(detail=True, methods=['post'])
+    def process_ocr(self, request, pk=None):
         """
-        Upload a file and process it with OCR.
-        
-        This endpoint handles both file upload and OCR processing in one call.
+        Process an uploaded evidence file with OCR.
+        This endpoint triggers the Azure Content Understanding OCR processing for a utility bill.
         """
-        # Get required parameters
-        submission_id = request.data.get('submission_id')
-        if not submission_id:
-            return Response(
-                {"error": "submission_id is required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Get the uploaded file
-        uploaded_file = request.FILES.get('file')
-        if not uploaded_file:
-            return Response(
-                {"error": "No file provided"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Validate submission exists and user has access
         try:
-            submission = ESGMetricSubmission.objects.get(id=submission_id)
+            evidence = ESGMetricEvidence.objects.get(pk=pk)
             
-            # Check user has access to this submission
-            user_app_users = AppUser.objects.filter(user=request.user).values_list('layer_id', flat=True)
-            if submission.assignment.layer.id not in user_app_users:
-                return Response(
-                    {"error": "You do not have access to this submission"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-        except ESGMetricSubmission.DoesNotExist:
+            # Check if the user has access to this evidence
+            # (Implement your access control logic here)
+            
+            # Enable OCR processing for this evidence
+            evidence.enable_ocr_processing = True
+            evidence.save(update_fields=['enable_ocr_processing'])
+            
+            # Process the evidence with OCR
+            analyzer = UtilityBillAnalyzer()
+            success, result = analyzer.process_evidence(evidence)
+            
+            if success:
+                return Response({
+                    "status": "success",
+                    "message": "OCR processing completed successfully",
+                    "extracted_value": evidence.extracted_value,
+                    "period": evidence.period.strftime('%Y-%m-%d') if evidence.period else None,
+                    "additional_periods": result.get('additional_periods', [])
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    "status": "error",
+                    "message": result.get('error', 'OCR processing failed')
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except ESGMetricEvidence.DoesNotExist:
             return Response(
-                {"error": "Submission not found"}, 
+                {"error": "Evidence not found"}, 
                 status=status.HTTP_404_NOT_FOUND
             )
-        
-        # Process the file
-        filename = uploaded_file.name
-        file_type = filename.split('.')[-1].lower()
-        
-        # Check if this is meant to be OCR processed
-        is_utility_bill = request.data.get('is_utility_bill') == 'true'
-        
-        # Create evidence record
-        evidence = ESGMetricEvidence.objects.create(
-            submission=submission,
-            file=uploaded_file,
-            filename=filename,
-            file_type=file_type,
-            uploaded_by=request.user,
-            description=request.data.get('description', ''),
-            is_utility_bill=is_utility_bill
-        )
-        
-        # If this is a utility bill, process it with OCR
-        if is_utility_bill:
-            # Get Azure credentials from settings
-            endpoint = settings.AZURE_CONTENT_UNDERSTANDING_ENDPOINT
-            api_version = settings.AZURE_CONTENT_UNDERSTANDING_API_VERSION
-            subscription_key = settings.AZURE_CONTENT_UNDERSTANDING_KEY
-            
-            # Create analyzer and process evidence
-            analyzer = UtilityBillAnalyzer(
-                endpoint=endpoint,
-                api_version=api_version,
-                subscription_key=subscription_key
+        except Exception as e:
+            return Response(
+                {"error": f"OCR processing error: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-            
-            ocr_result = analyzer.process_evidence(evidence.id)
-            
-            # Return both the evidence info and OCR results
-            serializer = self.get_serializer(evidence)
-            response_data = serializer.data
-            response_data['ocr_result'] = ocr_result
-            
-            return Response(response_data, status=status.HTTP_201_CREATED)
-        else:
-            # For regular uploads, just return the evidence info
-            serializer = self.get_serializer(evidence)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
     
     @action(detail=True, methods=['get'])
     def ocr_results(self, request, pk=None):
         """
-        Get OCR results for an evidence file.
-        
-        This endpoint returns the extracted values and periods from OCR processing,
-        which can be displayed to the user before applying to the submission.
+        Get the OCR processing results for an evidence file.
         """
-        evidence = self.get_object()
-        
-        # Check if this evidence has been OCR processed
-        if not evidence.ocr_processed or not evidence.is_utility_bill:
+        try:
+            evidence = ESGMetricEvidence.objects.get(pk=pk)
+            
+            # Check if the user has access to this evidence
+            # (Implement your access control logic here)
+            
+            # Check if OCR processing was enabled
+            if not evidence.enable_ocr_processing:
+                return Response({
+                    "status": "not_applicable",
+                    "message": "OCR processing was not enabled for this file"
+                }, status=status.HTTP_200_OK)
+            
+            # Check if OCR processing has been completed
+            if evidence.is_processed_by_ocr:
+                return Response({
+                    "status": "success",
+                    "extracted_value": evidence.extracted_value,
+                    "period": evidence.period.strftime('%Y-%m-%d') if evidence.period else None
+                }, status=status.HTTP_200_OK)
+            else:
+                # OCR processing was enabled but not yet completed
+                return Response({
+                    "status": "pending",
+                    "message": "OCR processing has not yet completed"
+                }, status=status.HTTP_200_OK)
+                
+        except ESGMetricEvidence.DoesNotExist:
             return Response(
-                {"error": "This evidence has not been processed with OCR"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Evidence not found"}, 
+                status=status.HTTP_404_NOT_FOUND
             )
-        
-        # Format the response
-        response_data = {
-            "evidence_id": evidence.id,
-            "submission_id": evidence.submission_id,
-            "status": "success",
-            "extracted_value": evidence.extracted_value,
-            "extracted_period": evidence.extracted_period,
-            "was_manually_edited": evidence.was_manually_edited
-        }
-        
-        # Add multiple periods if available
-        if evidence.ocr_data and 'all_periods' in evidence.ocr_data:
-            response_data["all_periods"] = evidence.ocr_data['all_periods']
-        
-        return Response(response_data)
-    
+        except Exception as e:
+            return Response(
+                {"error": f"Error retrieving OCR results: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     @action(detail=True, methods=['post'])
     def apply_ocr_to_submission(self, request, pk=None):
         """
@@ -1448,6 +1418,125 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             "message": f"{len(results)} periods processed",
             "periods": results
         })
+
+    def create(self, request, *args, **kwargs):
+        """
+        Upload an evidence file for an ESG metric submission.
+        This is the standard upload endpoint without OCR processing.
+        """
+        # Get required parameters
+        submission_id = request.data.get('submission_id')
+        if not submission_id:
+            return Response(
+                {"error": "submission_id is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get the uploaded file
+        uploaded_file = request.FILES.get('file')
+        if not uploaded_file:
+            return Response(
+                {"error": "No file provided"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate submission exists and user has access
+        try:
+            submission = ESGMetricSubmission.objects.get(id=submission_id)
+            
+            # Check if the user has access to this submission
+            # (Implement your access control logic here)
+            
+        except ESGMetricSubmission.DoesNotExist:
+            return Response(
+                {"error": "Submission not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Prepare file metadata
+        filename = uploaded_file.name
+        file_type = filename.split('.')[-1].lower()
+        
+        # Check if OCR processing is requested (optional parameter)
+        enable_ocr_processing = request.data.get('enable_ocr_processing') == 'true'
+        
+        # Create evidence record
+        evidence = ESGMetricEvidence.objects.create(
+            submission=submission,
+            file=uploaded_file,
+            filename=filename,
+            file_type=file_type,
+            uploaded_by=request.user,
+            description=request.data.get('description', ''),
+            enable_ocr_processing=enable_ocr_processing
+        )
+        
+        # Return the evidence info
+        serializer = self.get_serializer(evidence)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'])
+    def upload_with_ocr(self, request):
+        """
+        Upload a file and enable OCR processing in a single step.
+        Convenience endpoint for utility bill uploads that need OCR processing.
+        """
+        # Get required parameters
+        submission_id = request.data.get('submission_id')
+        if not submission_id:
+            return Response(
+                {"error": "submission_id is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get the uploaded file
+        uploaded_file = request.FILES.get('file')
+        if not uploaded_file:
+            return Response(
+                {"error": "No file provided"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate submission exists and user has access
+        try:
+            submission = ESGMetricSubmission.objects.get(id=submission_id)
+            
+            # Check if the user has access to this submission
+            # (Implement your access control logic here)
+            
+        except ESGMetricSubmission.DoesNotExist:
+            return Response(
+                {"error": "Submission not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Prepare file metadata
+        filename = uploaded_file.name
+        file_type = filename.split('.')[-1].lower()
+        
+        # Create evidence record with OCR processing enabled
+        evidence = ESGMetricEvidence.objects.create(
+            submission=submission,
+            file=uploaded_file,
+            filename=filename,
+            file_type=file_type,
+            uploaded_by=request.user,
+            description=request.data.get('description', ''),
+            enable_ocr_processing=True
+        )
+        
+        # Return the evidence info with a note about OCR processing
+        serializer = self.get_serializer(evidence)
+        response_data = serializer.data
+        response_data['ocr_status'] = 'pending'
+        response_data['message'] = 'File uploaded successfully. OCR processing has been enabled.'
+        
+        # Include a reference to the process_ocr endpoint for later use
+        response_data['process_ocr_url'] = request.build_absolute_uri(
+            f'/api/metric-evidence/{evidence.id}/process_ocr/'
+        )
+        
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 class ESGMetricViewSet(viewsets.ModelViewSet):
     """
