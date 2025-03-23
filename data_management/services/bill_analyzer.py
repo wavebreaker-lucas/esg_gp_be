@@ -198,10 +198,11 @@ class UtilityBillAnalyzer:
                         if len(periods) > 1:
                             # Format additional periods for storage
                             for period in periods[1:]:
-                                # Format the date as string if it's a datetime object
+                                # Format the date as MM/YYYY if it's a datetime object
                                 if isinstance(period.get("period"), datetime):
-                                    period_date = period["period"].strftime("%Y-%m-%d")
+                                    period_date = period["period"].strftime("%m/%Y")
                                 else:
+                                    # Use the original period_str which should already be in MM/YYYY format
                                     period_date = period.get("period_str", "")
                                 
                                 evidence.ocr_data['additional_periods'].append({

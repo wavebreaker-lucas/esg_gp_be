@@ -164,12 +164,21 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         if not evidence.is_processed_by_ocr:
             return Response({'error': 'This file has not been processed with OCR'}, status=400)
         
+        # Format the primary period if it exists
+        formatted_period = None
+        if evidence.period:
+            if hasattr(evidence.period, 'strftime'):
+                # Convert YYYY-MM-DD to MM/YYYY format which is more intuitive for billing periods
+                formatted_period = evidence.period.strftime("%m/%Y")
+            else:
+                formatted_period = str(evidence.period)
+        
         # Return OCR results
         result = {
             'id': evidence.id,
             'filename': evidence.filename,
             'extracted_value': evidence.extracted_value,
-            'period': evidence.period,
+            'period': formatted_period,
             'additional_periods': evidence.ocr_data.get('additional_periods', []) 
                                  if isinstance(evidence.ocr_data, dict) else [],
             'raw_ocr_data': evidence.ocr_data,
@@ -204,28 +213,16 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                                 
                                 for period in periods_array:
                                     if isinstance(period, dict) and 'period' in period and 'consumption' in period:
-                                        # Format period string to standard date format (YYYY-MM-DD)
+                                        # Keep the original MM/YYYY format which is more intuitive for billing periods
                                         period_str = period['period']
-                                        # If format is MM/YYYY, convert to YYYY-MM-DD
-                                        if '/' in period_str:
-                                            try:
-                                                month, year = period_str.split('/')
-                                                # Use day 01 as default
-                                                period_date = f"{year}-{month.zfill(2)}-01"
-                                            except ValueError:
-                                                period_date = period_str
-                                        else:
-                                            period_date = period_str
                                         
                                         # Skip first period if it matches our current period and we haven't skipped one yet
-                                        if not first_period_skipped and evidence.period:
-                                            evidence_period_str = evidence.period.strftime("%Y-%m") if hasattr(evidence.period, 'strftime') else str(evidence.period)
-                                            if period_date.startswith(evidence_period_str):
-                                                first_period_skipped = True
-                                                continue
+                                        if not first_period_skipped and formatted_period and period_str == formatted_period:
+                                            first_period_skipped = True
+                                            continue
                                         
                                         additional_periods.append({
-                                            "period": period_date,
+                                            "period": period_str,
                                             "consumption": period['consumption']
                                         })
                                 
