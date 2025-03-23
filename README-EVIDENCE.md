@@ -72,6 +72,10 @@ Evidence files can be stored in two ways:
 
 1. **Upload Evidence** (Universal Upload Endpoint)
    - `POST /api/metric-evidence/`
+   - **Important Request Requirements:**
+     - Must use `multipart/form-data` content type
+     - File must be included in a field named exactly `file`
+     - Do NOT manually set the Content-Type header - let the browser/client handle it
    - Parameters:
      - `file`: The evidence file to upload (required)
      - `metric_id`: (Optional) ID of the metric this evidence relates to
@@ -82,6 +86,10 @@ Evidence files can be stored in two ways:
      - Returns the created evidence record with additional metadata
      - Includes `is_standalone: true`
      - Includes `ocr_processing_url` if OCR processing is enabled
+   - Common Errors:
+     - `400 Bad Request`: Check if you're missing the required file field or using incorrect content type
+     - `413 Request Entity Too Large`: File exceeds size limit (default 10MB, configurable in settings)
+     - `net::ERR_CONNECTION_RESET`: May indicate network issues or proxy limitations
 
 2. **Get Evidence by Metric**
    - `GET /api/metric-evidence/by_metric/?metric_id=123`
@@ -105,6 +113,49 @@ Evidence files can be stored in two ways:
 2. **OCR Results**
    - `GET /api/metric-evidence/{id}/ocr_results/`
    - Retrieves the current OCR processing status and results
+
+### File Upload Best Practices
+
+1. **Always use FormData for file uploads**
+   - Create a FormData object and append your file to it
+   - The file field must be named exactly `file`
+   - Include other parameters as needed (metric_id, period, etc.)
+
+2. **Let the client handle Content-Type headers**
+   - Do not manually set Content-Type when using FormData
+   - The browser/client will automatically set the correct headers with boundary
+
+3. **Request structure checklist:**
+   - Using multipart/form-data format
+   - File is in a field named 'file'
+   - All parameters have correct data types (strings for IDs, date in YYYY-MM-DD format)
+   - FormData is properly constructed
+   - Not manually setting Content-Type header
+
+4. **Troubleshooting uploads:**
+   - Use browser dev tools to inspect the actual request format
+   - Verify file size is within limits
+   - Check for any CORS issues if uploading from different domains
+   - Ensure your authentication tokens are included
+
+### Sample Upload Request (Pseudocode)
+
+```
+// Create FormData object
+var formData = new FormData();
+
+// Add file - MUST be named 'file'
+formData.append('file', fileObject);
+
+// Add other parameters
+formData.append('metric_id', '123');
+formData.append('period', '2023-06-30');
+formData.append('enable_ocr_processing', 'true');
+
+// Send request - DO NOT set Content-Type header
+POST /api/metric-evidence/
+Body: formData
+```
 
 ## Per-Metric Evidence Upload Workflow
 
