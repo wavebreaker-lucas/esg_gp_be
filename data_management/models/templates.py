@@ -218,4 +218,6 @@ class ESGMetricEvidence(models.Model):
     edited_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='edited_evidence', help_text="Who edited the OCR result")
 
     def __str__(self):
-        return f"Evidence for {self.submission.metric.name}" 
+        if self.submission:
+            return f"Evidence for {self.submission.metric.name}"
+        return f"Standalone evidence: {self.filename}" 
