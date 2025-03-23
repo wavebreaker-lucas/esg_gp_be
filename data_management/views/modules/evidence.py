@@ -165,7 +165,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             return Response({'error': 'This file has not been processed with OCR'}, status=400)
         
         # Return OCR results
-        return Response({
+        result = {
             'id': evidence.id,
             'filename': evidence.filename,
             'extracted_value': evidence.extracted_value,
@@ -174,7 +174,70 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                                  if isinstance(evidence.ocr_data, dict) else [],
             'raw_ocr_data': evidence.ocr_data,
             'is_processed_by_ocr': evidence.is_processed_by_ocr
-        })
+        }
+        
+        # Check if additional_periods is empty but we have multiple billing periods data in the raw OCR data
+        if not result['additional_periods'] and isinstance(evidence.ocr_data, dict):
+            try:
+                # Try to extract periods from the raw OCR data fields
+                if 'result' in evidence.ocr_data and 'contents' in evidence.ocr_data['result']:
+                    fields = evidence.ocr_data['result']['contents'][0]['fields']
+                    
+                    # Look for MultipleBillingPeriods field
+                    if 'MultipleBillingPeriods' in fields and 'valueString' in fields['MultipleBillingPeriods']:
+                        multiple_periods_str = fields['MultipleBillingPeriods']['valueString']
+                        
+                        # Try to extract the JSON array from the string
+                        import re
+                        import json
+                        
+                        # Use regex to find array pattern in the string
+                        match = re.search(r'\[.*\]', multiple_periods_str)
+                        if match:
+                            try:
+                                # Parse the JSON array
+                                periods_array = json.loads(match.group(0))
+                                additional_periods = []
+                                
+                                # Skip the first period if it matches our main period
+                                first_period_skipped = False
+                                
+                                for period in periods_array:
+                                    if isinstance(period, dict) and 'period' in period and 'consumption' in period:
+                                        # Format period string to standard date format (YYYY-MM-DD)
+                                        period_str = period['period']
+                                        # If format is MM/YYYY, convert to YYYY-MM-DD
+                                        if '/' in period_str:
+                                            try:
+                                                month, year = period_str.split('/')
+                                                # Use day 01 as default
+                                                period_date = f"{year}-{month.zfill(2)}-01"
+                                            except ValueError:
+                                                period_date = period_str
+                                        else:
+                                            period_date = period_str
+                                        
+                                        # Skip first period if it matches our current period and we haven't skipped one yet
+                                        if not first_period_skipped and evidence.period:
+                                            evidence_period_str = evidence.period.strftime("%Y-%m") if hasattr(evidence.period, 'strftime') else str(evidence.period)
+                                            if period_date.startswith(evidence_period_str):
+                                                first_period_skipped = True
+                                                continue
+                                        
+                                        additional_periods.append({
+                                            "period": period_date,
+                                            "consumption": period['consumption']
+                                        })
+                                
+                                result['additional_periods'] = additional_periods
+                            except json.JSONDecodeError:
+                                # Ignore parsing errors
+                                pass
+            except Exception as e:
+                # Just ignore errors in extracting additional periods
+                pass
+        
+        return Response(result)
 
     @action(detail=True, methods=['post'])
     def attach_to_submission(self, request, pk=None):

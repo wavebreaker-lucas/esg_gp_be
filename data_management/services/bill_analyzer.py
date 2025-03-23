@@ -179,9 +179,35 @@ class UtilityBillAnalyzer:
                     # Update the evidence record with extracted data
                     # For simplicity, we'll use the first period if multiple periods were found
                     if "periods" in extracted_data and extracted_data["periods"]:
-                        first_period = extracted_data["periods"][0]
+                        # Store all periods in ocr_data for reference
+                        evidence.ocr_data['additional_periods'] = []
+                        
+                        # Sort periods by date, most recent first
+                        periods = sorted(
+                            extracted_data["periods"],
+                            key=lambda p: p.get("period") or datetime.min,
+                            reverse=True
+                        )
+                        
+                        # Use the most recent period as the primary
+                        first_period = periods[0]
                         evidence.extracted_value = first_period.get("consumption")
                         evidence.period = first_period.get("period")
+                        
+                        # Store all other periods in additional_periods
+                        if len(periods) > 1:
+                            # Format additional periods for storage
+                            for period in periods[1:]:
+                                # Format the date as string if it's a datetime object
+                                if isinstance(period.get("period"), datetime):
+                                    period_date = period["period"].strftime("%Y-%m-%d")
+                                else:
+                                    period_date = period.get("period_str", "")
+                                
+                                evidence.ocr_data['additional_periods'].append({
+                                    "period": period_date,
+                                    "consumption": period.get("consumption")
+                                })
                     else:
                         # Use single period data if available
                         evidence.extracted_value = extracted_data.get("value")
@@ -190,10 +216,7 @@ class UtilityBillAnalyzer:
                     evidence.save()
                     
                     # Return success with additional periods if available
-                    additional_periods = []
-                    if "periods" in extracted_data and len(extracted_data["periods"]) > 1:
-                        # Skip first period as it's already saved to the evidence
-                        additional_periods = extracted_data["periods"][1:]
+                    additional_periods = evidence.ocr_data.get('additional_periods', [])
                     
                     return True, {
                         "extracted_value": evidence.extracted_value,
@@ -313,6 +336,49 @@ class UtilityBillAnalyzer:
                         result['periods'] = standardized_data
             except json.JSONDecodeError:
                 logger.warning(f"Could not parse multiple billing periods as JSON: {multiple_periods_str}")
+                # Try to handle the case where the JSON is a string containing an array
+                try:
+                    # Use regex to find what looks like a JSON array in the string
+                    json_match = re.search(r'\[.*\]', multiple_periods_str)
+                    if json_match:
+                        potential_json = json_match.group(0)
+                        multiple_periods = json.loads(potential_json)
+                        
+                        if isinstance(multiple_periods, list) and multiple_periods:
+                            standardized_data = []
+                            for period in multiple_periods:
+                                if isinstance(period, dict):
+                                    period_value = period.get('period')
+                                    consumption_value = period.get('consumption')
+                                    
+                                    if not period_value or consumption_value is None:
+                                        continue
+                                    
+                                    # Format the period string
+                                    formatted_period = self._convert_to_month_year_format(period_value)
+                                    
+                                    # Parse consumption value if it's a string
+                                    if isinstance(consumption_value, str):
+                                        consumption_value = self._parse_consumption(consumption_value)
+                                    
+                                    # Convert period string to date object
+                                    try:
+                                        period_date = self._mm_yyyy_to_date(formatted_period)
+                                    except ValueError:
+                                        continue
+                                    
+                                    standardized_period = {
+                                        "period_str": formatted_period,
+                                        "period": period_date,
+                                        "consumption": consumption_value
+                                    }
+                                    
+                                    standardized_data.append(standardized_period)
+                            
+                            if standardized_data:
+                                result['periods'] = standardized_data
+                except Exception as e:
+                    logger.warning(f"Failed to parse multiple periods from JSON string: {str(e)}")
         
         return result if 'value' in result or result['periods'] else None
     
