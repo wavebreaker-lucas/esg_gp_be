@@ -291,6 +291,25 @@ function completeForm(formId, assignmentId) {
 }
 ```
 
+### Evidence and Reporting Years
+
+With the addition of the `reporting_year` field to `TemplateAssignment`, the evidence attachment process has become more intuitive:
+
+1. **Context-Aware Evidence Attachment**
+   - Evidence is now attached in the context of the reporting year
+   - The system uses the template assignment's `reporting_year` to provide additional context
+   - This ensures that evidence is correctly associated with data from the appropriate reporting period
+
+2. **Date Matching Logic**
+   - Evidence with a specific period (date) is matched to submissions with the same reporting period
+   - The system handles exact date matching to ensure precision
+   - For utility bills and other dated evidence, exact date matching provides the most accurate associations
+
+3. **Best Practices**
+   - Always set the correct period when uploading evidence
+   - Upload evidence in the context of the specific reporting year assignment
+   - Review evidence associations after submission to ensure correct matching
+
 ### Important Note on OCR Data Usage
 
 **OCR data is never automatically applied to submissions.** This design choice ensures:

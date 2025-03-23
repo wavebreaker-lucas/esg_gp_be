@@ -108,8 +108,9 @@ Properties:
 - `assigned_to`: User responsible for reporting
 - `due_date`: Submission deadline
 - `status`: Current status (PENDING, IN_PROGRESS, SUBMITTED, VERIFIED, REJECTED)
-- `reporting_period_start`: Start of reporting period
-- `reporting_period_end`: End of reporting period
+- `reporting_period_start`: Start of reporting period (deprecated, use reporting_year instead)
+- `reporting_period_end`: End of reporting period (deprecated, use reporting_year instead)
+- `reporting_year`: The specific year for which data is being reported (added in 2025)
 - `completed_at`: When the template was submitted
 
 ### User Template Management
@@ -132,6 +133,9 @@ Returns all template assignments accessible to the authenticated user, including
     },
     "status": "PENDING",
     "due_date": "2024-12-31",
+    "reporting_period_start": "2024-01-01",
+    "reporting_period_end": "2024-12-31",
+    "reporting_year": 2025,
     "relationship": "direct"
   },
   {
@@ -146,6 +150,9 @@ Returns all template assignments accessible to the authenticated user, including
     },
     "status": "PENDING",
     "due_date": "2024-12-31",
+    "reporting_period_start": "2024-01-01",
+    "reporting_period_end": "2024-12-31",
+    "reporting_year": 2025,
     "relationship": "inherited"
   }
 ]
@@ -172,6 +179,7 @@ Returns detailed information about a specific template assignment, including all
   "due_date": "2024-12-31",
   "reporting_period_start": "2024-01-01",
   "reporting_period_end": "2024-12-31",
+  "reporting_year": 2025,
   "forms": [
     {
       "form_id": 1,
@@ -239,6 +247,32 @@ Returns detailed information about a specific template assignment, including all
 - **Includes category information for each form**, allowing frontend to group forms by category
 - Each form includes its `order` value for proper sequencing within its category
 - Requires appropriate permissions to access
+
+### Reporting Year Implementation
+
+Starting in 2025, the system uses a simplified approach to track reporting periods:
+
+1. **New Field: `reporting_year`**
+   - Added to the `TemplateAssignment` model
+   - Represents the year for which data is being collected
+   - Default value: 2025
+   - Simplifies the reporting period context
+
+2. **Transition from Date Ranges**
+   - The previous fields `reporting_period_start` and `reporting_period_end` are now deprecated
+   - They remain in the database for backward compatibility
+   - New implementations should use the more intuitive `reporting_year` field
+   - Frontend applications should prioritize displaying and using the reporting_year
+
+3. **Benefits**
+   - More intuitive for users (clear indication of which calendar year is being reported on)
+   - Simplifies filtering and queries
+   - Aligns with how most ESG reporting is structured (annual basis)
+
+4. **API Considerations**
+   - All API responses now include the `reporting_year` field
+   - Applications should be updated to handle this new field appropriately
+   - Date range fields will continue to be included in responses for backward compatibility
 
 ## Location-Based Reporting
 
@@ -692,7 +726,8 @@ GET /api/clients/{layer_id}/templates/
     "status": "PENDING",
     "due_date": "2024-12-31",
     "reporting_period_start": "2024-01-01",
-    "reporting_period_end": "2024-12-31"
+    "reporting_period_end": "2024-12-31",
+    "reporting_year": 2025
   },
   {
     "id": 2,
@@ -708,7 +743,8 @@ GET /api/clients/{layer_id}/templates/
     "status": "IN_PROGRESS",
     "due_date": "2024-03-31",
     "reporting_period_start": "2024-01-01",
-    "reporting_period_end": "2024-03-31"
+    "reporting_period_end": "2024-03-31",
+    "reporting_year": 2025
   }
 ]
 ```
@@ -738,7 +774,8 @@ POST /api/clients/{layer_id}/templates/
     "status": "PENDING",
     "due_date": "2024-12-31",
     "reporting_period_start": "2024-01-01",
-    "reporting_period_end": "2024-12-31"
+    "reporting_period_end": "2024-12-31",
+    "reporting_year": 2025
 }
 ```
 
