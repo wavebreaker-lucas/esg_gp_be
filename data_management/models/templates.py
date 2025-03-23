@@ -207,6 +207,11 @@ class ESGMetricEvidence(models.Model):
     uploaded_at = models.DateTimeField(auto_now_add=True)
     description = models.TextField(blank=True)
     
+    # New field for explicit metric relationship
+    intended_metric = models.ForeignKey(ESGMetric, on_delete=models.SET_NULL, null=True, blank=True, 
+                                        related_name='intended_evidence',
+                                        help_text="The metric this evidence is intended for, before being attached to a submission")
+    
     # OCR-related fields
     enable_ocr_processing = models.BooleanField(default=False, help_text="User option to enable OCR data extraction for this evidence file")
     is_processed_by_ocr = models.BooleanField(default=False, help_text="Whether OCR processing has been attempted")

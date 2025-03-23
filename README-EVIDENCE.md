@@ -30,6 +30,11 @@ class ESGMetricEvidence(models.Model):
     filename = models.CharField(max_length=255)
     # ... other fields ...
     
+    # Direct metric relationship for standalone evidence
+    intended_metric = models.ForeignKey(ESGMetric, on_delete=models.SET_NULL, 
+        null=True, blank=True, related_name='intended_evidence',
+        help_text="The metric this evidence is intended for, before being attached to a submission")
+    
     # OCR-related fields
     enable_ocr_processing = models.BooleanField(default=False, 
         help_text="User option to enable OCR data extraction for this evidence file")
@@ -78,7 +83,7 @@ Evidence files can be stored in two ways:
      - Do NOT manually set the Content-Type header - let the browser/client handle it
    - Parameters:
      - `file`: The evidence file to upload (required)
-     - `metric_id`: (Optional) ID of the metric this evidence relates to
+     - `metric_id`: (Optional) ID of the metric this evidence relates to; sets the `intended_metric` field for easier association with submissions
      - `period`: (Optional) Reporting period in YYYY-MM-DD format
      - `enable_ocr_processing`: (Optional) Set to 'true' to enable OCR
      - `description`: (Optional) Description of the evidence
@@ -226,7 +231,11 @@ The evidence attachment functionality has been modularized to improve maintainab
 function uploadEvidenceForMetric(metricId, files, period, enableOcr = true) {
   const formData = new FormData();
   formData.append('file', files[0]);
+  
+  // IMPORTANT: Always include the metric_id to ensure proper association
+  // This sets the intended_metric field in the database
   formData.append('metric_id', metricId);
+  
   formData.append('period', period); // Format: YYYY-MM-DD
   formData.append('enable_ocr_processing', enableOcr ? 'true' : 'false');
   
@@ -242,6 +251,8 @@ function getEvidenceForMetric(metricId) {
     .then(response => response.json());
 }
 ```
+
+> **Best Practice:** Always include the `metric_id` parameter when uploading evidence. This ensures that the evidence will be correctly associated with the metric and can be automatically attached to submissions using the robust database relationship.
 
 ### Automatic Evidence Attachment
 
@@ -380,3 +391,28 @@ python manage.py test_ocr 123 --format json
 2. Database changes:
    - The `submission` field on `ESGMetricEvidence` is now nullable to support standalone evidence
    - Field renames for clarity: `ocr_processed` → `is_processed_by_ocr`, `extracted_period` → `period` 
+
+## Evidence-Metric Association
+
+### Direct Metric Association
+
+Evidence files can be directly associated with metrics in two ways:
+
+1. **When attached to a submission**: Evidence inherits the metric association from the submission it's attached to.
+
+2. **Standalone evidence (new approach)**: Evidence can be directly associated with a metric via the `intended_metric` field, making it easier and more reliable to find and attach evidence to submissions later.
+
+Before the standalone evidence is attached to a submission, the system uses the `intended_metric` field to identify which metric the evidence belongs to. This replaces the previous approach of storing the metric ID in the `ocr_data` JSON field.
+
+### Benefits of the New Approach
+
+- **Explicit relationship**: Direct database relationship instead of storing in JSON
+- **Better performance**: Proper database indexing for faster queries
+- **Improved reliability**: No need to parse or search within JSON content
+- **Cleaner model semantics**: Separates relationship data from OCR processing data
+
+### Automatic Evidence Attachment
+
+The system automatically attaches standalone evidence files to submissions when:
+
+1. Users submit individual metrics via `batch_submit` with `auto_attach_evidence=true`

@@ -76,22 +76,9 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             uploaded_by=request.user,
             description=request.data.get('description', ''),
             enable_ocr_processing=request.data.get('enable_ocr_processing') == 'true',
-            period=period  # Set the user-provided period
+            period=period,  # Set the user-provided period
+            intended_metric=metric  # Use the new field for metric relationship
         )
-        
-        # Store metric_id in ocr_data for later use
-        if metric_id:
-            # Initialize ocr_data if needed
-            if not evidence.ocr_data:
-                evidence.ocr_data = {}
-            
-            # Ensure ocr_data is a dict
-            if not isinstance(evidence.ocr_data, dict):
-                evidence.ocr_data = {}
-                
-            # Store the metric_id
-            evidence.ocr_data['intended_metric_id'] = metric_id
-            evidence.save()
         
         # Prepare response
         response_data = {
@@ -278,13 +265,13 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         except ESGMetric.DoesNotExist:
             return Response({'error': 'Metric not found'}, status=404)
         
-        # Find evidence for this metric (both directly attached and standalone with intended_metric_id)
+        # Find evidence for this metric (both directly attached and standalone with intended_metric)
         user_layers = LayerProfile.objects.filter(app_users__user=request.user)
         evidence = ESGMetricEvidence.objects.filter(
             models.Q(submission__metric=metric) |
             models.Q(
                 submission__isnull=True,
-                ocr_data__icontains=f'"intended_metric_id": "{metric_id}"'
+                intended_metric=metric
             )
         ).filter(
             models.Q(uploaded_by=request.user) | 
