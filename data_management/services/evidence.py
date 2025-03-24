@@ -1,4 +1,13 @@
 from ..models.templates import ESGMetricEvidence
+import logging
+from datetime import datetime
+
+# Configure logging to show in console
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 def attach_evidence_to_submissions(submissions, user):
     """
@@ -29,6 +38,9 @@ def attach_evidence_to_submissions(submissions, user):
     
     # Find all standalone evidence files for these metrics
     for metric_id, subs in submissions_by_metric.items():
+        logger.info(f"Processing submissions for metric {metric_id}")
+        logger.info(f"Number of submissions: {len(subs)}")
+        
         # Get standalone evidence for this metric using the explicit field
         evidence_files = ESGMetricEvidence.objects.filter(
             submission__isnull=True,
@@ -36,26 +48,42 @@ def attach_evidence_to_submissions(submissions, user):
             intended_metric__id=metric_id
         )
         
+        logger.info(f"Found {evidence_files.count()} standalone evidence files")
+        
         for evidence in evidence_files:
             # Find the best submission to attach to based on reporting period
             best_submission = None
             
             # If evidence has a period, try to match it
             if evidence.period and evidence.period is not None:
+                logger.info(f"Evidence period: {evidence.period} (type: {type(evidence.period)})")
                 for sub in subs:
-                    if sub.reporting_period == evidence.period:
+                    # Convert submission period to date if it's a string
+                    sub_period = sub.reporting_period
+                    if isinstance(sub_period, str):
+                        try:
+                            sub_period = datetime.strptime(sub_period, '%Y-%m-%d').date()
+                        except ValueError:
+                            logger.warning(f"Could not parse submission period {sub_period}")
+                            continue
+                    
+                    logger.info(f"Submission period: {sub_period} (type: {type(sub_period)})")
+                    if sub_period == evidence.period:
                         best_submission = sub
+                        logger.info(f"Found matching submission for period {evidence.period}")
                         break
             
             # If no period match or no period, use the first submission
             if not best_submission and subs:
                 best_submission = subs[0]
+                logger.info(f"No period match found, using first submission with period {best_submission.reporting_period}")
             
             # Attach evidence to submission if found
             if best_submission:
                 evidence.submission = best_submission
                 evidence.save()
                 attached_count += 1
+                logger.info(f"Attached evidence to submission {best_submission.id} with period {best_submission.reporting_period}")
                 
                 # We intentionally do NOT apply OCR data automatically
                 # Users need to explicitly choose to use OCR data by calling attach_to_submission
