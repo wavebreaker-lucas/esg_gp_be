@@ -192,7 +192,7 @@ class UtilityBillAnalyzer:
                         # Use the most recent period as the primary
                         first_period = periods[0]
                         evidence.extracted_value = first_period.get("consumption")
-                        evidence.period = first_period.get("period")
+                        evidence.ocr_period = first_period.get("period")  # Store OCR period in new field
                         
                         # Store all other periods in additional_periods
                         if len(periods) > 1:
@@ -212,7 +212,7 @@ class UtilityBillAnalyzer:
                     else:
                         # Use single period data if available
                         evidence.extracted_value = extracted_data.get("value")
-                        evidence.period = extracted_data.get("period")
+                        evidence.ocr_period = extracted_data.get("period")  # Store OCR period in new field
                     
                     evidence.save()
                     
@@ -221,7 +221,7 @@ class UtilityBillAnalyzer:
                     
                     return True, {
                         "extracted_value": evidence.extracted_value,
-                        "period": evidence.period,
+                        "period": evidence.ocr_period,
                         "additional_periods": additional_periods
                     }
                     

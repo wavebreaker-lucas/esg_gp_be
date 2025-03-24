@@ -287,9 +287,10 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             # Update submission value
             submission.value = evidence.extracted_value
             
-            # Update period if available
-            if evidence.period:
-                submission.reporting_period = evidence.period
+            # Update period if available - use user-selected period first, then OCR period
+            evidence_period = evidence.period or evidence.ocr_period
+            if evidence_period:
+                submission.reporting_period = evidence_period
                 
             submission.save()
             
@@ -298,7 +299,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                 'submission_id': submission.id,
                 'value_updated': True,
                 'new_value': submission.value,
-                'period_updated': evidence.period is not None,
+                'period_updated': evidence_period is not None,
                 'new_period': submission.reporting_period,
                 'warning': warning
             })

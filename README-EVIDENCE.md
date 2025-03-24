@@ -43,13 +43,20 @@ class ESGMetricEvidence(models.Model):
     extracted_value = models.FloatField(null=True, blank=True, 
         help_text="Value extracted by OCR")
     period = models.DateField(null=True, blank=True, 
-        help_text="Reporting period extracted by OCR")
+        help_text="User-selected reporting period for the evidence")
+    ocr_period = models.DateField(null=True, blank=True, 
+        help_text="Reporting period extracted by OCR, separate from user-selected period")
     ocr_data = models.JSONField(null=True, blank=True, 
         help_text="Raw data extracted by OCR")
     was_manually_edited = models.BooleanField(default=False, 
         help_text="Whether the OCR result was manually edited")
     # ... other fields ...
 ```
+
+The model now includes a new `ocr_period` field that stores the reporting period extracted by OCR processing, separate from the user-selected `period` field. This separation allows for:
+1. Clear distinction between user-selected periods and OCR-extracted periods
+2. Better handling of cases where OCR might extract a different period than what the user intended
+3. More accurate period matching when attaching evidence to submissions
 
 ### UtilityBillAnalyzer Service
 The `UtilityBillAnalyzer` service is responsible for processing utility bill evidence files:
@@ -142,6 +149,33 @@ Evidence files can be stored in two ways:
 2. **OCR Results**
    - `GET /api/metric-evidence/{id}/ocr_results/`
    - Retrieves the current OCR processing status and results
+   - Response includes:
+     - Extracted value
+     - OCR-extracted period (in MM/YYYY format)
+     - Additional periods found in the document
+     - Raw OCR data
+     - Processing status
+   - Example response:
+     ```json
+     {
+       "id": 1,
+       "filename": "utility_bill.pdf",
+       "extracted_value": 1234.56,
+       "period": "06/2023",
+       "additional_periods": [
+         {
+           "period": "05/2023",
+           "consumption": 1111.11
+         },
+         {
+           "period": "04/2023",
+           "consumption": 999.99
+         }
+       ],
+       "raw_ocr_data": { ... },
+       "is_processed_by_ocr": true
+     }
+     ```
 
 ### File Upload Best Practices
 
@@ -202,6 +236,11 @@ Evidence attachment happens at two critical points in the workflow:
 1. **Form Completion** - When a user marks a form as complete using the `complete_form` endpoint, the system automatically attaches any standalone evidence files related to the submissions in that form.
 
 2. **Batch Submission** - When users submit multiple metric values at once via the `batch_submit` endpoint with `auto_attach_evidence=true`, the system attaches relevant evidence files to those submissions.
+
+The system uses a smart period matching strategy when attaching evidence:
+1. First attempts to match using the user-selected period (`period` field)
+2. If no match is found, falls back to the OCR-extracted period (`ocr_period` field)
+3. If neither period matches, attaches to the first available submission for that metric
 
 This approach ensures that evidence is attached at the most logical points in the user workflow, where users are actively working with specific forms or metrics.
 

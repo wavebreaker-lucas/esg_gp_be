@@ -54,9 +54,11 @@ def attach_evidence_to_submissions(submissions, user):
             # Find the best submission to attach to based on reporting period
             best_submission = None
             
-            # If evidence has a period, try to match it
-            if evidence.period and evidence.period is not None:
-                logger.info(f"Evidence period: {evidence.period} (type: {type(evidence.period)})")
+            # Try to match with user-selected period first, then OCR period
+            evidence_period = evidence.period or evidence.ocr_period
+            
+            if evidence_period:
+                logger.info(f"Evidence period: {evidence_period} (type: {type(evidence_period)})")
                 for sub in subs:
                     # Convert submission period to date if it's a string
                     sub_period = sub.reporting_period
@@ -68,9 +70,9 @@ def attach_evidence_to_submissions(submissions, user):
                             continue
                     
                     logger.info(f"Submission period: {sub_period} (type: {type(sub_period)})")
-                    if sub_period == evidence.period:
+                    if sub_period == evidence_period:
                         best_submission = sub
-                        logger.info(f"Found matching submission for period {evidence.period}")
+                        logger.info(f"Found matching submission for period {evidence_period}")
                         break
             
             # If no period match or no period, use the first submission
