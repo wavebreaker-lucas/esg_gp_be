@@ -894,7 +894,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         
         # Automatically attach standalone evidence files if requested
         evidence_count = 0
-        if request.data.get('auto_attach_evidence') == 'true':
+        if request.data.get('auto_attach_evidence') in [True, 'true', 'True']:
             all_submissions = created_submissions + updated_submissions
             evidence_count = attach_evidence_to_submissions(all_submissions, request.user)
         
