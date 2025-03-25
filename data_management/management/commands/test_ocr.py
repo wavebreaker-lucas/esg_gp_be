@@ -21,12 +21,6 @@ class Command(BaseCommand):
         except ESGMetricEvidence.DoesNotExist:
             raise CommandError(f'Evidence with ID {evidence_id} does not exist')
         
-        # If evidence doesn't have OCR enabled, enable it temporarily
-        was_ocr_enabled = evidence.enable_ocr_processing
-        if not was_ocr_enabled:
-            self.stdout.write(self.style.WARNING('OCR processing is not enabled for this evidence. Enabling temporarily.'))
-            evidence.enable_ocr_processing = True
-        
         # Create the analyzer
         analyzer = UtilityBillAnalyzer()
         
@@ -38,10 +32,6 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING('Testing OCR processing without saving to database'))
             success, result = analyzer.test_process_evidence(evidence)
         
-        # Reset the OCR flag if we temporarily enabled it
-        if not was_ocr_enabled and not save_results:
-            evidence.enable_ocr_processing = False
-            
         # Output the results
         if success:
             self.stdout.write(self.style.SUCCESS('OCR processing successful'))

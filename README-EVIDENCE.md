@@ -36,8 +36,6 @@ class ESGMetricEvidence(models.Model):
         help_text="The metric this evidence is intended for, before being attached to a submission")
     
     # OCR-related fields
-    enable_ocr_processing = models.BooleanField(default=False, 
-        help_text="User option to enable OCR data extraction for this evidence file")
     is_processed_by_ocr = models.BooleanField(default=False, 
         help_text="Whether OCR processing has been attempted")
     extracted_value = models.FloatField(null=True, blank=True, 
@@ -92,12 +90,11 @@ Evidence files can be stored in two ways:
      - `file`: The evidence file to upload (required)
      - `metric_id`: (Optional) ID of the metric this evidence relates to; sets the `intended_metric` field for easier association with submissions
      - `period`: (Optional) Reporting period in YYYY-MM-DD format
-     - `enable_ocr_processing`: (Optional) Set to 'true' to enable OCR
      - `description`: (Optional) Description of the evidence
    - Response:
      - Returns the created evidence record with additional metadata
      - Includes `is_standalone: true`
-     - Includes `ocr_processing_url` if OCR processing is enabled
+     - Includes `ocr_processing_url` for initiating OCR processing
    - Common Errors:
      - `400 Bad Request`: Check if you're missing the required file field or using incorrect content type
      - `413 Request Entity Too Large`: File exceeds size limit (default 10MB, configurable in settings)
@@ -145,6 +142,10 @@ Evidence files can be stored in two ways:
    - `POST /api/metric-evidence/{id}/process_ocr/`
    - Triggers OCR processing for the evidence file
    - Returns extracted data if successful
+   - Response includes:
+     - Success message
+     - URL to check OCR results
+     - Extracted value and period if available
 
 2. **OCR Results**
    - `GET /api/metric-evidence/{id}/ocr_results/`
@@ -176,6 +177,29 @@ Evidence files can be stored in two ways:
        "is_processed_by_ocr": true
      }
      ```
+
+### OCR Processing Flow
+
+1. **Initial Upload**
+   - User uploads evidence file through the universal upload endpoint
+   - File is stored and a standalone evidence record is created
+   - Response includes an `ocr_processing_url` for initiating OCR processing
+
+2. **OCR Processing**
+   - Frontend calls the `ocr_processing_url` to start OCR processing
+   - Processing runs asynchronously
+   - Frontend receives a URL to check OCR results
+   - Frontend polls the results URL until processing is complete
+
+3. **Results Review**
+   - Frontend retrieves OCR results using the results URL
+   - Results include extracted value, period, and any additional periods found
+   - User can review and optionally apply the OCR data to a submission
+
+4. **Evidence Attachment**
+   - When attaching evidence to a submission, user can choose to apply OCR data
+   - System warns if applying OCR data would override existing values
+   - Evidence is attached to the submission with or without OCR data
 
 ### File Upload Best Practices
 
@@ -213,7 +237,6 @@ formData.append('file', fileObject);
 // Add other parameters
 formData.append('metric_id', '123');
 formData.append('period', '2023-06-30');
-formData.append('enable_ocr_processing', 'true');
 
 // Send request - DO NOT set Content-Type header
 POST /api/metric-evidence/
@@ -248,120 +271,25 @@ This approach ensures that evidence is attached at the most logical points in th
 
 The evidence attachment functionality has been modularized to improve maintainability:
 
-1. **Dedicated Service Module** - Evidence attachment logic is encapsulated in the `data_management/services/evidence.py` module through the `attach_evidence_to_submissions` function, which:
-   - Takes submissions and user as parameters
-   - Groups submissions by metric
-   - Matches standalone evidence with the appropriate submissions
-   - Returns the count of attached evidence files
+1. **Evidence Upload Service**
+   - Handles file storage and initial evidence record creation
+   - Supports both local and Azure Blob storage
+   - Manages file naming and organization
 
-2. **Modular ViewSets** - The views have been modularized into smaller, focused components:
-   - `ESGMetricEvidenceViewSet` resides in `data_management/views/modules/evidence.py`
-   - The ViewSet handles all evidence-specific operations like upload, OCR processing, and attachment
-   - This modularization makes the codebase more maintainable and easier to understand
+2. **OCR Processing Service**
+   - Handles asynchronous OCR processing
+   - Manages Azure Content Understanding API integration
+   - Extracts and standardizes data from OCR results
 
-3. **Service Integration** - The evidence attachment service is used by:
-   - The `batch_submit` endpoint in `ESGMetricSubmissionViewSet` when `auto_attach_evidence=true`
-   - The `complete_form` endpoint to attach evidence when a form is completed
+3. **Evidence Attachment Service**
+   - Manages the attachment of evidence to submissions
+   - Handles period matching logic
+   - Supports both manual and automatic attachment
 
-### Frontend Implementation
-
-```javascript
-// Example: Upload evidence for a specific metric with period
-function uploadEvidenceForMetric(metricId, files, period, enableOcr = true) {
-  const formData = new FormData();
-  formData.append('file', files[0]);
-  
-  // IMPORTANT: Always include the metric_id to ensure proper association
-  // This sets the intended_metric field in the database
-  formData.append('metric_id', metricId);
-  
-  formData.append('period', period); // Format: YYYY-MM-DD
-  formData.append('enable_ocr_processing', enableOcr ? 'true' : 'false');
-  
-  return fetch('/api/metric-evidence/', {
-    method: 'POST',
-    body: formData
-  }).then(response => response.json());
-}
-
-// Example: Get evidence for a specific metric
-function getEvidenceForMetric(metricId) {
-  return fetch(`/api/metric-evidence/by_metric/?metric_id=${metricId}`)
-    .then(response => response.json());
-}
-```
-
-> **Best Practice:** Always include the `metric_id` parameter when uploading evidence. This ensures that the evidence will be correctly associated with the metric and can be automatically attached to submissions using the robust database relationship.
-
-### Automatic Evidence Attachment
-
-The system automatically attaches standalone evidence files to submissions when:
-
-1. Users submit individual metrics via `batch_submit` with `auto_attach_evidence=true`
-2. Users complete a form via the `complete_form` endpoint
-
-```javascript
-// Example: Submit metrics with auto-attachment of evidence
-function submitMetrics(assignmentId, metricsData) {
-  const payload = {
-    assignment_id: assignmentId,
-    submissions: metricsData,
-    auto_attach_evidence: true
-  };
-  
-  return fetch('/api/metric-submissions/batch_submit/', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  }).then(response => response.json());
-}
-
-// Example: Complete a form (which automatically attaches evidence)
-function completeForm(formId, assignmentId) {
-  const payload = {
-    assignment_id: assignmentId
-  };
-  
-  return fetch(`/api/esg-forms/${formId}/complete_form/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  }).then(response => response.json());
-}
-```
-
-### Evidence and Reporting Years
-
-With the addition of the `reporting_year` field to `TemplateAssignment`, the evidence attachment process has become more intuitive:
-
-1. **Context-Aware Evidence Attachment**
-   - Evidence is now attached in the context of the reporting year
-   - The system uses the template assignment's `reporting_year` to provide additional context
-   - This ensures that evidence is correctly associated with data from the appropriate reporting period
-
-2. **Date Matching Logic**
-   - Evidence with a specific period (date) is matched to submissions with the same reporting period
-   - The system handles exact date matching to ensure precision
-   - For utility bills and other dated evidence, exact date matching provides the most accurate associations
-
-3. **Best Practices**
-   - Always set the correct period when uploading evidence
-   - Upload evidence in the context of the specific reporting year assignment
-   - Review evidence associations after submission to ensure correct matching
-
-### Important Note on OCR Data Usage
-
-**OCR data is never automatically applied to submissions.** This design choice ensures:
-
-1. Users maintain complete control over their submitted data
-2. OCR serves as a helpful suggestion, not an automatic decision
-3. Null or zero values in submissions are respected as valid user choices
-4. Data integrity is maintained by requiring explicit user action
-
-If users want to use OCR-extracted values, they must explicitly:
-
-1. Review the OCR results via the OCR results endpoint
-2. Manually apply OCR data by calling `attach_to_submission` with `apply_ocr_data=true`
+4. **Frontend Integration**
+   - Provides clear feedback on upload status
+   - Manages OCR processing state
+   - Handles user interactions for evidence management
 
 ## OCR Processing Flow
 

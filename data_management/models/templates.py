@@ -214,7 +214,7 @@ class ESGMetricEvidence(models.Model):
                                         help_text="The metric this evidence is intended for, before being attached to a submission")
     
     # OCR-related fields
-    enable_ocr_processing = models.BooleanField(default=True, help_text="User option to enable OCR data extraction for this evidence file")
+    enable_ocr_processing = models.BooleanField(default=True, help_text="Whether OCR processing is available for this evidence file")
     is_processed_by_ocr = models.BooleanField(default=False, help_text="Whether OCR processing has been attempted")
     extracted_value = models.FloatField(null=True, blank=True, help_text="Value extracted by OCR")
     period = models.DateField(null=True, blank=True, help_text="User-selected reporting period")

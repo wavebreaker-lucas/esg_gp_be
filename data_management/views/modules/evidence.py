@@ -75,7 +75,6 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             file_type=file_obj.content_type,
             uploaded_by=request.user,
             description=request.data.get('description', ''),
-            enable_ocr_processing=request.data.get('enable_ocr_processing') == 'true',
             period=period,  # Set the user-provided period
             intended_metric=metric  # Use the new field for metric relationship
         )
@@ -88,14 +87,11 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             'uploaded_at': evidence.uploaded_at,
             'is_standalone': True,
             'metric_id': metric_id,
-            'period': period
-        }
-        
-        # Add OCR processing URL if enabled
-        if evidence.enable_ocr_processing:
-            response_data['ocr_processing_url'] = request.build_absolute_uri(
+            'period': period,
+            'ocr_processing_url': request.build_absolute_uri(
                 reverse('metric-evidence-process-ocr', args=[evidence.id])
             )
+        }
         
         return Response(response_data, status=201)
 
