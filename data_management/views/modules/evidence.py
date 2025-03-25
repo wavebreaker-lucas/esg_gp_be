@@ -133,10 +133,6 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                                 reverse('metric-evidence-ocr-results', args=[evidence.id])
                             )}, status=200)
         
-        # Check if OCR is enabled
-        if not evidence.enable_ocr_processing:
-            return Response({'error': 'OCR processing is not enabled for this evidence'}, status=400)
-        
         # Initialize bill analyzer service
         analyzer = UtilityBillAnalyzer()
         

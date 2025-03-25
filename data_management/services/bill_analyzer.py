@@ -76,12 +76,6 @@ class UtilityBillAnalyzer:
                   and result contains either the extracted data or an error message
         """
         try:
-            # Check if OCR processing is enabled for this file
-            if not evidence.enable_ocr_processing:
-                return False, {
-                    "error": "OCR processing is not enabled for this evidence file"
-                }
-            
             # Prepare file for processing - handle both local files and Azure Blob Storage
             temp_file = None
             file_path = None
