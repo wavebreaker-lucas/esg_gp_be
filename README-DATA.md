@@ -377,6 +377,7 @@ This allows for flexible data collection patterns while maintaining data integri
 - `GET /api/metric-evidence/{id}/`: Get details of a specific evidence file
 - `DELETE /api/metric-evidence/{id}/`: Delete an evidence file
 - `GET /api/metric-evidence/by_submission/?submission_id={id}`: Get all evidence for a submission
+- `GET /api/metric-evidence/batch/?submission_ids=1,2,3,4,5`: Get submission data and evidence for multiple submissions
 
 ### Form and Template Management
 
@@ -444,9 +445,27 @@ PATCH /api/esg-metrics/26/
 
 This is more efficient than PUT when you only need to update a few fields, as it requires less data to be sent and processed.
 
-### Optimized Endpoints for Admin Review
+### API Permissions Overview
 
-The API includes optimized endpoints that make the review process more efficient for Baker Tilly admins:
+The ESG Platform API implements granular permissions based on user roles:
+
+1. **Baker Tilly Admins**
+   - Full access to all endpoints and data
+   - Can access and modify data for all clients, templates, and submissions
+   - Can verify submissions (`POST /api/metric-submissions/{id}/verify/`)
+   - Can create and manage templates and forms
+
+2. **Regular Users**
+   - Access restricted to their assigned layers (companies/organizations)
+   - Can only view and modify submissions for their own layers
+   - Can't access data from other client organizations
+   - Can't verify submissions (reserved for Baker Tilly admins)
+
+For many endpoints, the system automatically filters results based on user permissions, so regular users will only see data they have access to, while Baker Tilly admins see all data.
+
+### Enhanced Endpoints for Optimized Review
+
+The API includes optimized endpoints that make the review process more efficient:
 
 #### 1. Filtered Metric Submissions
 
@@ -454,12 +473,24 @@ The API includes optimized endpoints that make the review process more efficient
 GET /api/metric-submissions/by_assignment/?assignment_id={id}&form_id={form_id}
 ```
 
+**Permissions:**
+- Baker Tilly admins can view all submissions for any assignment
+- Regular users can only view submissions for:
+  - Assignments directly assigned to them
+  - Assignments within their layer
+  - Assignments from parent layers they have access to
+
 **Features:**
 - Filter submissions by form_id to focus on one form at a time
 - Filter by verification status with `is_verified=true|false`
 - Filter by submission date ranges with `submitted_after` and `submitted_before`
 - Sort results with `sort_by` and `sort_direction` parameters
 - Paginate results with `page` and `page_size` parameters
+
+**Example Request:**
+```
+GET /api/metric-submissions/by_assignment/?assignment_id=5&form_id=2&is_verified=false&page=1&page_size=50&sort_by=submitted_at&sort_direction=desc
+```
 
 **Example Response:**
 ```json
@@ -491,6 +522,11 @@ GET /api/metric-submissions/by_assignment/?assignment_id={id}&form_id={form_id}
 ```
 GET /api/metric-evidence/batch/?submission_ids=1,2,3,4,5
 ```
+
+**Permissions:**
+- Baker Tilly admins can access all submissions and evidence
+- Regular users can only access submissions and evidence for their assigned layers
+- Results are automatically filtered based on user permissions
 
 **Features:**
 - Fetch submission data and evidence for multiple submissions in a single request
@@ -565,6 +601,18 @@ GET /api/metric-evidence/batch/?submission_ids=1,2,3,4,5
 ```
 
 These optimized endpoints maintain the separate endpoint architecture while addressing potential performance bottlenecks in the review process. They provide targeted improvements for specific admin workflows without introducing the complexity of fully consolidated endpoints.
+
+### Client Integration Guidelines
+
+When integrating with these endpoints in your client application:
+
+1. **Authentication:** Always include authentication tokens in your requests.
+2. **Error Handling:** Handle 403 Forbidden responses gracefully, as they indicate permission issues.
+3. **Pagination:** For endpoints that support pagination:
+   - Always check total_count and total_pages in the response
+   - Implement pagination controls in your UI
+   - Set reasonable page_size values (10-50 items per page recommended)
+4. **Batch Processing:** Use batch endpoints when dealing with multiple related items to reduce API calls.
 
 ### Example Requests and Responses
 
