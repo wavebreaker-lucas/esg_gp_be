@@ -444,6 +444,128 @@ PATCH /api/esg-metrics/26/
 
 This is more efficient than PUT when you only need to update a few fields, as it requires less data to be sent and processed.
 
+### Optimized Endpoints for Admin Review
+
+The API includes optimized endpoints that make the review process more efficient for Baker Tilly admins:
+
+#### 1. Filtered Metric Submissions
+
+```
+GET /api/metric-submissions/by_assignment/?assignment_id={id}&form_id={form_id}
+```
+
+**Features:**
+- Filter submissions by form_id to focus on one form at a time
+- Filter by verification status with `is_verified=true|false`
+- Filter by submission date ranges with `submitted_after` and `submitted_before`
+- Sort results with `sort_by` and `sort_direction` parameters
+- Paginate results with `page` and `page_size` parameters
+
+**Example Response:**
+```json
+{
+  "total_count": 120,
+  "page": 1,
+  "page_size": 50,
+  "total_pages": 3,
+  "results": [
+    {
+      "id": 1,
+      "assignment": 1,
+      "metric": 5,
+      "metric_name": "Electricity consumption (CLP)",
+      "metric_unit": "kWh",
+      "value": 120.5,
+      "submitted_by_name": "john.doe@example.com",
+      "submitted_at": "2024-04-15T10:30:00Z",
+      "is_verified": false,
+      "evidence": []
+    },
+    // ... more submissions
+  ]
+}
+```
+
+#### 2. Batch Evidence Retrieval
+
+```
+GET /api/metric-evidence/batch/?submission_ids=1,2,3,4,5
+```
+
+**Features:**
+- Fetch submission data and evidence for multiple submissions in a single request
+- Includes complete submission details including metric information and verification status
+- Evidence is nested within each submission's data
+- Reduces network overhead during verification workflows
+
+**Example Response:**
+```json
+{
+  "1": {
+    "id": 1,
+    "assignment": 1,
+    "metric": 5,
+    "metric_name": "Electricity consumption (CLP)",
+    "metric_unit": "kWh",
+    "value": 120.5,
+    "text_value": null,
+    "submitted_by": 3,
+    "submitted_by_name": "john.doe@example.com",
+    "submitted_at": "2024-04-15T10:30:00Z",
+    "updated_at": "2024-04-15T10:30:00Z",
+    "notes": "Value from March 2024 electricity bill",
+    "is_verified": false,
+    "verified_by": null,
+    "verified_by_name": null,
+    "verified_at": null,
+    "verification_notes": "",
+    "evidence": [
+      {
+        "id": 1,
+        "file": "/media/esg_evidence/2024/04/emissions_report.pdf",
+        "filename": "emissions_report.pdf",
+        "file_type": "application/pdf",
+        "uploaded_by_name": "john.doe@example.com",
+        "uploaded_at": "2024-04-15T10:35:00Z",
+        "description": "Emissions report for Q1 2024"
+      }
+    ]
+  },
+  "2": {
+    "id": 2,
+    "assignment": 1,
+    "metric": 6,
+    "metric_name": "Water consumption",
+    "metric_unit": "m3",
+    "value": 85.2,
+    "text_value": null,
+    "submitted_by": 3,
+    "submitted_by_name": "john.doe@example.com",
+    "submitted_at": "2024-04-15T10:30:00Z",
+    "updated_at": "2024-04-15T10:30:00Z",
+    "notes": "Value from March 2024 water bill",
+    "is_verified": false,
+    "verified_by": null,
+    "verified_by_name": null,
+    "verified_at": null,
+    "verification_notes": "",
+    "evidence": [
+      {
+        "id": 2,
+        "file": "/media/esg_evidence/2024/04/electricity_bill.pdf",
+        "filename": "electricity_bill.pdf",
+        "file_type": "application/pdf",
+        "uploaded_by_name": "john.doe@example.com",
+        "uploaded_at": "2024-04-15T10:36:00Z",
+        "description": "Electricity bill for March 2024"
+      }
+    ]
+  }
+}
+```
+
+These optimized endpoints maintain the separate endpoint architecture while addressing potential performance bottlenecks in the review process. They provide targeted improvements for specific admin workflows without introducing the complexity of fully consolidated endpoints.
+
 ### Example Requests and Responses
 
 #### 1. ESG Data Management
@@ -1303,6 +1425,87 @@ Properties:
 - `uploaded_by`: User who uploaded the file
 - `uploaded_at`: Upload timestamp
 - `description`: Description of the evidence
+
+## Enterprise-Grade Consolidated Endpoints
+
+For optimal performance and user experience in enterprise settings, we recommend implementing consolidated endpoints that combine related data in a single request. This is particularly valuable for Baker Tilly admins who need to review template submissions.
+
+### Recommended Consolidated Endpoint
+
+```
+GET /api/admin/template-submissions/{assignment_id}/
+```
+
+This endpoint would return a complete view including:
+- Template structure with forms and categories
+- All metric submissions with values
+- Evidence files for each submission
+- Verification status information
+
+**Benefits:**
+1. Reduces network overhead with a single request instead of multiple API calls
+2. Ensures data consistency (all data from the same point in time)
+3. Improves performance for admin review workflows
+4. Follows enterprise best practices for complex data retrieval
+
+**Sample Response:**
+```json
+{
+  "assignment_id": 1,
+  "template_id": 1,
+  "template_name": "Environmental Assessment 2024",
+  "layer_id": 3,
+  "layer_name": "Example Corp",
+  "status": "IN_PROGRESS",
+  "due_date": "2024-12-31",
+  "reporting_year": 2025,
+  "forms": [
+    {
+      "form_id": 1,
+      "form_code": "HKEX-A1",
+      "form_name": "Environmental - Emissions",
+      "category": {
+        "id": 1,
+        "name": "Environmental",
+        "code": "environmental"
+      },
+      "metrics": [
+        {
+          "id": 1,
+          "name": "Greenhouse gas emissions",
+          "unit_type": "tCO2e",
+          "location": "HK",
+          "submission": {
+            "id": 1,
+            "value": 120.5,
+            "submitted_by": "john.doe@example.com",
+            "submitted_at": "2024-04-15T10:30:00Z",
+            "is_verified": false,
+            "evidence": [
+              {
+                "id": 1,
+                "filename": "emissions_report.pdf",
+                "uploaded_at": "2024-04-15T10:35:00Z"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Implementation Considerations
+- Include pagination for large datasets
+- Support filtering by form or category
+- Add caching mechanisms where appropriate
+- Consider combining with GraphQL for more flexible data querying
+
+This approach consolidates what would otherwise require multiple separate API calls:
+1. `GET /api/user-templates/{assignment_id}/`
+2. `GET /api/metric-submissions/by_assignment/?assignment_id={assignment_id}`
+3. Multiple calls to `GET /api/metric-evidence/by_submission/?submission_id={submission_id}`
 
 ## Submission Workflow
 

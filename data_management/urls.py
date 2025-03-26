@@ -21,4 +21,5 @@ urlpatterns += [
     path('user-templates/', views.UserTemplateAssignmentView.as_view(), name='user-templates'),
     path('user-templates/<int:assignment_id>/', views.UserTemplateAssignmentView.as_view(), name='user-template-detail'),
     path('layer/<int:layer_id>/templates/', views.TemplateAssignmentView.as_view(), name='layer-templates'),
+    path('metric-evidence/batch/', views.BatchEvidenceView.as_view(), name='batch-evidence'),
 ] 

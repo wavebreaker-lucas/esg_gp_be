@@ -926,8 +926,58 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         
         # Get all submissions for this assignment
         submissions = ESGMetricSubmission.objects.filter(assignment=assignment)
+        
+        # Apply filters
+        form_id = request.query_params.get('form_id')
+        if form_id:
+            submissions = submissions.filter(metric__form_id=form_id)
+            
+        metric_id = request.query_params.get('metric_id')
+        if metric_id:
+            submissions = submissions.filter(metric_id=metric_id)
+            
+        is_verified = request.query_params.get('is_verified')
+        if is_verified is not None:
+            is_verified_bool = is_verified.lower() in ['true', '1', 'yes']
+            submissions = submissions.filter(is_verified=is_verified_bool)
+            
+        # Date range filtering
+        submitted_after = request.query_params.get('submitted_after')
+        if submitted_after:
+            submissions = submissions.filter(submitted_at__gte=submitted_after)
+            
+        submitted_before = request.query_params.get('submitted_before')
+        if submitted_before:
+            submissions = submissions.filter(submitted_at__lte=submitted_before)
+            
+        # Sorting
+        sort_by = request.query_params.get('sort_by', 'submitted_at')
+        sort_direction = request.query_params.get('sort_direction', 'desc')
+        
+        if sort_direction.lower() == 'desc':
+            sort_by = f'-{sort_by}'
+        
+        submissions = submissions.order_by(sort_by)
+        
+        # Pagination
+        page_size = int(request.query_params.get('page_size', 50))
+        page = int(request.query_params.get('page', 1))
+        
+        start = (page - 1) * page_size
+        end = start + page_size
+        
+        total_count = submissions.count()
+        submissions = submissions[start:end]
+        
         serializer = self.get_serializer(submissions, many=True)
-        return Response(serializer.data)
+        
+        return Response({
+            'total_count': total_count,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': (total_count + page_size - 1) // page_size,
+            'results': serializer.data
+        })
 
     @action(detail=True, methods=['post'])
     @transaction.atomic
@@ -1083,4 +1133,68 @@ class ESGMetricViewSet(viewsets.ModelViewSet):
             form = ESGForm.objects.get(id=form_id)
             serializer.save(form=form)
         except ESGForm.DoesNotExist:
-            raise serializers.ValidationError({"form_id": f"Form with ID {form_id} not found."}) 
+            raise serializers.ValidationError({"form_id": f"Form with ID {form_id} not found."})
+
+class BatchEvidenceView(views.APIView):
+    """
+    API view for fetching evidence and submission data for multiple submissions at once.
+    This is an optimization for the admin interface to reduce the number of API calls.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """
+        Get evidence files and submission data for multiple submissions at once.
+        
+        Query parameters:
+        - submission_ids: Comma-separated list of submission IDs
+        
+        Returns:
+        A dictionary mapping submission IDs to their submission data and evidence files
+        """
+        submission_ids_param = request.query_params.get('submission_ids', '')
+        submission_ids = [id.strip() for id in submission_ids_param.split(',') if id.strip().isdigit()]
+        
+        if not submission_ids:
+            return Response({"error": "No valid submission IDs provided"}, status=400)
+        
+        # Get all submissions and evidence items for these IDs
+        submissions = ESGMetricSubmission.objects.filter(id__in=submission_ids).select_related(
+            'metric', 'assignment', 'submitted_by'
+        )
+        evidence_items = ESGMetricEvidence.objects.filter(submission_id__in=submission_ids)
+        
+        # Check permissions
+        user = request.user
+        if not (user.is_staff or user.is_superuser or user.is_baker_tilly_admin):
+            # Regular users can only see evidence for submissions they have access to
+            user_layers = LayerProfile.objects.filter(app_users__user=user)
+            accessible_submissions = submissions.filter(
+                assignment__layer__in=user_layers
+            ).values_list('id', flat=True)
+            
+            submissions = submissions.filter(id__in=accessible_submissions)
+            evidence_items = evidence_items.filter(submission_id__in=accessible_submissions)
+        
+        # Group evidence by submission ID
+        evidence_by_submission = {}
+        evidence_serializer = ESGMetricEvidenceSerializer
+        
+        for evidence in evidence_items:
+            submission_id = str(evidence.submission_id)
+            if submission_id not in evidence_by_submission:
+                evidence_by_submission[submission_id] = []
+            
+            evidence_by_submission[submission_id].append(evidence_serializer(evidence).data)
+        
+        # Create response with submission data and evidence
+        response_data = {}
+        submission_serializer = ESGMetricSubmissionSerializer
+        
+        for submission in submissions:
+            submission_id = str(submission.id)
+            submission_data = submission_serializer(submission).data
+            submission_data['evidence'] = evidence_by_submission.get(submission_id, [])
+            response_data[submission_id] = submission_data
+        
+        return Response(response_data) 
