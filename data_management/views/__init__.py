@@ -12,7 +12,8 @@ from .templates import (
     TemplateViewSet,
     ESGMetricSubmissionViewSet,
     TemplateAssignmentView,
-    UserTemplateAssignmentView
+    UserTemplateAssignmentView,
+    BatchEvidenceView
 )
 
 # Re-export all classes for backward compatibility
@@ -24,5 +25,6 @@ __all__ = [
     'TemplateViewSet',
     'ESGMetricSubmissionViewSet',
     'TemplateAssignmentView',
-    'UserTemplateAssignmentView'
+    'UserTemplateAssignmentView',
+    'BatchEvidenceView'
 ] 

@@ -1,25 +1,29 @@
 from rest_framework.routers import DefaultRouter
 from django.urls import path
-from . import views
+from .views import (
+    ESGFormViewSet, ESGFormCategoryViewSet, TemplateViewSet, 
+    ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, ESGMetricViewSet, 
+    UserTemplateAssignmentView, TemplateAssignmentView, BatchEvidenceView
+)
 
 # Create a router for ViewSets
 router = DefaultRouter()
 
 # Register ViewSets with the router
-router.register(r'esg-forms', views.ESGFormViewSet, basename='esg-form')
-router.register(r'esg-categories', views.ESGFormCategoryViewSet, basename='esg-category')
-router.register(r'templates', views.TemplateViewSet, basename='template')
-router.register(r'metric-submissions', views.ESGMetricSubmissionViewSet, basename='metric-submission')
-router.register(r'metric-evidence', views.ESGMetricEvidenceViewSet, basename='metric-evidence')
-router.register(r'esg-metrics', views.ESGMetricViewSet, basename='esg-metric')
+router.register(r'esg-forms', ESGFormViewSet, basename='esg-form')
+router.register(r'esg-categories', ESGFormCategoryViewSet, basename='esg-category')
+router.register(r'templates', TemplateViewSet, basename='template')
+router.register(r'metric-submissions', ESGMetricSubmissionViewSet, basename='metric-submission')
+router.register(r'metric-evidence', ESGMetricEvidenceViewSet, basename='metric-evidence')
+router.register(r'esg-metrics', ESGMetricViewSet, basename='esg-metric')
 
 # Export the router's URLs
 urlpatterns = router.urls
 
 # Add non-ViewSet URLs
 urlpatterns += [
-    path('user-templates/', views.UserTemplateAssignmentView.as_view(), name='user-templates'),
-    path('user-templates/<int:assignment_id>/', views.UserTemplateAssignmentView.as_view(), name='user-template-detail'),
-    path('layer/<int:layer_id>/templates/', views.TemplateAssignmentView.as_view(), name='layer-templates'),
-    path('metric-evidence/batch/', views.BatchEvidenceView.as_view(), name='batch-evidence'),
+    path('user-templates/', UserTemplateAssignmentView.as_view(), name='user-templates'),
+    path('user-templates/<int:assignment_id>/', UserTemplateAssignmentView.as_view(), name='user-template-detail'),
+    path('layer/<int:layer_id>/templates/', TemplateAssignmentView.as_view(), name='layer-templates'),
+    path('metric-evidence/batch/', BatchEvidenceView.as_view(), name='batch-evidence'),
 ] 
