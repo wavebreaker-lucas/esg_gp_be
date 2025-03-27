@@ -244,4 +244,4 @@ AZURE_CONTENT_UNDERSTANDING = {
 
 # Default layer for submissions without a specific layer
 # Set to None to use the first available Group layer
-DEFAULT_LAYER_ID = 7  # Currently using layer 7 for existing data
+DEFAULT_LAYER_ID = 1  # Currently using layer 1 for existing data

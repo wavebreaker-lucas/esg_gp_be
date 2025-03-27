@@ -58,8 +58,35 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # The layer fields were already added to models.py directly, so we don't need to add them here
-        # Instead we just need to run the data migration
+        # First, add the layer field to ESGMetricSubmission model
+        migrations.AddField(
+            model_name='esgmetricsubmission',
+            name='layer',
+            field=models.ForeignKey(
+                blank=True, 
+                help_text="The layer this submission's data represents", 
+                null=True, 
+                on_delete=django.db.models.deletion.SET_NULL, 
+                related_name='submissions', 
+                to='accounts.layerprofile'
+            ),
+        ),
+        
+        # Then add the layer field to ESGMetricEvidence model
+        migrations.AddField(
+            model_name='esgmetricevidence',
+            name='layer',
+            field=models.ForeignKey(
+                blank=True, 
+                help_text='The layer this evidence is from', 
+                null=True, 
+                on_delete=django.db.models.deletion.SET_NULL, 
+                related_name='evidence_files', 
+                to='accounts.layerprofile'
+            ),
+        ),
+        
+        # Finally, run the data migration
         migrations.RunPython(
             assign_default_layer_to_existing_data,
             reverse_code=migrations.RunPython.noop
