@@ -910,6 +910,29 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         submission = serializer.save(submitted_by=self.request.user)
+        
+        # If no layer was specified, try to set a default layer
+        if not submission.layer:
+            try:
+                # Try to get a default layer from settings (or use a fallback mechanism)
+                from django.conf import settings
+                default_layer_id = getattr(settings, 'DEFAULT_LAYER_ID', None)
+                
+                if default_layer_id:
+                    default_layer = LayerProfile.objects.get(id=default_layer_id)
+                else:
+                    # Fallback: Get the first available group layer
+                    default_layer = LayerProfile.objects.filter(layer_type='GROUP').first()
+                
+                if default_layer:
+                    submission.layer = default_layer
+                    submission.save()
+            except Exception as e:
+                # Just log the error, don't fail the submission creation
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Could not set default layer for submission: {e}")
+                
         # Check if form is complete after new submission
         self._check_form_completion(submission)
         return submission
@@ -1035,6 +1058,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         - assignment_id: The ID of the template assignment
         - submissions: List of submission objects with metric_id, value, and optional reporting_period
         - auto_attach_evidence: (Optional) Boolean to automatically attach standalone evidence
+        - default_layer_id: (Optional) Default layer ID for all submissions
         """
         # Validate assignment_id
         assignment_id = request.data.get('assignment_id')
@@ -1058,6 +1082,35 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         if not submissions_data:
             return Response({'error': 'No submissions provided'}, status=400)
         
+        # Get default layer if provided
+        default_layer_id = request.data.get('default_layer_id')
+        default_layer = None
+        
+        if default_layer_id:
+            try:
+                default_layer = LayerProfile.objects.get(id=default_layer_id)
+                # Check if user has access
+                if not (request.user.is_staff or request.user.is_superuser or 
+                        request.user.is_baker_tilly_admin or 
+                        LayerProfile.objects.filter(id=default_layer_id, app_users__user=request.user).exists()):
+                    return Response({'error': 'You do not have access to the specified layer'}, status=403)
+            except LayerProfile.DoesNotExist:
+                return Response({'error': f'Layer with ID {default_layer_id} not found'}, status=404)
+        else:
+            # Try to get default layer from settings or use assignment's layer
+            try:
+                from django.conf import settings
+                settings_default_layer_id = getattr(settings, 'DEFAULT_LAYER_ID', None)
+                
+                if settings_default_layer_id:
+                    default_layer = LayerProfile.objects.get(id=settings_default_layer_id)
+                else:
+                    # Fallback to the assignment's layer (which is often what we want anyway)
+                    default_layer = assignment.layer
+            except Exception:
+                # Fallback to assignment's layer if any error occurs
+                default_layer = assignment.layer
+        
         # Create or update submissions
         created_submissions = []
         updated_submissions = []
@@ -1068,6 +1121,20 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             text_value = sub_data.get('text_value')
             reporting_period = sub_data.get('reporting_period')
             notes = sub_data.get('notes', '')
+            
+            # Get layer for this submission
+            layer = default_layer
+            submission_layer_id = sub_data.get('layer_id')
+            if submission_layer_id:
+                try:
+                    layer = LayerProfile.objects.get(id=submission_layer_id)
+                    # Check if user has access
+                    if not (request.user.is_staff or request.user.is_superuser or 
+                            request.user.is_baker_tilly_admin or 
+                            LayerProfile.objects.filter(id=submission_layer_id, app_users__user=request.user).exists()):
+                        return Response({'error': f'You do not have access to the layer with ID {submission_layer_id}'}, status=403)
+                except LayerProfile.DoesNotExist:
+                    return Response({'error': f'Layer with ID {submission_layer_id} not found'}, status=404)
             
             # Validate metric exists
             try:
@@ -1089,6 +1156,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 existing.value = value
                 existing.text_value = text_value
                 existing.notes = notes
+                existing.layer = layer  # Update layer
                 existing.save()
                 updated_submissions.append(existing)
                 
@@ -1101,7 +1169,8 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     text_value=text_value,
                     reporting_period=reporting_period,
                     notes=notes,
-                    submitted_by=request.user
+                    submitted_by=request.user,
+                    layer=layer  # Set layer
                 )
                 created_submissions.append(submission)
         

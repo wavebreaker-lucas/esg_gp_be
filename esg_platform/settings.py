@@ -241,3 +241,7 @@ AZURE_CONTENT_UNDERSTANDING = {
     'API_VERSION': os.getenv('AZURE_CONTENT_UNDERSTANDING_API_VERSION', '2023-07-31'),
     'KEY': os.getenv('AZURE_CONTENT_UNDERSTANDING_KEY'),
 }
+
+# Default layer for submissions without a specific layer
+# Set to None to use the first available Group layer
+DEFAULT_LAYER_ID = 7  # Currently using layer 7 for existing data

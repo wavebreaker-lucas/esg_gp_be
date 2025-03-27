@@ -45,6 +45,13 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
     """Serializer for ESG metric evidence files"""
     uploaded_by_name = serializers.SerializerMethodField()
     edited_by_name = serializers.SerializerMethodField()
+    layer_id = serializers.PrimaryKeyRelatedField(
+        source='layer',
+        queryset=LayerProfile.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    layer_name = serializers.SerializerMethodField()
     
     class Meta:
         model = ESGMetricEvidence
@@ -53,12 +60,12 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
             'uploaded_by', 'uploaded_by_name', 'uploaded_at', 'description',
             'enable_ocr_processing', 'is_processed_by_ocr', 'extracted_value', 
             'period', 'was_manually_edited', 'edited_at', 
-            'edited_by', 'edited_by_name', 'submission'
+            'edited_by', 'edited_by_name', 'submission', 'layer_id', 'layer_name'
         ]
         read_only_fields = [
             'uploaded_by', 'uploaded_at', 'is_processed_by_ocr', 
             'extracted_value', 'period', 'was_manually_edited',
-            'edited_at', 'edited_by'
+            'edited_at', 'edited_by', 'layer_name'
         ]
     
     def get_uploaded_by_name(self, obj):
@@ -70,6 +77,11 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
         if obj.edited_by:
             return obj.edited_by.email
         return None
+        
+    def get_layer_name(self, obj):
+        if obj.layer:
+            return obj.layer.company_name
+        return None
 
 class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     """Serializer for ESG metric submissions"""
@@ -78,6 +90,13 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     metric_unit = serializers.SerializerMethodField()
     submitted_by_name = serializers.SerializerMethodField()
     verified_by_name = serializers.SerializerMethodField()
+    layer_id = serializers.PrimaryKeyRelatedField(
+        source='layer',
+        queryset=LayerProfile.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    layer_name = serializers.SerializerMethodField()
     
     class Meta:
         model = ESGMetricSubmission
@@ -86,11 +105,11 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             'value', 'text_value', 'reporting_period', 'submitted_by', 'submitted_by_name',
             'submitted_at', 'updated_at', 'notes', 'is_verified',
             'verified_by', 'verified_by_name', 'verified_at', 
-            'verification_notes', 'evidence'
+            'verification_notes', 'evidence', 'layer_id', 'layer_name'
         ]
         read_only_fields = [
             'submitted_by', 'submitted_at', 'updated_at', 
-            'is_verified', 'verified_by', 'verified_at'
+            'is_verified', 'verified_by', 'verified_at', 'layer_name'
         ]
     
     def get_metric_name(self, obj):
@@ -109,6 +128,11 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     def get_verified_by_name(self, obj):
         if obj.verified_by:
             return obj.verified_by.email
+        return None
+        
+    def get_layer_name(self, obj):
+        if obj.layer:
+            return obj.layer.company_name
         return None
     
     def validate(self, data):

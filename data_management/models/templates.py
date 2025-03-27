@@ -183,6 +183,13 @@ class ESGMetricSubmission(models.Model):
     verified_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_submissions')
     verified_at = models.DateTimeField(null=True, blank=True)
     verification_notes = models.TextField(blank=True)
+    layer = models.ForeignKey(LayerProfile, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='submissions',
+        help_text="The layer this submission's data represents"
+    )
 
     class Meta:
         unique_together = ['assignment', 'metric', 'reporting_period']
@@ -207,6 +214,13 @@ class ESGMetricEvidence(models.Model):
     uploaded_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     description = models.TextField(blank=True)
+    layer = models.ForeignKey(LayerProfile, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='evidence_files',
+        help_text="The layer this evidence is from"
+    )
     
     # New field for explicit metric relationship
     intended_metric = models.ForeignKey(ESGMetric, on_delete=models.SET_NULL, null=True, blank=True, 

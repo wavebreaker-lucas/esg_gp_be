@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.urls import reverse
 from django.db import models
+from django.conf import settings
 
 from ...models.templates import ESGMetricEvidence, ESGMetricSubmission, ESGMetric
 from ...serializers.esg import ESGMetricEvidenceSerializer
@@ -49,6 +50,34 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         
         file_obj = request.FILES['file']
         
+        # Handle layer_id - get layer or default to layer 7
+        layer_id = request.data.get('layer_id')
+        layer = None
+        
+        if layer_id:
+            try:
+                # Verify user has access to this layer
+                layer = LayerProfile.objects.get(
+                    id=layer_id,
+                    app_users__user=request.user
+                )
+            except LayerProfile.DoesNotExist:
+                return Response({'error': 'Layer not found or you do not have access to it'}, status=400)
+        else:
+            # Default to layer 7 for backward compatibility
+            try:
+                # Get default layer from settings
+                default_layer_id = getattr(settings, 'DEFAULT_LAYER_ID', None)
+                
+                if default_layer_id:
+                    layer = LayerProfile.objects.get(id=default_layer_id)
+                else:
+                    # Fallback to first available group layer
+                    layer = LayerProfile.objects.filter(layer_type='GROUP').first()
+            except Exception:
+                # Just continue without a layer if there's an error
+                pass
+        
         # Handle optional metric_id - use for OCR analyzer selection
         metric_id = request.data.get('metric_id')
         metric = None
@@ -76,24 +105,13 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             uploaded_by=request.user,
             description=request.data.get('description', ''),
             period=period,  # Set the user-provided period
-            intended_metric=metric  # Use the new field for metric relationship
+            intended_metric=metric,  # Use the new field for metric relationship
+            layer=layer  # Set the layer
         )
         
-        # Prepare response
-        response_data = {
-            'id': evidence.id,
-            'file': request.build_absolute_uri(evidence.file.url) if evidence.file else None,
-            'filename': evidence.filename,
-            'uploaded_at': evidence.uploaded_at,
-            'is_standalone': True,
-            'metric_id': metric_id,
-            'period': period,
-            'ocr_processing_url': request.build_absolute_uri(
-                reverse('metric-evidence-process-ocr', args=[evidence.id])
-            )
-        }
-        
-        return Response(response_data, status=201)
+        # Prepare response - use serializer to include layer_id and layer_name
+        serializer = self.get_serializer(evidence)
+        return Response(serializer.data, status=201)
 
     @action(detail=False, methods=['get'])
     def by_submission(self, request):
