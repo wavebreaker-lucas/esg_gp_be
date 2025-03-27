@@ -401,6 +401,78 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, BakerTillyAdmin])
+    @transaction.atomic
+    def uncomplete_form(self, request, pk=None):
+        """
+        Mark a form as incomplete for a specific template assignment.
+        Only Baker Tilly admins can uncomplete forms.
+        
+        POST parameters:
+        - assignment_id: The ID of the template assignment
+        """
+        form = self.get_object()
+        assignment_id = request.data.get('assignment_id')
+        
+        if not assignment_id:
+            return Response(
+                {"error": "assignment_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            # Get the assignment
+            assignment = TemplateAssignment.objects.get(id=assignment_id)
+            
+            # Find the form selection for this form in the template
+            try:
+                form_selection = TemplateFormSelection.objects.get(
+                    template=assignment.template,
+                    form=form
+                )
+                
+                # If the form is not completed, just return success
+                if not form_selection.is_completed:
+                    return Response({
+                        "message": "Form is already marked as incomplete",
+                        "form_id": form.id,
+                        "form_name": form.name,
+                        "form_code": form.code,
+                        "is_completed": False
+                    })
+                
+                # Mark the form as incomplete
+                form_selection.is_completed = False
+                form_selection.completed_at = None
+                form_selection.completed_by = None
+                form_selection.save()
+                
+                # Since a form is now incomplete, the assignment can't be in SUBMITTED status
+                if assignment.status == 'SUBMITTED':
+                    assignment.status = 'IN_PROGRESS'
+                    assignment.completed_at = None
+                    assignment.save()
+                
+                return Response({
+                    "message": "Form successfully marked as incomplete",
+                    "form_id": form.id,
+                    "form_name": form.name,
+                    "form_code": form.code,
+                    "assignment_status": assignment.status
+                })
+                
+            except TemplateFormSelection.DoesNotExist:
+                return Response(
+                    {"error": "This form is not part of the template"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        except TemplateAssignment.DoesNotExist:
+            return Response(
+                {"error": "Template assignment not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
 class ESGFormCategoryViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing ESG form categories with their associated forms.
