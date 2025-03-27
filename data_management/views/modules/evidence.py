@@ -115,6 +115,12 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def by_submission(self, request):
+        """
+        Get evidence files for a specific submission.
+        
+        Parameters:
+            submission_id: ID of the submission to get evidence for
+        """
         submission_id = request.query_params.get('submission_id')
         if not submission_id:
             return Response({'error': 'submission_id is required'}, status=400)
@@ -132,7 +138,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             return Response({'error': 'You do not have permission to view this submission'}, status=403)
         
         # Get evidence for this submission
-        evidence = ESGMetricEvidence.objects.filter(submission=submission)
+        evidence = ESGMetricEvidence.objects.filter(submission=submission).select_related('layer')
         serializer = self.get_serializer(evidence, many=True)
         return Response(serializer.data)
 
@@ -326,6 +332,10 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         """
         Get standalone evidence files for a specific metric.
         Useful for showing available evidence when filling out a form.
+        
+        Parameters:
+            metric_id: ID of the metric to get evidence for
+            layer_id: (Optional) Filter evidence by specific layer
         """
         metric_id = request.query_params.get('metric_id')
         if not metric_id:
@@ -338,7 +348,9 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         
         # Find evidence for this metric (both directly attached and standalone with intended_metric)
         user_layers = LayerProfile.objects.filter(app_users__user=request.user)
-        evidence = ESGMetricEvidence.objects.filter(
+        
+        # Base query
+        evidence_query = ESGMetricEvidence.objects.filter(
             models.Q(submission__metric=metric) |
             models.Q(
                 submission__isnull=True,
@@ -349,5 +361,23 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             models.Q(submission__assignment__layer__in=user_layers)
         )
         
+        # Apply layer filter if provided
+        layer_id = request.query_params.get('layer_id')
+        if layer_id:
+            try:
+                # Verify that the layer exists and user has access to it
+                layer = LayerProfile.objects.get(id=layer_id)
+                if not (request.user.is_staff or request.user.is_superuser or 
+                        request.user.is_baker_tilly_admin or
+                        layer in user_layers):
+                    return Response({'error': 'You do not have access to this layer'}, status=403)
+                
+                # Filter evidence by the selected layer
+                evidence_query = evidence_query.filter(layer=layer)
+            except LayerProfile.DoesNotExist:
+                return Response({'error': f'Layer with ID {layer_id} not found'}, status=404)
+        
+        # Execute query and serialize results
+        evidence = evidence_query.select_related('layer', 'intended_metric')
         serializer = self.get_serializer(evidence, many=True)
         return Response(serializer.data) 

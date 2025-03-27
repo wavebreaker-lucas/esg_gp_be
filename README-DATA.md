@@ -4,6 +4,63 @@
 
 The ESG Data Management System is designed to handle ESG (Environmental, Social, and Governance) reporting requirements, with a specific focus on HKEX ESG reporting guidelines. The system uses a hierarchical structure of Categories, Forms, and Metrics to organize and collect ESG data.
 
+## Layer Support
+
+The system now includes comprehensive layer-based data segregation, allowing ESG data to be associated with specific organizational layers:
+
+### Layer Integration for Submissions and Evidence
+- Each ESG metric submission can be assigned to a specific layer (subsidiary, branch, etc.)
+- Evidence files can be tagged with layer information for better organization
+- Default layer settings provide fallback when no layer is specified
+
+### Key Layer Features:
+- **Layer Association**: Both submissions and evidence have a `layer` field that references a `LayerProfile`
+- **Default Layer**: System uses a configurable default layer (set via `DEFAULT_LAYER_ID` in settings)
+- **Fallback Mechanism**: When no layer is specified, the system tries:
+  1. Layer specified in settings via `DEFAULT_LAYER_ID`
+  2. First available group layer
+  3. Assignment's layer (for batch submissions)
+
+### Benefits of Layer-Based Data:
+- **Data Segregation**: Clear separation of data between different organizational units
+- **Targeted Reporting**: Generate reports specific to subsidiaries or branches
+- **Layer-Specific Evidence**: Attach evidence files pertinent to particular organizational units
+- **Improved Organization**: Better categorization of submissions and evidence
+
+### Submission Creation with Layers
+When creating submissions, the layer can be specified explicitly or will default according to the fallback mechanism:
+
+```json
+{
+  "assignment_id": 1,
+  "metric_id": 5,
+  "value": 1234.56,
+  "layer_id": 3,
+  "reporting_period": "2024-06-30"
+}
+```
+
+### Batch Submission with Layers
+When submitting multiple metrics at once, a default layer can be specified for all submissions, with individual layer overrides:
+
+```json
+{
+  "assignment_id": 1,
+  "default_layer_id": 3,
+  "submissions": [
+    {
+      "metric_id": 5,
+      "value": 1234.56
+    },
+    {
+      "metric_id": 6,
+      "value": 789.01,
+      "layer_id": 4  // Overrides default_layer_id
+    }
+  ]
+}
+```
+
 ## Core Components
 
 ### 1. ESG Form Categories

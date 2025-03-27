@@ -3,6 +3,58 @@
 ## Overview
 The ESG Platform includes automated OCR (Optical Character Recognition) processing for utility bills, using the Azure Content Understanding API. This feature extracts consumption data and billing periods from utility bills, reducing manual data entry and improving accuracy.
 
+## Evidence Layer Support
+
+The system now includes layer-based organization for evidence files, enabling better categorization and filtering of evidence by organizational units:
+
+### Layer-Based Evidence Management
+Evidence files can now be associated with specific organizational layers (subsidiaries, branches, etc.), providing several benefits:
+- **Organization by Business Unit**: Evidence files can be categorized by the business unit they belong to
+- **Layer-Specific Filtering**: Evidence can be filtered by layer when viewing or processing
+- **Better Data Governance**: Clearer ownership and responsibility for evidence files
+- **Enhanced Reporting**: Generate reports that properly attribute evidence to organizational structures
+
+### Evidence Upload with Layer Specification
+When uploading evidence, users can specify a layer:
+
+```
+POST /api/metric-evidence/
+{
+  file: [file data],
+  metric_id: 123,
+  layer_id: 3,  // Layer association
+  period: "2024-06-30"
+}
+```
+
+### Layer Defaults and Validation
+- If no layer is specified, the system uses a configurable default layer (from `DEFAULT_LAYER_ID` setting)
+- The system validates that users have access to the specified layer
+- Only authorized users can upload evidence for a given layer
+- Evidence files without a specified layer use a fallback mechanism:
+  1. Use the layer specified in settings (`DEFAULT_LAYER_ID`)
+  2. Use the first available group layer
+  3. Continue without a layer if needed
+
+### ESGMetricEvidence Model Enhancement
+The evidence model has been updated with a layer field:
+
+```python
+class ESGMetricEvidence(models.Model):
+    # Standard evidence fields
+    ...
+    # Layer association
+    layer = models.ForeignKey(
+        LayerProfile, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='evidence_files',
+        help_text="The layer this evidence is from"
+    )
+    ...
+```
+
 ## Key Components
 
 ### ESGMetric Enhancements
