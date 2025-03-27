@@ -1663,3 +1663,80 @@ When attempting to complete a form with incomplete time-based metrics, the API w
   ]
 }
 ```
+
+### Form Completion Status Validation
+
+The form completion status API has been enhanced to handle various scenarios, including cases where requirements change after a form has been completed.
+
+#### Enhanced Completion Status Check
+
+```
+GET /api/esg-forms/{form_id}/check_completion/?assignment_id={id}
+```
+
+The `check_completion` endpoint now performs validation even for forms that are already marked as completed. The response includes:
+
+- `is_completed`: Whether the form is officially marked as completed in the database
+- `is_actually_complete`: Whether the form meets all current completion requirements
+- `status_inconsistent`: Flag indicating if the form is marked as complete but doesn't meet current requirements
+
+This approach ensures that when requirements change (e.g., new metrics are added or time-based validation is enabled), the system can detect and report the inconsistency.
+
+**Example Response (Inconsistent Status):**
+```json
+{
+  "form_id": 12,
+  "form_name": "Environmental Impacts",
+  "form_code": "HKEX-A1",
+  "is_completed": true,
+  "is_actually_complete": false,
+  "status_inconsistent": true,
+  "completed_at": "2024-04-01T10:30:00Z",
+  "completed_by": "john.doe@example.com",
+  "completion_percentage": 75,
+  "total_required_metrics": 8,
+  "total_submitted_metrics": 6,
+  "missing_regular_metrics": [
+    {
+      "id": 45,
+      "name": "Water consumption",
+      "location": "HK"
+    }
+  ],
+  "incomplete_time_based_metrics": [],
+  "can_complete": false
+}
+```
+
+#### Revalidating Completed Forms
+
+If a form needs to be revalidated due to new requirements, you can use the `complete_form` endpoint with the `revalidate` parameter:
+
+```
+POST /api/esg-forms/{form_id}/complete_form/
+{
+  "assignment_id": 123,
+  "revalidate": true
+}
+```
+
+This will:
+1. Check if the form meets all current requirements
+2. Update the completion status if requirements are met
+3. Return a response indicating if the form was revalidated
+
+**Example Response (Revalidation):**
+```json
+{
+  "message": "Form successfully revalidated",
+  "form_id": 12,
+  "form_name": "Environmental Impacts",
+  "form_code": "HKEX-A1",
+  "evidence_attached": 2,
+  "all_forms_completed": true,
+  "assignment_status": "SUBMITTED",
+  "was_revalidated": true
+}
+```
+
+This approach maintains data integrity while providing a clear way to handle changes in validation requirements over time.

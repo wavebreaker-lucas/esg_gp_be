@@ -75,6 +75,9 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         Check if a form is completed for a specific assignment.
         This endpoint returns the completion status, missing metrics,
         and completion percentage for the form.
+        
+        Even if a form is already marked as completed, this will still
+        perform validation to check if it meets current requirements.
         """
         form = self.get_object()
         assignment_id = request.query_params.get('assignment_id')
@@ -96,18 +99,11 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                     form=form
                 )
                 
-                # If the form is already completed, return its status
-                if form_selection.is_completed:
-                    return Response({
-                        "form_id": form.id,
-                        "form_name": form.name,
-                        "form_code": form.code,
-                        "is_completed": True,
-                        "completed_at": form_selection.completed_at,
-                        "completed_by": form_selection.completed_by.email if form_selection.completed_by else None,
-                        "completion_percentage": 100
-                    })
-                    
+                # Store whether the form is officially marked as completed
+                is_completed = form_selection.is_completed
+                completed_at = form_selection.completed_at
+                completed_by = form_selection.completed_by.email if form_selection.completed_by else None
+                
                 # Helper function to get required submission count for time-based metrics
                 def get_required_submission_count(metric, assignment):
                     if not metric.requires_time_reporting or not metric.reporting_frequency:
@@ -194,13 +190,21 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 # Check if all required metrics are submitted but form isn't marked complete
                 all_regular_complete = submitted_regular == total_regular
                 all_time_based_complete = all(status["is_complete"] for status in time_based_status.values())
-                can_complete = total_required > 0 and all_regular_complete and all_time_based_complete
+                is_actually_complete = total_required > 0 and all_regular_complete and all_time_based_complete
+                can_complete = is_actually_complete
+                
+                # Check if the form status is inconsistent (marked complete but not actually complete)
+                status_inconsistent = is_completed and not is_actually_complete
                 
                 return Response({
                     "form_id": form.id,
                     "form_name": form.name,
                     "form_code": form.code,
-                    "is_completed": False,
+                    "is_completed": is_completed,  # Whether the form is marked as completed in the DB
+                    "is_actually_complete": is_actually_complete,  # Whether it meets current requirements
+                    "status_inconsistent": status_inconsistent,  # Flag for frontend to show warnings
+                    "completed_at": completed_at if is_completed else None,
+                    "completed_by": completed_by if is_completed else None,
                     "completion_percentage": completion_percentage,
                     "total_required_metrics": len(required_metrics),
                     "total_submitted_metrics": len(set(submitted_metrics) & set(required_metrics)),
@@ -227,9 +231,15 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         """
         Mark a form as completed for a specific template assignment.
         This is called when all required metrics for this form have been submitted.
+        
+        POST parameters:
+        - assignment_id: The ID of the template assignment
+        - revalidate: (Optional) If true, a form that was previously marked complete
+                     but doesn't meet current requirements will be updated
         """
         form = self.get_object()
         assignment_id = request.data.get('assignment_id')
+        revalidate = request.data.get('revalidate', False)
         
         if not assignment_id:
             return Response(
@@ -266,6 +276,19 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                     template=assignment.template,
                     form=form
                 )
+                
+                # If the form is already completed and we're not revalidating, just return success
+                if form_selection.is_completed and not revalidate:
+                    return Response({
+                        "message": "Form is already completed",
+                        "form_id": form.id,
+                        "form_name": form.name,
+                        "form_code": form.code,
+                        "is_completed": True,
+                        "completed_at": form_selection.completed_at,
+                        "completed_by": form_selection.completed_by.email if form_selection.completed_by else None
+                    })
+                
             except TemplateFormSelection.DoesNotExist:
                 return Response(
                     {"error": "This form is not part of the template"},
@@ -343,6 +366,7 @@ class ESGFormViewSet(viewsets.ModelViewSet):
             evidence_count = attach_evidence_to_submissions(list(submissions), request.user)
                 
             # Mark the form as completed
+            was_already_completed = form_selection.is_completed
             form_selection.is_completed = True
             form_selection.completed_at = timezone.now()
             form_selection.completed_by = request.user
@@ -361,13 +385,14 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 assignment.save()
                 
             return Response({
-                "message": "Form successfully completed",
+                "message": "Form successfully completed" if not was_already_completed else "Form successfully revalidated",
                 "form_id": form.id,
                 "form_name": form.name,
                 "form_code": form.code,
                 "evidence_attached": evidence_count,
                 "all_forms_completed": all_forms_completed,
-                "assignment_status": assignment.status
+                "assignment_status": assignment.status,
+                "was_revalidated": was_already_completed and revalidate
             })
             
         except TemplateAssignment.DoesNotExist:
