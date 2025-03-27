@@ -1740,3 +1740,50 @@ This will:
 ```
 
 This approach maintains data integrity while providing a clear way to handle changes in validation requirements over time.
+
+## Uncompleting Forms (Admin Only)
+
+Administrators can mark previously completed forms as incomplete using the `uncomplete_form` API endpoint. This is useful when:
+
+1. A form was accidentally marked as complete
+2. Requirements have changed and forms need to be reopened for additional submissions
+3. A form needs to be audited or revised
+
+### API Endpoint
+
+```
+POST /api/esg-forms/{form_id}/uncomplete_form/
+```
+
+Request body:
+```json
+{
+  "assignment_id": 123
+}
+```
+
+Response:
+```json
+{
+  "message": "Form successfully marked as incomplete",
+  "form_id": 45,
+  "form_name": "Carbon Emissions",
+  "form_code": "HKEX-A1",
+  "assignment_status": "IN_PROGRESS"
+}
+```
+
+### Effects of Uncompleting a Form
+
+When a form is marked as incomplete:
+
+1. The form's `is_completed` flag is set to `false`
+2. The `completed_at` and `completed_by` fields are cleared
+3. If the assignment was in "SUBMITTED" status, it will be changed to "IN_PROGRESS"
+4. The `completed_at` field on the assignment will be cleared
+
+**Note:** This operation does not affect any existing metric submissions. All submitted data remains intact.
+
+### Permissions
+
+Only Baker Tilly administrators can use this endpoint.
