@@ -8,8 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.models import LayerProfile
 from ..models.templates import ESGMetricSubmission, ESGMetricEvidence
-from ..serializers.templates import ESGMetricEvidenceSerializer
-from ..serializers.esg import ESGMetricSubmissionSerializer
+from ..serializers.esg import ESGMetricEvidenceSerializer, ESGMetricSubmissionSerializer
 
 
 class BatchEvidenceView(views.APIView):
