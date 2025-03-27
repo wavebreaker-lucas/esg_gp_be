@@ -108,36 +108,93 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                         "completion_percentage": 100
                     })
                     
+                # Helper function to get required submission count for time-based metrics
+                def get_required_submission_count(metric, assignment):
+                    if not metric.requires_time_reporting or not metric.reporting_frequency:
+                        return 1
+                        
+                    # For simplicity, use fixed counts based on reporting frequency
+                    if metric.reporting_frequency == 'monthly':
+                        return 12
+                    elif metric.reporting_frequency == 'quarterly':
+                        return 4
+                    elif metric.reporting_frequency == 'annual':
+                        return 1
+                    
+                    return 1  # Default fallback
+                    
                 # Get all required metrics for this form that apply to the selected regions
                 required_metrics = []
+                time_based_metrics = []
                 for metric in form.metrics.filter(is_required=True):
                     if metric.location == 'ALL' or metric.location in form_selection.regions:
                         required_metrics.append(metric.id)
+                        if metric.requires_time_reporting:
+                            time_based_metrics.append(metric.id)
                         
-                # Check if all required metrics have submissions
-                submitted_metrics = ESGMetricSubmission.objects.filter(
+                # Get submitted metrics for this form
+                submissions = ESGMetricSubmission.objects.filter(
                     assignment=assignment,
                     metric__form=form
-                ).values_list('metric_id', flat=True)
+                )
+                submitted_metrics = submissions.values_list('metric_id', flat=True)
                 
-                # Calculate completion percentage
-                total_required = len(required_metrics)
-                total_submitted = len(set(required_metrics) & set(submitted_metrics))
+                # For time-based metrics, check if we have the required number of submissions
+                time_based_status = {}
+                for metric_id in time_based_metrics:
+                    metric = ESGMetric.objects.get(id=metric_id)
+                    submissions_count = submissions.filter(metric=metric).count()
+                    required_count = get_required_submission_count(metric, assignment)
+                    time_based_status[metric_id] = {
+                        "submitted_count": submissions_count,
+                        "required_count": required_count,
+                        "is_complete": submissions_count >= required_count
+                    }
+                
+                # Calculate completion percentage for non-time-based metrics
+                regular_metrics = set(required_metrics) - set(time_based_metrics)
+                total_regular = len(regular_metrics)
+                submitted_regular = len(set(regular_metrics) & set(submitted_metrics))
+                
+                # Calculate completion for time-based metrics
+                total_time_based = sum(status["required_count"] for status in time_based_status.values())
+                submitted_time_based = sum(min(status["submitted_count"], status["required_count"]) 
+                                          for status in time_based_status.values())
+                
+                # Calculate overall completion percentage
+                total_required = total_regular + total_time_based
+                total_submitted = submitted_regular + submitted_time_based
                 
                 completion_percentage = 0
                 if total_required > 0:
                     completion_percentage = (total_submitted / total_required) * 100
                     
-                # Get missing metrics if any
-                missing_metrics = []
-                if total_submitted < total_required:
-                    missing_metric_ids = set(required_metrics) - set(submitted_metrics)
-                    missing_metrics = ESGMetric.objects.filter(
+                # Get missing regular metrics if any
+                missing_regular_metrics = []
+                if submitted_regular < total_regular:
+                    missing_metric_ids = set(regular_metrics) - set(submitted_metrics)
+                    missing_regular_metrics = ESGMetric.objects.filter(
                         id__in=missing_metric_ids
                     ).values('id', 'name', 'location')
                 
+                # Get incomplete time-based metrics
+                incomplete_time_based = []
+                for metric_id, status in time_based_status.items():
+                    if not status["is_complete"]:
+                        metric = ESGMetric.objects.get(id=metric_id)
+                        incomplete_time_based.append({
+                            'id': metric.id,
+                            'name': metric.name,
+                            'location': metric.location,
+                            'reporting_frequency': metric.reporting_frequency,
+                            'submitted_count': status["submitted_count"],
+                            'required_count': status["required_count"]
+                        })
+                
                 # Check if all required metrics are submitted but form isn't marked complete
-                can_complete = total_required > 0 and total_submitted == total_required
+                all_regular_complete = submitted_regular == total_regular
+                all_time_based_complete = all(status["is_complete"] for status in time_based_status.values())
+                can_complete = total_required > 0 and all_regular_complete and all_time_based_complete
                 
                 return Response({
                     "form_id": form.id,
@@ -145,9 +202,10 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                     "form_code": form.code,
                     "is_completed": False,
                     "completion_percentage": completion_percentage,
-                    "total_required_metrics": total_required,
-                    "total_submitted_metrics": total_submitted,
-                    "missing_metrics": list(missing_metrics),
+                    "total_required_metrics": len(required_metrics),
+                    "total_submitted_metrics": len(set(submitted_metrics) & set(required_metrics)),
+                    "missing_regular_metrics": list(missing_regular_metrics),
+                    "incomplete_time_based_metrics": incomplete_time_based,
                     "can_complete": can_complete
                 })
                 
@@ -214,11 +272,29 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
                 
+            # Helper function to get required submission count for time-based metrics
+            def get_required_submission_count(metric, assignment):
+                if not metric.requires_time_reporting or not metric.reporting_frequency:
+                    return 1
+                    
+                # For simplicity, use fixed counts based on reporting frequency
+                if metric.reporting_frequency == 'monthly':
+                    return 12
+                elif metric.reporting_frequency == 'quarterly':
+                    return 4
+                elif metric.reporting_frequency == 'annual':
+                    return 1
+                
+                return 1  # Default fallback
+                
             # Get all required metrics for this form that apply to the selected regions
             required_metrics = []
+            time_based_metrics = []
             for metric in form.metrics.filter(is_required=True):
                 if metric.location == 'ALL' or metric.location in form_selection.regions:
                     required_metrics.append(metric.id)
+                    if metric.requires_time_reporting:
+                        time_based_metrics.append(metric)
                     
             # Check if all required metrics have submissions
             submissions = ESGMetricSubmission.objects.filter(
@@ -227,17 +303,40 @@ class ESGFormViewSet(viewsets.ModelViewSet):
             )
             submitted_metrics = submissions.values_list('metric_id', flat=True)
             
-            missing_metrics = set(required_metrics) - set(submitted_metrics)
+            # Check regular (non-time-based) metrics
+            regular_metrics = set(required_metrics) - set(m.id for m in time_based_metrics)
+            missing_regular = set(regular_metrics) - set(submitted_metrics)
             
-            if missing_metrics:
-                # Get names of missing metrics for better error message
+            if missing_regular:
+                # Get names of missing regular metrics for better error message
                 missing_metric_names = ESGMetric.objects.filter(
-                    id__in=missing_metrics
+                    id__in=missing_regular
                 ).values_list('name', flat=True)
                 
                 return Response({
                     "error": "Cannot complete form with missing required metrics",
                     "missing_metrics": list(missing_metric_names)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check time-based metrics
+            incomplete_time_based = []
+            for metric in time_based_metrics:
+                submissions_count = submissions.filter(metric=metric).count()
+                required_count = get_required_submission_count(metric, assignment)
+                
+                if submissions_count < required_count:
+                    incomplete_time_based.append({
+                        'id': metric.id,
+                        'name': metric.name,
+                        'reporting_frequency': metric.reporting_frequency,
+                        'submitted_count': submissions_count,
+                        'required_count': required_count
+                    })
+            
+            if incomplete_time_based:
+                return Response({
+                    "error": "Cannot complete form with incomplete time-based metrics",
+                    "incomplete_time_based_metrics": incomplete_time_based
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             # Automatically attach evidence files related to this form's submissions
@@ -740,17 +839,34 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             assignment=assignment
         )
         
+        # Helper function to get required submission count for time-based metrics
+        def get_required_submission_count(metric, assignment):
+            if not metric.requires_time_reporting or not metric.reporting_frequency:
+                return 1
+                
+            # For simplicity, use fixed counts based on reporting frequency
+            if metric.reporting_frequency == 'monthly':
+                return 12
+            elif metric.reporting_frequency == 'quarterly':
+                return 4
+            elif metric.reporting_frequency == 'annual':
+                return 1
+            
+            return 1  # Default fallback
+        
         # Check if all required metrics have submissions
         all_required_metrics_submitted = True
         for metric in metrics:
             if metric.is_required:
-                # For time-based metrics, we need to check if there's a submission
-                # for each time period
+                # For time-based metrics, check if we have enough entries
                 if metric.requires_time_reporting:
-                    # Implementation depends on your business rules for time periods
-                    # This is a simplified check
-                    metric_submissions = submissions.filter(metric=metric)
-                    if not metric_submissions.exists():
+                    # Count submissions for this metric
+                    submissions_count = submissions.filter(metric=metric).count()
+                    
+                    # Calculate required count based on frequency
+                    required_count = get_required_submission_count(metric, assignment)
+                    
+                    if submissions_count < required_count:
                         all_required_metrics_submitted = False
                         break
                 else:
@@ -772,9 +888,20 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 form_metrics_submitted = True
                 
                 for metric in form_metrics:
-                    if metric.is_required and not submissions.filter(metric=metric).exists():
-                        form_metrics_submitted = False
-                        break
+                    if metric.is_required:
+                        if metric.requires_time_reporting:
+                            # For time-based metrics, check submission count
+                            submissions_count = submissions.filter(metric=metric).count()
+                            required_count = get_required_submission_count(metric, assignment)
+                            
+                            if submissions_count < required_count:
+                                form_metrics_submitted = False
+                                break
+                        else:
+                            # For regular metrics, check if any submission exists
+                            if not submissions.filter(metric=metric).exists():
+                                form_metrics_submitted = False
+                                break
                 
                 if form_metrics_submitted and not form_selection.is_completed:
                     form_selection.is_completed = True
@@ -1030,6 +1157,21 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 LayerProfile.objects.filter(id=assignment.layer.id, app_users__user=request.user).exists()):
             return Response({'error': 'You do not have permission to submit this template'}, status=403)
         
+        # Helper function to get required submission count for time-based metrics
+        def get_required_submission_count(metric, assignment):
+            if not metric.requires_time_reporting or not metric.reporting_frequency:
+                return 1
+                
+            # For simplicity, use fixed counts based on reporting frequency
+            if metric.reporting_frequency == 'monthly':
+                return 12
+            elif metric.reporting_frequency == 'quarterly':
+                return 4
+            elif metric.reporting_frequency == 'annual':
+                return 1
+            
+            return 1  # Default fallback
+        
         # Get all metrics for the forms in this template
         metrics = ESGMetric.objects.filter(
             form__in=assignment.template.selected_forms.all()
@@ -1042,27 +1184,47 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         
         # Check if all required metrics have submissions
         missing_metrics = []
+        incomplete_time_based = []
+        
         for metric in metrics:
             if metric.is_required:
-                # For time-based metrics, we need at least one submission
-                # (In a real application, you might have more complex time period validation)
-                has_submission = submissions.filter(metric=metric).exists()
-                if not has_submission:
-                    missing_metrics.append({
-                        'id': metric.id,
-                        'name': metric.name,
-                        'form': metric.form.name
-                    })
+                if metric.requires_time_reporting:
+                    # For time-based metrics, check submission count
+                    submissions_count = submissions.filter(metric=metric).count()
+                    required_count = get_required_submission_count(metric, assignment)
+                    
+                    if submissions_count < required_count:
+                        incomplete_time_based.append({
+                            'id': metric.id,
+                            'name': metric.name,
+                            'form': metric.form.name,
+                            'reporting_frequency': metric.reporting_frequency,
+                            'submitted_count': submissions_count,
+                            'required_count': required_count
+                        })
+                else:
+                    # For regular metrics, we need at least one submission
+                    has_submission = submissions.filter(metric=metric).exists()
+                    if not has_submission:
+                        missing_metrics.append({
+                            'id': metric.id,
+                            'name': metric.name,
+                            'form': metric.form.name
+                        })
         
+        errors = {}
         if missing_metrics:
+            errors["missing_metrics"] = missing_metrics
+            
+        if incomplete_time_based:
+            errors["incomplete_time_based_metrics"] = incomplete_time_based
+            
+        if errors:
             return Response({
                 'status': 'incomplete',
-                'message': 'Template is incomplete. Missing required metrics.',
-                'missing_metrics': missing_metrics
+                'message': 'Template is incomplete.',
+                **errors
             }, status=400)
-        
-        # Evidence attachment is now handled at form completion stage
-        # No need to call attach_evidence_to_submissions here
         
         # Update assignment status
         assignment.status = 'SUBMITTED'
@@ -1075,9 +1237,20 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             form_metrics_submitted = True
             
             for metric in form_metrics:
-                if metric.is_required and not submissions.filter(metric=metric).exists():
-                    form_metrics_submitted = False
-                    break
+                if metric.is_required:
+                    if metric.requires_time_reporting:
+                        # For time-based metrics, check submission count
+                        submissions_count = submissions.filter(metric=metric).count()
+                        required_count = get_required_submission_count(metric, assignment)
+                        
+                        if submissions_count < required_count:
+                            form_metrics_submitted = False
+                            break
+                    else:
+                        # For regular metrics, check if any submission exists
+                        if not submissions.filter(metric=metric).exists():
+                            form_metrics_submitted = False
+                            break
             
             if form_metrics_submitted:
                 form_selection.is_completed = True

@@ -1597,3 +1597,69 @@ Access the admin interface at `/admin/` to manage:
 - Template Assignments
 
 Note: Access requires either superuser status or Baker Tilly admin privileges.
+
+### Time-Based Metrics Validation
+
+For metrics that require time-based reporting (e.g., monthly electricity consumption), the API expects multiple submissions based on the reporting frequency:
+
+- Monthly metrics: 12 submissions (one for each month)
+- Quarterly metrics: 4 submissions (one for each quarter)
+- Annual metrics: 1 submission
+
+The `check_completion` endpoint provides detailed information about time-based metrics completion status:
+
+```
+GET /api/esg-forms/{form_id}/check_completion/?assignment_id={id}
+```
+
+**Response Example (with time-based metrics):**
+```json
+{
+  "form_id": 12,
+  "form_name": "Environmental Impacts",
+  "form_code": "HKEX-A1",
+  "is_completed": false,
+  "completion_percentage": 60,
+  "total_required_metrics": 8,
+  "total_submitted_metrics": 5,
+  "missing_regular_metrics": [
+    {
+      "id": 45,
+      "name": "Water consumption",
+      "location": "HK"
+    }
+  ],
+  "incomplete_time_based_metrics": [
+    {
+      "id": 52,
+      "name": "Electricity consumption",
+      "location": "ALL",
+      "reporting_frequency": "monthly",
+      "submitted_count": 5,
+      "required_count": 12
+    }
+  ],
+  "can_complete": false
+}
+```
+
+The form can only be completed when:
+1. All regular metrics have at least one submission
+2. All time-based metrics have the required number of submissions based on their reporting frequency
+
+When attempting to complete a form with incomplete time-based metrics, the API will return:
+
+```json
+{
+  "error": "Cannot complete form with incomplete time-based metrics",
+  "incomplete_time_based_metrics": [
+    {
+      "id": 52,
+      "name": "Electricity consumption",
+      "reporting_frequency": "monthly",
+      "submitted_count": 5,
+      "required_count": 12
+    }
+  ]
+}
+```
