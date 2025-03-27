@@ -27,6 +27,23 @@ POST /api/metric-evidence/
 }
 ```
 
+### Filtering Evidence by Layer
+The evidence listing endpoints now support filtering by layer:
+
+```
+GET /api/metric-evidence/by_metric/?metric_id=123&layer_id=3
+```
+
+- Filters evidence files to show only those associated with the specified layer
+- System validates that the user has access to the requested layer
+- Unauthorized layer access attempts return appropriate error responses
+- Improves navigation and organization in complex multi-layer organizations
+
+For available layers, use the layers endpoint:
+```
+GET /api/metric-submissions/available_layers/
+```
+
 ### Layer Defaults and Validation
 - If no layer is specified, the system uses a configurable default layer (from `DEFAULT_LAYER_ID` setting)
 - The system validates that users have access to the specified layer

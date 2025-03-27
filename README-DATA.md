@@ -20,12 +20,165 @@ The system now includes comprehensive layer-based data segregation, allowing ESG
   1. Layer specified in settings via `DEFAULT_LAYER_ID`
   2. First available group layer
   3. Assignment's layer (for batch submissions)
+- **Available Layers API**: Endpoint to retrieve all layers accessible to the current user
+
+### Available Layers Endpoint
+
+The system provides an API endpoint to retrieve all layers that a user has access to:
+
+```
+GET /api/metric-submissions/available_layers/
+```
+
+**Features:**
+- Returns all layers the current user can access based on their role and permissions
+- Sorted by layer type (GROUP, SUBSIDIARY, BRANCH) and then by name
+- Includes parent layer information for easier navigation
+- Optional filtering by assignment context
+
+**Optional Parameters:**
+- `assignment_id`: Filter layers to those relevant for a specific assignment
+
+**Example Response:**
+```json
+[
+  {
+    "id": 1,
+    "name": "Parent Group Inc.",
+    "type": "GROUP",
+    "location": "HK",
+    "parent": null
+  },
+  {
+    "id": 3,
+    "name": "Manufacturing Division",
+    "type": "SUBSIDIARY",
+    "location": "PRC",
+    "parent": {
+      "id": 1,
+      "name": "Parent Group Inc."
+    }
+  },
+  {
+    "id": 5,
+    "name": "Shanghai Factory",
+    "type": "BRANCH",
+    "location": "PRC",
+    "parent": {
+      "id": 3,
+      "name": "Manufacturing Division"
+    }
+  }
+]
+```
+
+**Use Cases:**
+- Displaying layer options in submission forms
+- Filtering submissions or evidence by layer
+- Building layer selection dropdowns in the UI
 
 ### Benefits of Layer-Based Data:
 - **Data Segregation**: Clear separation of data between different organizational units
 - **Targeted Reporting**: Generate reports specific to subsidiaries or branches
 - **Layer-Specific Evidence**: Attach evidence files pertinent to particular organizational units
 - **Improved Organization**: Better categorization of submissions and evidence
+
+### Layer-Based Aggregation
+
+The system supports aggregating metrics across different layers via the `sum_by_layer` endpoint:
+
+```
+GET /api/metric-submissions/sum_by_layer/?assignment_id=1&metric_ids=5,6,7&layer_ids=3,4,5
+```
+
+**Parameters:**
+- `assignment_id`: Required. The template assignment to aggregate data for.
+- `metric_ids`: Required. Comma-separated list of metric IDs to include in the aggregation.
+- `layer_ids`: Required. Comma-separated list of layer IDs to include in the aggregation.
+- `period`: Optional. If provided, filter submissions to this specific period (YYYY-MM-DD).
+
+**Example Response:**
+```json
+{
+  "assignment_id": "1",
+  "period": "2024-06-30",
+  "metrics": {
+    "5": {
+      "id": 5,
+      "name": "Electricity Consumption",
+      "unit_type": "kWh",
+      "custom_unit": null,
+      "requires_time_reporting": true,
+      "form_code": "HKEX-A2"
+    },
+    "6": {
+      "id": 6,
+      "name": "Water Consumption",
+      "unit_type": "m3",
+      "custom_unit": null,
+      "requires_time_reporting": true,
+      "form_code": "HKEX-A2"
+    }
+  },
+  "layers": {
+    "3": {
+      "id": 3,
+      "name": "Manufacturing Division",
+      "type": "SUBSIDIARY",
+      "location": "PRC"
+    },
+    "4": {
+      "id": 4,
+      "name": "Hong Kong Office",
+      "type": "SUBSIDIARY",
+      "location": "HK"
+    }
+  },
+  "aggregation": [
+    {
+      "metric_id": 5,
+      "values_by_layer": {
+        "3": {
+          "value": 12500.0,
+          "submission_id": 101
+        },
+        "4": {
+          "value": 3200.0,
+          "submission_id": 102
+        }
+      }
+    },
+    {
+      "metric_id": 6,
+      "values_by_layer": {
+        "3": {
+          "value": 1850.0,
+          "submission_id": 103
+        },
+        "4": {
+          "value": 450.0,
+          "submission_id": 104
+        }
+      }
+    }
+  ]
+}
+```
+
+**Key Aggregation Features:**
+- For time-based metrics without a specific period, the endpoint sums all values across reporting periods
+- For non-time-based metrics, the endpoint returns the single submission value
+- When a specific period is provided, only submissions matching that period are included
+- All requested metrics and layers are returned, with null values for missing data
+- Includes full metric metadata (name, unit type, form code) for easy display
+- Includes layer metadata (name, type, location) for context
+- References original submission IDs when available for drill-down capabilities
+
+**Use Cases:**
+- Comparing environmental metrics across different subsidiaries
+- Creating layer-based dashboards showing consolidated metrics
+- Generating consolidated reports across organizational structure
+- Analyzing performance of different organizational units
 
 ### Submission Creation with Layers
 When creating submissions, the layer can be specified explicitly or will default according to the fallback mechanism:

@@ -6,6 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 from accounts.permissions import BakerTillyAdmin
 from accounts.models import CustomUser, AppUser, LayerProfile
+from accounts.services import get_accessible_layers, has_layer_access
 from ..models import (
     ESGFormCategory, ESGForm, ESGMetric,
     Template, TemplateFormSelection, TemplateAssignment
@@ -1228,6 +1229,21 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         metric_id = request.query_params.get('metric_id')
         if metric_id:
             submissions = submissions.filter(metric_id=metric_id)
+        
+        # Filter by layer if specified
+        layer_id = request.query_params.get('layer_id')
+        if layer_id:
+            try:
+                # Verify user has access to the layer
+                layer = LayerProfile.objects.get(id=layer_id)
+                if not (request.user.is_staff or request.user.is_superuser or 
+                        request.user.is_baker_tilly_admin or
+                        LayerProfile.objects.filter(id=layer_id, app_users__user=request.user).exists()):
+                    return Response({'error': 'You do not have access to this layer'}, status=403)
+                
+                submissions = submissions.filter(layer=layer)
+            except LayerProfile.DoesNotExist:
+                return Response({'error': f'Layer with ID {layer_id} not found'}, status=404)
             
         is_verified = request.query_params.get('is_verified')
         if is_verified is not None:
@@ -1250,7 +1266,8 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         if sort_direction.lower() == 'desc':
             sort_by = f'-{sort_by}'
         
-        submissions = submissions.order_by(sort_by)
+        # Optimize query with select_related
+        submissions = submissions.select_related('metric', 'layer', 'submitted_by').order_by(sort_by)
         
         # Pagination
         page_size = int(request.query_params.get('page_size', 50))
@@ -1429,6 +1446,365 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             'message': 'Template submitted successfully',
             'assignment_status': assignment.status
         })
+
+    @action(detail=False, methods=['get'])
+    def available_layers(self, request):
+        """
+        Get all layers that the current user has access to.
+        This is useful for the frontend to show layer options when creating or filtering submissions.
+        
+        Optional parameters:
+            assignment_id: Filter layers to those relevant for a specific assignment
+        """
+        # Get all layers the user has access to using the existing utility function
+        user_layers = get_accessible_layers(request.user)
+        
+        # Filter by assignment if provided
+        assignment_id = request.query_params.get('assignment_id')
+        if assignment_id:
+            try:
+                assignment = TemplateAssignment.objects.get(id=assignment_id)
+                
+                # For assignments, we should include:
+                # 1. The assignment's own layer
+                # 2. Any child layers of the assignment's layer
+                
+                # Add the assignment's layer
+                assignment_layer = assignment.layer
+                if assignment_layer not in user_layers:
+                    if not has_layer_access(request.user, assignment_layer):
+                        return Response({
+                            'error': f'You do not have access to layer {assignment_layer.id}'
+                        }, status=403)
+                
+                # Get all layers the user has access to that are related to this assignment
+                available_layers = []
+                
+                # Include the assignment's own layer
+                available_layers.append({
+                    'id': assignment_layer.id,
+                    'name': assignment_layer.company_name,
+                    'type': assignment_layer.layer_type,
+                    'location': assignment_layer.company_location,
+                    'parent': None
+                })
+                
+                # Include child layers if the assignment layer is a group
+                if assignment_layer.layer_type == 'GROUP':
+                    # Get subsidiaries
+                    for subsidiary in user_layers.filter(
+                        layer_type='SUBSIDIARY',
+                        subsidiarylayer__group_layer=assignment_layer
+                    ):
+                        available_layers.append({
+                            'id': subsidiary.id,
+                            'name': subsidiary.company_name,
+                            'type': subsidiary.layer_type,
+                            'location': subsidiary.company_location,
+                            'parent': {
+                                'id': assignment_layer.id,
+                                'name': assignment_layer.company_name
+                            }
+                        })
+                        
+                        # Get branches of this subsidiary
+                        for branch in user_layers.filter(
+                            layer_type='BRANCH',
+                            branchlayer__subsidiary_layer__id=subsidiary.id
+                        ):
+                            available_layers.append({
+                                'id': branch.id,
+                                'name': branch.company_name,
+                                'type': branch.layer_type,
+                                'location': branch.company_location,
+                                'parent': {
+                                    'id': subsidiary.id,
+                                    'name': subsidiary.company_name
+                                }
+                            })
+                
+                # Include parent layers (e.g., if assignment is for a subsidiary, include its group)
+                if assignment_layer.layer_type == 'SUBSIDIARY':
+                    try:
+                        group_layer = assignment_layer.subsidiarylayer.group_layer
+                        if group_layer in user_layers:
+                            # Add at the beginning as it's the top-level parent
+                            available_layers.insert(0, {
+                                'id': group_layer.id,
+                                'name': group_layer.company_name,
+                                'type': group_layer.layer_type,
+                                'location': group_layer.company_location,
+                                'parent': None
+                            })
+                            # Update the assignment layer's parent reference
+                            available_layers[1]['parent'] = {
+                                'id': group_layer.id,
+                                'name': group_layer.company_name
+                            }
+                    except Exception:
+                        # Just continue if we can't get the parent
+                        pass
+                
+                # If it's a branch, include both its subsidiary and group
+                elif assignment_layer.layer_type == 'BRANCH':
+                    try:
+                        subsidiary_layer = assignment_layer.branchlayer.subsidiary_layer
+                        if subsidiary_layer in user_layers:
+                            # Add before the assignment layer
+                            available_layers.insert(0, {
+                                'id': subsidiary_layer.id,
+                                'name': subsidiary_layer.company_name,
+                                'type': subsidiary_layer.layer_type,
+                                'location': subsidiary_layer.company_location,
+                                'parent': None
+                            })
+                            # Update the assignment layer's parent reference
+                            available_layers[1]['parent'] = {
+                                'id': subsidiary_layer.id,
+                                'name': subsidiary_layer.company_name
+                            }
+                            
+                            # Also add the group
+                            group_layer = subsidiary_layer.group_layer
+                            if group_layer in user_layers:
+                                # Add at the very beginning
+                                available_layers.insert(0, {
+                                    'id': group_layer.id,
+                                    'name': group_layer.company_name,
+                                    'type': group_layer.layer_type,
+                                    'location': group_layer.company_location,
+                                    'parent': None
+                                })
+                                # Update the subsidiary layer's parent reference
+                                available_layers[1]['parent'] = {
+                                    'id': group_layer.id,
+                                    'name': group_layer.company_name
+                                }
+                    except Exception:
+                        # Just continue if we can't get the parent
+                        pass
+                
+                return Response(available_layers)
+            except TemplateAssignment.DoesNotExist:
+                return Response({'error': f'Assignment with ID {assignment_id} not found'}, status=404)
+        
+        # Prepare all accessible layers
+        result = []
+        
+        # First, include all GROUP layers
+        for layer in user_layers.filter(layer_type='GROUP').order_by('company_name'):
+            result.append({
+                'id': layer.id,
+                'name': layer.company_name,
+                'type': layer.layer_type,
+                'location': layer.company_location,
+                'parent': None
+            })
+        
+        # Then include all SUBSIDIARY layers with parent information
+        for layer in user_layers.filter(layer_type='SUBSIDIARY').order_by('company_name'):
+            parent = None
+            try:
+                group_layer = layer.subsidiarylayer.group_layer
+                if group_layer in user_layers:
+                    parent = {
+                        'id': group_layer.id,
+                        'name': group_layer.company_name
+                    }
+            except Exception:
+                pass
+            
+            result.append({
+                'id': layer.id,
+                'name': layer.company_name,
+                'type': layer.layer_type,
+                'location': layer.company_location,
+                'parent': parent
+            })
+        
+        # Finally, include all BRANCH layers with parent information
+        for layer in user_layers.filter(layer_type='BRANCH').order_by('company_name'):
+            parent = None
+            try:
+                subsidiary_layer = layer.branchlayer.subsidiary_layer
+                if subsidiary_layer in user_layers:
+                    parent = {
+                        'id': subsidiary_layer.id,
+                        'name': subsidiary_layer.company_name
+                    }
+            except Exception:
+                pass
+            
+            result.append({
+                'id': layer.id,
+                'name': layer.company_name,
+                'type': layer.layer_type,
+                'location': layer.company_location,
+                'parent': parent
+            })
+        
+        return Response(result)
+
+    @action(detail=False, methods=['get'])
+    def sum_by_layer(self, request):
+        """
+        Get aggregated values for metric submissions by layer.
+        This endpoint allows aggregating metrics across different layers for comparison.
+
+        Parameters:
+            assignment_id: Required. The template assignment to aggregate data for.
+            metric_ids: Comma-separated list of metric IDs to include in the aggregation.
+            layer_ids: Comma-separated list of layer IDs to include in the aggregation.
+            period: Optional. If provided, filter submissions to this specific period (YYYY-MM-DD).
+            
+        Returns:
+            Aggregated values for each metric by layer
+        """
+        # Required parameters
+        assignment_id = request.query_params.get('assignment_id')
+        if not assignment_id:
+            return Response({'error': 'assignment_id is required'}, status=400)
+            
+        # Get metrics to aggregate
+        metric_ids_param = request.query_params.get('metric_ids')
+        if not metric_ids_param:
+            return Response({'error': 'metric_ids is required'}, status=400)
+        
+        try:
+            metric_ids = [int(id.strip()) for id in metric_ids_param.split(',') if id.strip()]
+            if not metric_ids:
+                return Response({'error': 'No valid metric IDs provided'}, status=400)
+        except ValueError:
+            return Response({'error': 'Invalid metric_ids format. Use comma-separated integers.'}, status=400)
+            
+        # Get layers to aggregate
+        layer_ids_param = request.query_params.get('layer_ids')
+        if not layer_ids_param:
+            return Response({'error': 'layer_ids is required'}, status=400)
+            
+        try:
+            layer_ids = [int(id.strip()) for id in layer_ids_param.split(',') if id.strip()]
+            if not layer_ids:
+                return Response({'error': 'No valid layer IDs provided'}, status=400)
+        except ValueError:
+            return Response({'error': 'Invalid layer_ids format. Use comma-separated integers.'}, status=400)
+            
+        # Validate assignment
+        try:
+            assignment = TemplateAssignment.objects.get(id=assignment_id)
+        except TemplateAssignment.DoesNotExist:
+            return Response({'error': f'Assignment with ID {assignment_id} not found'}, status=404)
+            
+        # Check permissions
+        user_layers = get_accessible_layers(request.user)
+        accessible_layer_ids = set(user_layers.values_list('id', flat=True))
+        
+        # Check if user has access to all requested layers
+        inaccessible_layers = set(layer_ids) - accessible_layer_ids
+        if inaccessible_layers:
+            return Response({
+                'error': f'You do not have access to the following layers: {", ".join(map(str, inaccessible_layers))}'
+            }, status=403)
+            
+        # Validate metrics
+        metrics = ESGMetric.objects.filter(id__in=metric_ids)
+        if metrics.count() != len(metric_ids):
+            found_ids = set(metrics.values_list('id', flat=True))
+            missing_ids = set(metric_ids) - found_ids
+            return Response({
+                'error': f'The following metrics were not found: {", ".join(map(str, missing_ids))}'
+            }, status=404)
+            
+        # Optional period filter
+        period_filter = {}
+        period = request.query_params.get('period')
+        if period:
+            try:
+                from datetime import datetime
+                period_date = datetime.strptime(period, '%Y-%m-%d').date()
+                period_filter['reporting_period'] = period_date
+            except ValueError:
+                return Response({'error': 'Invalid period format. Use YYYY-MM-DD'}, status=400)
+        
+        # Fetch submissions that match the criteria
+        submissions = ESGMetricSubmission.objects.filter(
+            assignment_id=assignment_id,
+            metric_id__in=metric_ids,
+            layer_id__in=layer_ids,
+            **period_filter
+        ).select_related('metric', 'layer')
+        
+        # Prepare the result structure
+        result = {
+            'assignment_id': assignment_id,
+            'period': period,
+            'metrics': {},
+            'layers': {},
+            'aggregation': []
+        }
+        
+        # Create lookup dictionaries for metrics and layers
+        for metric in metrics:
+            result['metrics'][metric.id] = {
+                'id': metric.id,
+                'name': metric.name,
+                'unit_type': metric.unit_type,
+                'custom_unit': metric.custom_unit,
+                'requires_time_reporting': metric.requires_time_reporting,
+                'form_code': metric.form.code
+            }
+            
+        for layer_id in layer_ids:
+            layer = user_layers.get(id=layer_id)
+            result['layers'][layer_id] = {
+                'id': layer_id,
+                'name': layer.company_name,
+                'type': layer.layer_type,
+                'location': layer.company_location
+            }
+            
+        # Build aggregation data structure
+        for metric_id in metric_ids:
+            metric_data = {
+                'metric_id': metric_id,
+                'values_by_layer': {}
+            }
+            
+            for layer_id in layer_ids:
+                # Filter submissions for this metric and layer
+                layer_submissions = submissions.filter(
+                    metric_id=metric_id,
+                    layer_id=layer_id
+                )
+                
+                # Calculate aggregated value
+                if period:
+                    # For period-specific query, just get the first matching submission
+                    submission = layer_submissions.first()
+                    value = submission.value if submission else None
+                    submission_id = submission.id if submission else None
+                else:
+                    # For metrics with time reporting without a specific period, sum all values
+                    metric = result['metrics'][metric_id]
+                    if metric['requires_time_reporting']:
+                        # Sum all numeric values, ignore None/null values
+                        values = [sub.value for sub in layer_submissions if sub.value is not None]
+                        value = sum(values) if values else None
+                        submission_id = None  # Multiple submissions
+                    else:
+                        # For non-time-based metrics, just get the first submission value
+                        submission = layer_submissions.first()
+                        value = submission.value if submission else None
+                        submission_id = submission.id if submission else None
+                
+                metric_data['values_by_layer'][layer_id] = {
+                    'value': value,
+                    'submission_id': submission_id
+                }
+                
+            result['aggregation'].append(metric_data)
+            
+        return Response(result)
 
 class ESGMetricViewSet(viewsets.ModelViewSet):
     """
