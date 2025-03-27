@@ -5,15 +5,20 @@ This package is being refactored to be more modular.
 
 # Import classes from the modules for backward compatibility
 from .modules.evidence import ESGMetricEvidenceViewSet
+
+# Import refactored views
+from .metrics import ESGMetricViewSet
+from .evidence import BatchEvidenceView
+from .form_categories import ESGFormCategoryViewSet
+from .template_assignments import TemplateAssignmentView
+from .user_templates import UserTemplateAssignmentView
+from .template_viewset import TemplateViewSet
+from .submissions import ESGMetricSubmissionViewSet
+from .forms import ESGFormViewSet
+
+# Import remaining views from the templates file until they are refactored
 from .templates import (
     ESGFormViewSet,
-    ESGFormCategoryViewSet,
-    ESGMetricViewSet,
-    TemplateViewSet,
-    ESGMetricSubmissionViewSet,
-    TemplateAssignmentView,
-    UserTemplateAssignmentView,
-    BatchEvidenceView
 )
 
 # Re-export all classes for backward compatibility
