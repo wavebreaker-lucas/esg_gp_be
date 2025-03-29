@@ -274,19 +274,19 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     'error': f'Metric with ID {metric_id} not found'
                 }, status=400)
             
-            # Check if submission already exists for this metric/period
+            # Check if submission already exists for this metric/period/layer
             try:
                 existing = ESGMetricSubmission.objects.get(
                     assignment=assignment,
                     metric=metric,
-                    reporting_period=reporting_period
+                    reporting_period=reporting_period,
+                    layer=layer  # Also check the layer to ensure uniqueness
                 )
                 
                 # Update existing submission
                 existing.value = value
                 existing.text_value = text_value
                 existing.notes = notes
-                existing.layer = layer  # Update layer
                 existing.save()
                 updated_submissions.append(existing)
                 
@@ -300,7 +300,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     reporting_period=reporting_period,
                     notes=notes,
                     submitted_by=request.user,
-                    layer=layer  # Set layer
+                    layer=layer
                 )
                 created_submissions.append(submission)
         
