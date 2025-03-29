@@ -16,11 +16,6 @@ from .template_viewset import TemplateViewSet
 from .submissions import ESGMetricSubmissionViewSet
 from .forms import ESGFormViewSet
 
-# Import remaining views from the templates file until they are refactored
-from .templates import (
-    ESGFormViewSet,
-)
-
 # Re-export all classes for backward compatibility
 __all__ = [
     'ESGMetricEvidenceViewSet',
