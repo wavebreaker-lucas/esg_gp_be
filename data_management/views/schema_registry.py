@@ -9,7 +9,7 @@ from django.db.models import Count
 
 from ..models import MetricSchemaRegistry, ESGMetric
 from ..serializers.esg import MetricSchemaRegistrySerializer
-from ..json_schemas import SCHEMA_TEMPLATES
+from data_management.json_schemas import SCHEMA_TEMPLATES
 
 
 class SchemaRegistryViewSet(viewsets.ModelViewSet):
@@ -51,6 +51,10 @@ class SchemaRegistryViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def schema_types(self, request):
-        """Get a list of pre-defined schema types for common metrics"""
-        # Return schema templates from the centralized schema_templates.py file
-        return Response(SCHEMA_TEMPLATES) 
+        """
+        Returns a list of available schema types with examples for creating metrics.
+        These templates help users create metrics with properly structured JSON schemas.
+        """
+        return Response({
+            "schema_templates": SCHEMA_TEMPLATES
+        }) 

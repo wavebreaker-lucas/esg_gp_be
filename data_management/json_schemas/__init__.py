@@ -1,40 +1,25 @@
 """
-JSON schemas for ESG metrics.
-
-This package contains individual JSON schema definitions for different metric types.
-Each schema file contains one schema definition, and this __init__.py file
-imports and exposes all of them for easy access.
+Package for JSON schema definitions used across the ESG platform.
+Each schema defines a structured format for specific ESG metrics.
 """
 
-from .single_value import SINGLE_VALUE_SCHEMA
-from .emissions import EMISSIONS_SCHEMA
-from .electricity_monthly import ELECTRICITY_MONTHLY_SCHEMA
-from .electricity_provider import ELECTRICITY_PROVIDER_SCHEMA
-from .water_consumption import WATER_CONSUMPTION_SCHEMA
-from .utility_bundle import UTILITY_BUNDLE_SCHEMA
-from .supplier_assessment import SUPPLIER_ASSESSMENT_SCHEMA
-from .legal_cases import LEGAL_CASES_SCHEMA
+from data_management.json_schemas.electricity_hk import ELECTRICITY_HK_SCHEMA
+from data_management.json_schemas.electricity_prc import ELECTRICITY_PRC_SCHEMA
+from data_management.json_schemas.fresh_water import FRESH_WATER_SCHEMA
+from data_management.json_schemas.wastewater import WASTEWATER_SCHEMA
 
-# Collection of all schema templates for easy access
-SCHEMA_TEMPLATES = [
-    SINGLE_VALUE_SCHEMA,
-    EMISSIONS_SCHEMA,
-    ELECTRICITY_MONTHLY_SCHEMA,
-    ELECTRICITY_PROVIDER_SCHEMA,
-    WATER_CONSUMPTION_SCHEMA, 
-    UTILITY_BUNDLE_SCHEMA,
-    SUPPLIER_ASSESSMENT_SCHEMA,
-    LEGAL_CASES_SCHEMA
-]
+# Dictionary of all available schema templates
+SCHEMA_TEMPLATES = {
+    "electricity_hk": ELECTRICITY_HK_SCHEMA,
+    "electricity_prc": ELECTRICITY_PRC_SCHEMA,
+    "fresh_water": FRESH_WATER_SCHEMA,
+    "wastewater": WASTEWATER_SCHEMA,
+}
 
 __all__ = [
-    'SINGLE_VALUE_SCHEMA',
-    'EMISSIONS_SCHEMA',
-    'ELECTRICITY_MONTHLY_SCHEMA',
-    'ELECTRICITY_PROVIDER_SCHEMA',
-    'WATER_CONSUMPTION_SCHEMA',
-    'UTILITY_BUNDLE_SCHEMA',
-    'SUPPLIER_ASSESSMENT_SCHEMA',
-    'LEGAL_CASES_SCHEMA',
-    'SCHEMA_TEMPLATES'
+    "ELECTRICITY_HK_SCHEMA",
+    "ELECTRICITY_PRC_SCHEMA", 
+    "FRESH_WATER_SCHEMA",
+    "WASTEWATER_SCHEMA",
+    "SCHEMA_TEMPLATES",
 ] 
