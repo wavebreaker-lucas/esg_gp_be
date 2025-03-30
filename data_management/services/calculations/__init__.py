@@ -25,10 +25,36 @@ def register_calculation_handler(schema_type, handler_function):
     CALCULATION_HANDLERS[schema_type] = handler_function
     logger.info(f"Registered calculation handler for schema type: {schema_type}")
 
+def get_schema_type_from_metric(metric):
+    """
+    Extract schema type from a metric object.
+    
+    Args:
+        metric: An ESGMetric object or similar with schema information
+        
+    Returns:
+        str: The schema type
+    """
+    if not metric:
+        return None
+        
+    # Try to get from schema_registry
+    if hasattr(metric, 'schema_registry') and metric.schema_registry:
+        if hasattr(metric.schema_registry, 'name'):
+            return metric.schema_registry.name
+        elif hasattr(metric.schema_registry, 'schema') and 'type' in metric.schema_registry.schema:
+            return metric.schema_registry.schema['type']
+            
+    # Try to get from schema_type attribute
+    if hasattr(metric, 'schema_type') and metric.schema_type:
+        return metric.schema_type
+        
+    return None
+
 def validate_and_update_totals(data, schema_type=None):
     """
     Validate and update total consumption in a submission's data.
-    Uses explicit schema type if provided, with fallback to structure detection.
+    Uses explicit schema type if provided.
     
     Args:
         data: The JSON data structure from an ESG metric submission
@@ -40,54 +66,34 @@ def validate_and_update_totals(data, schema_type=None):
     if not data or not isinstance(data, dict):
         return data
     
-    # Extract schema type if an ESGMetric object was passed
-    metric_obj = None
-    if hasattr(schema_type, '__class__') and hasattr(schema_type, 'schema_registry'):
-        metric_obj = schema_type
-        if schema_type.schema_registry:
-            schema_type = schema_type.schema_registry.name
-        elif hasattr(schema_type, 'schema_type') and schema_type.schema_type:
-            schema_type = schema_type.schema_type
-        else:
-            schema_type = None
+    # Extract schema type if a metric object was passed
+    if schema_type and not isinstance(schema_type, str):
+        schema_type = get_schema_type_from_metric(schema_type)
+    
+    # If no schema type could be determined, return data unchanged
+    if not schema_type:
+        logger.warning("No schema type provided and no way to determine it. Returning data unchanged.")
+        return data
     
     # Try schema-based calculation through explicit registry
-    if schema_type and schema_type in CALCULATION_HANDLERS:
+    if schema_type in CALCULATION_HANDLERS:
         logger.info(f"Using registered calculation handler for schema type: {schema_type}")
         return CALCULATION_HANDLERS[schema_type](data)
     
-    # If we have a schema_registry but no explicit handler, use calculation metadata approach
-    if schema_type:
-        from .utils import apply_schema_calculations
-        logger.info(f"Using schema-based calculation for: {schema_type}")
-        return apply_schema_calculations(data, schema_type)
+    # If handler not found, use calculation metadata approach
+    from .utils import apply_schema_calculations, get_calculation_metadata
     
-    # Structure detection as a fallback (legacy mode)
-    if 'periods' not in data:
+    # Get schema metadata to determine if calculation is needed
+    metadata = get_calculation_metadata(schema_type)
+    requires_calculation = metadata.get('requires_calculation', False)
+    
+    # Skip calculation if explicitly marked as not requiring it
+    if requires_calculation is False:
+        logger.info(f"Schema {schema_type} is marked as not requiring calculations")
         return data
         
-    logger.warning("No schema type provided, falling back to structure detection (legacy mode)")
-    periods = data.get('periods', {})
-    if not isinstance(periods, dict) or not periods:
-        return data
-    
-    # Determine the structure
-    sample_period = next(iter(periods.values()), {})
-    
-    # Import handlers only when needed (avoiding circular imports)
-    if 'CLP' in sample_period and 'HKE' in sample_period:
-        from .electricity_hk import calculate_electricity_hk
-        return calculate_electricity_hk(data)
-    
-    elif 'value' in sample_period and 'unit' in sample_period:
-        from .electricity_prc import calculate_electricity_prc
-        return calculate_electricity_prc(data)
-    
-    elif 'HK' in sample_period and 'PRC' in sample_period:
-        from .water_consumption import calculate_water_consumption
-        return calculate_water_consumption(data)
-    
-    return data
+    logger.info(f"Using schema-based metadata calculation for: {schema_type}")
+    return apply_schema_calculations(data, schema_type)
 
 def load_handlers():
     """

@@ -16,7 +16,7 @@ def get_calculation_metadata(schema_type):
         schema_type (str): The type identifier of the schema
         
     Returns:
-        list: A list of calculation definitions from the schema
+        dict: A dictionary containing all calculation metadata from the schema
     """
     from ...json_schemas import SCHEMA_TEMPLATES
     
@@ -26,18 +26,29 @@ def get_calculation_metadata(schema_type):
             # Handle ESGMetric with schema_registry
             if hasattr(schema_type.schema_registry, 'name'):
                 schema_type = schema_type.schema_registry.name
-            elif hasattr(schema_type.schema_registry, 'schema') and 'calculated_fields' in schema_type.schema_registry.schema:
-                # Return calculated fields directly from the schema object
-                return schema_type.schema_registry.schema.get('calculated_fields', [])
+            elif hasattr(schema_type.schema_registry, 'schema'):
+                # Return metadata directly from the schema object
+                schema = schema_type.schema_registry.schema
+                return {
+                    'calculated_fields': schema.get('calculated_fields', []),
+                    'schema_type': schema.get('schema_type'),
+                    'requires_calculation': schema.get('requires_calculation', False),
+                    'calculation_type': schema.get('calculation_type')
+                }
     
     if not schema_type or not isinstance(schema_type, str):
-        return []
+        return {'calculated_fields': []}
     
     if schema_type not in SCHEMA_TEMPLATES:
-        return []
+        return {'calculated_fields': []}
     
     schema = SCHEMA_TEMPLATES[schema_type]
-    return schema.get("calculated_fields", [])
+    return {
+        'calculated_fields': schema.get("calculated_fields", []),
+        'schema_type': schema.get('schema_type'),
+        'requires_calculation': schema.get('requires_calculation', False),
+        'calculation_type': schema.get('calculation_type')
+    }
 
 def resolve_calculation_path(data, path_expr):
     """
@@ -102,7 +113,7 @@ def evaluate_calculation(data, calculation_expr, path):
     for val in values:
         if isinstance(val, dict) and 'value' in val:
             # Extract the value if it's in a value/unit structure
-            if isinstance(val['value'], (int, float)):
+            if val['value'] is not None and isinstance(val['value'], (int, float)):
                 numeric_values.append(val['value'])
         elif isinstance(val, (int, float)):
             numeric_values.append(val)
@@ -207,7 +218,15 @@ def apply_schema_calculations(data, schema_type):
     
     logger.info(f"Applying schema calculations for schema_type: {schema_type}")
     
-    calculation_metadata = get_calculation_metadata(schema_type)
+    metadata = get_calculation_metadata(schema_type)
+    calculation_metadata = metadata.get('calculated_fields', [])
+    requires_calculation = metadata.get('requires_calculation', False)
+    
+    # Early return if schema explicitly states no calculations required
+    if requires_calculation is False:
+        logger.info(f"Schema {schema_type} explicitly marked as not requiring calculations")
+        return data
+    
     if not calculation_metadata:
         # No calculations defined for this schema
         logger.info(f"No calculation metadata found for schema_type: {schema_type}")
@@ -222,6 +241,20 @@ def apply_schema_calculations(data, schema_type):
             continue
         
         logger.info(f"Applying calculation: {calculation} for path: {path}")
+        
+        # Check for dependency paths to ensure required data is present
+        dependency_paths = calc.get('dependency_paths', [])
+        if dependency_paths:
+            has_valid_dependencies = False
+            for dep_path in dependency_paths:
+                values = resolve_calculation_path(data, dep_path)
+                if values and any(v is not None for v in values):
+                    has_valid_dependencies = True
+                    break
+            
+            if not has_valid_dependencies:
+                logger.warning(f"Skipping calculation for {path} - dependencies not present")
+                continue
         
         # Determine preferred unit if dealing with a value field
         preferred_unit = None
