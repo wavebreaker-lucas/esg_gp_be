@@ -265,21 +265,7 @@ ELECTRICITY_HK_SCHEMA = {
             "kpi_reference": {
                 "type": "string",
                 "default": "KPI A1.2, A2.1"
-            },
-            "_metadata": {
-                "type": "object",
-                "properties": {
-                    "primary_measurement": {
-                        "type": "object",
-                        "properties": {
-                            "path": {"type": "string", "default": "periods.Jan-2024.CLP.value"},
-                            "unit": {"type": "string", "default": "kWh"}
-                        }
-                    },
-                    "region": {"type": "string", "default": "Hong Kong"}
-                }
             }
         }
-    },
-    "primary_path_example": "periods.Jan-2024.CLP.value"
+    }
 } 

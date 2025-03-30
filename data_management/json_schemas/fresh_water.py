@@ -270,20 +270,7 @@ FRESH_WATER_SCHEMA = {
                 "type": "string",
                 "enum": ["Fresh Water"],
                 "default": "Fresh Water"
-            },
-            "_metadata": {
-                "type": "object",
-                "properties": {
-                    "primary_measurement": {
-                        "type": "object",
-                        "properties": {
-                            "path": {"type": "string", "default": "periods.Jan-2024.HK.value"},
-                            "unit": {"type": "string", "default": "m³"}
-                        }
-                    }
-                }
             }
         }
-    },
-    "primary_path_example": "periods.Jan-2024.HK.value"
+    }
 } 

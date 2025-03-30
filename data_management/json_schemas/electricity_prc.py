@@ -109,21 +109,7 @@ ELECTRICITY_PRC_SCHEMA = {
             "kpi_reference": {
                 "type": "string",
                 "default": "KPI A1.2, A2.1"
-            },
-            "_metadata": {
-                "type": "object",
-                "properties": {
-                    "primary_measurement": {
-                        "type": "object",
-                        "properties": {
-                            "path": {"type": "string", "default": "periods.Jan-2024.value"},
-                            "unit": {"type": "string", "default": "kWh"}
-                        }
-                    },
-                    "region": {"type": "string", "default": "PRC"}
-                }
             }
         }
-    },
-    "primary_path_example": "periods.Jan-2024.value"
+    }
 } 
