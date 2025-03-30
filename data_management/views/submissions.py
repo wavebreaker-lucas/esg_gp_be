@@ -15,7 +15,7 @@ from ..models import (
     ESGForm, ESGMetric, 
     Template, TemplateAssignment, TemplateFormSelection
 )
-from ..models.templates import ESGMetricSubmission, ESGMetricEvidence
+from ..models.templates import ESGMetricSubmission, ESGMetricEvidence, ESGMetricBatchSubmission
 from ..serializers.esg import (
     ESGMetricSubmissionSerializer, ESGMetricSubmissionCreateSerializer,
     ESGMetricEvidenceSerializer, ESGMetricBatchSubmissionSerializer,
@@ -49,7 +49,9 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         )
 
     def get_serializer_class(self):
-        if self.action == 'verify':
+        if self.action == 'create':
+            return ESGMetricSubmissionCreateSerializer
+        elif self.action == 'verify':
             return ESGMetricSubmissionVerifySerializer
         return self.serializer_class
 
@@ -186,15 +188,24 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         
         POST parameters:
         - assignment_id: The ID of the template assignment
-        - submissions: List of submission objects with metric_id, value, and optional reporting_period
+        - submissions: List of submission objects with metric_id, data
         - auto_attach_evidence: (Optional) Boolean to automatically attach standalone evidence
         - default_layer_id: (Optional) Default layer ID for all submissions
         """
-        # Validate assignment_id
-        assignment_id = request.data.get('assignment_id')
-        if not assignment_id:
-            return Response({'error': 'assignment_id is required'}, status=400)
+        serializer = ESGMetricBatchSubmissionSerializer(data=request.data)
         
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get validated data
+        validated_data = serializer.validated_data
+        assignment_id = validated_data['assignment_id']
+        submissions_data = validated_data['submissions']
+        name = validated_data.get('name', '')
+        notes = validated_data.get('notes', '')
+        layer_id = validated_data.get('layer_id')
+        
+        # Get assignment and validate
         try:
             assignment = TemplateAssignment.objects.get(id=assignment_id)
         except TemplateAssignment.DoesNotExist:
@@ -207,52 +218,41 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 LayerProfile.objects.filter(id=assignment.layer.id, app_users__user=request.user).exists()):
             return Response({'error': 'You do not have permission to submit for this assignment'}, status=403)
         
-        # Get submissions data
-        submissions_data = request.data.get('submissions', [])
-        if not submissions_data:
-            return Response({'error': 'No submissions provided'}, status=400)
-        
         # Get default layer if provided
-        default_layer_id = request.data.get('default_layer_id')
         default_layer = None
-        
-        if default_layer_id:
+        if layer_id:
             try:
-                default_layer = LayerProfile.objects.get(id=default_layer_id)
+                default_layer = LayerProfile.objects.get(id=layer_id)
                 # Check if user has access
                 if not (request.user.is_staff or request.user.is_superuser or 
                         request.user.is_baker_tilly_admin or 
-                        LayerProfile.objects.filter(id=default_layer_id, app_users__user=request.user).exists()):
+                        LayerProfile.objects.filter(id=layer_id, app_users__user=request.user).exists()):
                     return Response({'error': 'You do not have access to the specified layer'}, status=403)
             except LayerProfile.DoesNotExist:
-                return Response({'error': f'Layer with ID {default_layer_id} not found'}, status=404)
+                return Response({'error': f'Layer with ID {layer_id} not found'}, status=404)
         else:
-            # Try to get default layer from settings or use assignment's layer
-            try:
-                from django.conf import settings
-                settings_default_layer_id = getattr(settings, 'DEFAULT_LAYER_ID', None)
-                
-                if settings_default_layer_id:
-                    default_layer = LayerProfile.objects.get(id=settings_default_layer_id)
-                else:
-                    # Fallback to the assignment's layer (which is often what we want anyway)
-                    default_layer = assignment.layer
-            except Exception:
-                # Fallback to assignment's layer if any error occurs
-                default_layer = assignment.layer
+            # Use assignment's layer as default
+            default_layer = assignment.layer
+            
+        # Create batch record
+        batch = ESGMetricBatchSubmission.objects.create(
+            assignment=assignment,
+            name=name,
+            notes=notes,
+            submitted_by=request.user,
+            layer=default_layer
+        )
         
-        # Create or update submissions
+        # Process each submission
         created_submissions = []
         updated_submissions = []
         
         for sub_data in submissions_data:
             metric_id = sub_data.get('metric_id')
-            value = sub_data.get('value')
-            text_value = sub_data.get('text_value')
-            reporting_period = sub_data.get('reporting_period')
+            data = sub_data.get('data')
             notes = sub_data.get('notes', '')
             
-            # Get layer for this submission
+            # Get layer for this submission (submission-specific or default)
             layer = default_layer
             submission_layer_id = sub_data.get('layer_id')
             if submission_layer_id:
@@ -274,35 +274,63 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     'error': f'Metric with ID {metric_id} not found'
                 }, status=400)
             
-            # Check if submission already exists for this metric/period/layer
-            try:
-                existing = ESGMetricSubmission.objects.get(
-                    assignment=assignment,
-                    metric=metric,
-                    reporting_period=reporting_period,
-                    layer=layer  # Also check the layer to ensure uniqueness
-                )
-                
-                # Update existing submission
-                existing.value = value
-                existing.text_value = text_value
-                existing.notes = notes
-                existing.save()
-                updated_submissions.append(existing)
-                
-            except ESGMetricSubmission.DoesNotExist:
-                # Create new submission
-                submission = ESGMetricSubmission.objects.create(
-                    assignment=assignment,
-                    metric=metric,
-                    value=value,
-                    text_value=text_value,
-                    reporting_period=reporting_period,
-                    notes=notes,
-                    submitted_by=request.user,
-                    layer=layer
-                )
-                created_submissions.append(submission)
+            # Handle updates if an existing submission was found
+            if 'update_id' in sub_data:
+                try:
+                    submission = ESGMetricSubmission.objects.get(id=sub_data['update_id'])
+                    
+                    # Update fields
+                    submission.data = data
+                    submission.notes = notes
+                    submission.batch_submission = batch
+                    
+                    # Only update layer if specified
+                    if layer:
+                        submission.layer = layer
+                        
+                    submission.save()
+                    updated_submissions.append(submission)
+                    
+                except ESGMetricSubmission.DoesNotExist:
+                    # If submission no longer exists, create a new one
+                    submission = ESGMetricSubmission.objects.create(
+                        assignment=assignment,
+                        metric=metric,
+                        data=data,
+                        notes=notes,
+                        submitted_by=request.user,
+                        layer=layer,
+                        batch_submission=batch
+                    )
+                    created_submissions.append(submission)
+            else:
+                # Check if submission already exists for this metric/layer
+                try:
+                    existing = ESGMetricSubmission.objects.get(
+                        assignment=assignment,
+                        metric=metric,
+                        layer=layer
+                    )
+                    
+                    # Update existing submission
+                    existing.data = data
+                    existing.notes = notes
+                    existing.batch_submission = batch
+                    existing.save()
+                    updated_submissions.append(existing)
+                    
+                except ESGMetricSubmission.DoesNotExist:
+                    # Create new submission
+                    submission = ESGMetricSubmission.objects.create(
+                        assignment=assignment,
+                        metric=metric,
+                        data=data,
+                        notes=notes,
+                        submitted_by=request.user,
+                        layer=layer,
+                        batch_submission=batch
+                    )
+                    created_submissions.append(submission)
         
         # Update assignment status
         if assignment.status in ['PENDING', 'IN_PROGRESS']:
@@ -325,13 +353,13 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             'status': 'success',
             'message': f'Created {len(created_submissions)} and updated {len(updated_submissions)} submissions',
             'evidence_attached': evidence_count,
-            'assignment_status': assignment.status
+            'assignment_status': assignment.status,
+            'batch_id': batch.id
         })
 
     @action(detail=False, methods=['get'])
     def by_assignment(self, request):
         """Get all submissions for a specific assignment"""
-        # Implementation continues (too long for one code block)
         assignment_id = request.query_params.get('assignment_id')
         if not assignment_id:
             return Response({'error': 'assignment_id is required'}, status=400)
@@ -680,21 +708,24 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                             }
                             
                             # Also add the group
-                            group_layer = subsidiary_layer.group_layer
-                            if group_layer in user_layers:
-                                # Add at the very beginning
-                                available_layers.insert(0, {
-                                    'id': group_layer.id,
-                                    'name': group_layer.company_name,
-                                    'type': group_layer.layer_type,
-                                    'location': group_layer.company_location,
-                                    'parent': None
-                                })
-                                # Update the subsidiary layer's parent reference
-                                available_layers[1]['parent'] = {
-                                    'id': group_layer.id,
-                                    'name': group_layer.company_name
-                                }
+                            try:
+                                group_layer = subsidiary_layer.subsidiarylayer.group_layer
+                                if group_layer in user_layers:
+                                    # Add at the very beginning
+                                    available_layers.insert(0, {
+                                        'id': group_layer.id,
+                                        'name': group_layer.company_name,
+                                        'type': group_layer.layer_type,
+                                        'location': group_layer.company_location,
+                                        'parent': None
+                                    })
+                                    # Update the subsidiary layer's parent reference
+                                    available_layers[1]['parent'] = {
+                                        'id': group_layer.id,
+                                        'name': group_layer.company_name
+                                    }
+                            except Exception:
+                                pass
                     except Exception:
                         # Just continue if we can't get the parent
                         pass
@@ -770,7 +801,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             assignment_id: Required. The template assignment to aggregate data for.
             metric_ids: Comma-separated list of metric IDs to include in the aggregation.
             layer_ids: Comma-separated list of layer IDs to include in the aggregation.
-            period: Optional. If provided, filter submissions to this specific period (YYYY-MM-DD).
+            period: Optional. JSON path to specific period within data (e.g. "periods.Q1-2024")
             
         Returns:
             Aggregated values for each metric by layer
@@ -829,30 +860,21 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': f'The following metrics were not found: {", ".join(map(str, missing_ids))}'
             }, status=404)
-            
+        
         # Optional period filter
-        period_filter = {}
-        period = request.query_params.get('period')
-        if period:
-            try:
-                from datetime import datetime
-                period_date = datetime.strptime(period, '%Y-%m-%d').date()
-                period_filter['reporting_period'] = period_date
-            except ValueError:
-                return Response({'error': 'Invalid period format. Use YYYY-MM-DD'}, status=400)
+        period_path = request.query_params.get('period')
         
         # Fetch submissions that match the criteria
         submissions = ESGMetricSubmission.objects.filter(
             assignment_id=assignment_id,
             metric_id__in=metric_ids,
-            layer_id__in=layer_ids,
-            **period_filter
+            layer_id__in=layer_ids
         ).select_related('metric', 'layer')
         
         # Prepare the result structure
         result = {
             'assignment_id': assignment_id,
-            'period': period,
+            'period_path': period_path,
             'metrics': {},
             'layers': {},
             'aggregation': []
@@ -878,6 +900,26 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 'location': layer.company_location
             }
             
+        # Helper function to extract value from JSON data using path
+        def get_value_from_data(data, path=None):
+            if not path:
+                # If no path specified, try to get the 'value' field at the root level
+                return data.get('value')
+                
+            # Navigate through the path to get the value
+            parts = path.split('.')
+            current = data
+            for part in parts:
+                if isinstance(current, dict) and part in current:
+                    current = current[part]
+                else:
+                    return None
+            
+            # If we reached a dict with a 'value' key, return that
+            if isinstance(current, dict) and 'value' in current:
+                return current['value']
+            return current  # Otherwise return the object at the path
+        
         # Build aggregation data structure
         for metric_id in metric_ids:
             metric_data = {
@@ -893,28 +935,27 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 )
                 
                 # Calculate aggregated value
-                if period:
-                    # For period-specific query, just get the first matching submission
+                if period_path:
+                    # For period-specific query, get the specified period data
                     submission = layer_submissions.first()
-                    value = submission.value if submission else None
+                    if submission and submission.data:
+                        value = get_value_from_data(submission.data, period_path)
+                    else:
+                        value = None
                     submission_id = submission.id if submission else None
                 else:
-                    # For metrics with time reporting without a specific period, sum all values
-                    metric = result['metrics'][metric_id]
-                    if metric['requires_time_reporting']:
-                        # Sum all numeric values, ignore None/null values
-                        values = [sub.value for sub in layer_submissions if sub.value is not None]
-                        value = sum(values) if values else None
-                        submission_id = None  # Multiple submissions
+                    # For metrics with time reporting without a specific period, get the whole data structure
+                    submission = layer_submissions.first()
+                    if submission:
+                        value = submission.data
                     else:
-                        # For non-time-based metrics, just get the first submission value
-                        submission = layer_submissions.first()
-                        value = submission.value if submission else None
-                        submission_id = submission.id if submission else None
+                        value = None
+                    submission_id = submission.id if submission else None
                 
                 metric_data['values_by_layer'][layer_id] = {
                     'value': value,
-                    'submission_id': submission_id
+                    'submission_id': submission_id,
+                    'data': submission.data if submission else None
                 }
                 
             result['aggregation'].append(metric_data)
