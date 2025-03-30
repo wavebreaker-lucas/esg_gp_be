@@ -4,7 +4,7 @@ from .views import (
     ESGFormViewSet, ESGFormCategoryViewSet, TemplateViewSet, 
     ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, ESGMetricViewSet, 
     UserTemplateAssignmentView, TemplateAssignmentView, BatchEvidenceView,
-    SchemaRegistryViewSet, BatchSubmissionViewSet
+    SchemaRegistryViewSet
 )
 
 # Create a router for ViewSets
@@ -18,7 +18,6 @@ router.register(r'metric-submissions', ESGMetricSubmissionViewSet, basename='met
 router.register(r'metric-evidence', ESGMetricEvidenceViewSet, basename='metric-evidence')
 router.register(r'esg-metrics', ESGMetricViewSet, basename='esg-metric')
 router.register(r'schemas', SchemaRegistryViewSet, basename='schema-registry')
-router.register(r'batch-submissions', BatchSubmissionViewSet, basename='batch-submission')
 
 # Export the router's URLs
 urlpatterns = router.urls

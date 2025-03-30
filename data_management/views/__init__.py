@@ -28,6 +28,5 @@ __all__ = [
     'TemplateAssignmentView',
     'UserTemplateAssignmentView',
     'BatchEvidenceView',
-    'SchemaRegistryViewSet',
-    'BatchSubmissionViewSet'
+    'SchemaRegistryViewSet'
 ] 
