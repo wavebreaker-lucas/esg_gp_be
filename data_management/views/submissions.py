@@ -110,21 +110,43 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         all_required_metrics_submitted = True
         for metric in metrics:
             if metric.is_required:
-                # For time-based metrics, check if we have enough entries
+                # For time-based metrics, check the structure of the JSON data
                 if metric.requires_time_reporting:
-                    # Count submissions for this metric
-                    submissions_count = submissions.filter(metric=metric).count()
+                    # Get submissions for this metric
+                    metric_submissions = submissions.filter(metric=metric)
                     
-                    # Calculate required count based on frequency
-                    required_count = get_required_submission_count(metric, assignment)
+                    if not metric_submissions.exists():
+                        all_required_metrics_submitted = False
+                        break
                     
-                    if submissions_count < required_count:
+                    # For simplicity, consider any submission with a 'periods' object containing data as complete
+                    # In a more complex implementation, you could check for specific required periods
+                    submission_is_complete = False
+                    for sub in metric_submissions:
+                        if sub.data and isinstance(sub.data, dict) and 'periods' in sub.data:
+                            periods = sub.data['periods']
+                            if isinstance(periods, dict) and len(periods) > 0:
+                                # Check that at least one period has a value
+                                for period_key, period_data in periods.items():
+                                    if isinstance(period_data, dict) and 'value' in period_data:
+                                        submission_is_complete = True
+                                        break
+                        
+                        if submission_is_complete:
+                            break
+                    
+                    if not submission_is_complete:
                         all_required_metrics_submitted = False
                         break
                 else:
-                    # For regular metrics, we need at least one submission
-                    has_submission = submissions.filter(metric=metric).exists()
-                    if not has_submission:
+                    # For regular metrics, we need at least one submission with a value
+                    has_valid_submission = False
+                    for sub in submissions.filter(metric=metric):
+                        if sub.data and isinstance(sub.data, dict) and 'value' in sub.data:
+                            has_valid_submission = True
+                            break
+                    
+                    if not has_valid_submission:
                         all_required_metrics_submitted = False
                         break
         
@@ -142,16 +164,40 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 for metric in form_metrics:
                     if metric.is_required:
                         if metric.requires_time_reporting:
-                            # For time-based metrics, check submission count
-                            submissions_count = submissions.filter(metric=metric).count()
-                            required_count = get_required_submission_count(metric, assignment)
+                            # For time-based metrics, check the structure of the JSON data
+                            metric_submissions = submissions.filter(metric=metric)
                             
-                            if submissions_count < required_count:
+                            if not metric_submissions.exists():
+                                form_metrics_submitted = False
+                                break
+                            
+                            # Look for a submission with a valid periods structure
+                            submission_is_complete = False
+                            for sub in metric_submissions:
+                                if sub.data and isinstance(sub.data, dict) and 'periods' in sub.data:
+                                    periods = sub.data['periods']
+                                    if isinstance(periods, dict) and len(periods) > 0:
+                                        # Check that at least one period has a value
+                                        for period_key, period_data in periods.items():
+                                            if isinstance(period_data, dict) and 'value' in period_data:
+                                                submission_is_complete = True
+                                                break
+                                
+                                if submission_is_complete:
+                                    break
+                            
+                            if not submission_is_complete:
                                 form_metrics_submitted = False
                                 break
                         else:
-                            # For regular metrics, check if any submission exists
-                            if not submissions.filter(metric=metric).exists():
+                            # For regular metrics, check if any submission has a valid value
+                            has_valid_submission = False
+                            for sub in submissions.filter(metric=metric):
+                                if sub.data and isinstance(sub.data, dict) and 'value' in sub.data:
+                                    has_valid_submission = True
+                                    break
+                            
+                            if not has_valid_submission:
                                 form_metrics_submitted = False
                                 break
                 
@@ -515,23 +561,52 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         for metric in metrics:
             if metric.is_required:
                 if metric.requires_time_reporting:
-                    # For time-based metrics, check submission count
-                    submissions_count = submissions.filter(metric=metric).count()
-                    required_count = get_required_submission_count(metric, assignment)
+                    # For time-based metrics, check the structure of the JSON data
+                    metric_submissions = submissions.filter(metric=metric)
                     
-                    if submissions_count < required_count:
+                    if not metric_submissions.exists():
                         incomplete_time_based.append({
                             'id': metric.id,
                             'name': metric.name,
                             'form': metric.form.name,
                             'reporting_frequency': metric.reporting_frequency,
-                            'submitted_count': submissions_count,
-                            'required_count': required_count
+                            'submitted_count': 0,
+                            'required_count': 1  # At least one submission with periods
+                        })
+                        continue
+                    
+                    # Look for a submission with a valid periods structure
+                    submission_is_complete = False
+                    for sub in metric_submissions:
+                        if sub.data and isinstance(sub.data, dict) and 'periods' in sub.data:
+                            periods = sub.data['periods']
+                            if isinstance(periods, dict) and len(periods) > 0:
+                                # Check that at least one period has a value
+                                for period_key, period_data in periods.items():
+                                    if isinstance(period_data, dict) and 'value' in period_data:
+                                        submission_is_complete = True
+                                        break
+                        
+                        if submission_is_complete:
+                            break
+                    
+                    if not submission_is_complete:
+                        incomplete_time_based.append({
+                            'id': metric.id,
+                            'name': metric.name,
+                            'form': metric.form.name,
+                            'reporting_frequency': metric.reporting_frequency,
+                            'issue': 'Missing or incomplete periods data in JSON'
                         })
                 else:
-                    # For regular metrics, we need at least one submission
-                    has_submission = submissions.filter(metric=metric).exists()
-                    if not has_submission:
+                    # For regular metrics, check if any submission has a valid value
+                    has_valid_submission = False
+                    for sub in submissions.filter(metric=metric):
+                        if sub.data and isinstance(sub.data, dict) and 'value' in sub.data:
+                            has_valid_submission = True
+                            break
+                    
+                    if not has_valid_submission:
                         missing_metrics.append({
                             'id': metric.id,
                             'name': metric.name,
@@ -565,16 +640,40 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             for metric in form_metrics:
                 if metric.is_required:
                     if metric.requires_time_reporting:
-                        # For time-based metrics, check submission count
-                        submissions_count = submissions.filter(metric=metric).count()
-                        required_count = get_required_submission_count(metric, assignment)
+                        # For time-based metrics, check the structure of the JSON data
+                        metric_submissions = submissions.filter(metric=metric)
                         
-                        if submissions_count < required_count:
+                        if not metric_submissions.exists():
+                            form_metrics_submitted = False
+                            break
+                        
+                        # Look for a submission with a valid periods structure
+                        submission_is_complete = False
+                        for sub in metric_submissions:
+                            if sub.data and isinstance(sub.data, dict) and 'periods' in sub.data:
+                                periods = sub.data['periods']
+                                if isinstance(periods, dict) and len(periods) > 0:
+                                    # Check that at least one period has a value
+                                    for period_key, period_data in periods.items():
+                                        if isinstance(period_data, dict) and 'value' in period_data:
+                                            submission_is_complete = True
+                                            break
+                            
+                            if submission_is_complete:
+                                break
+                        
+                        if not submission_is_complete:
                             form_metrics_submitted = False
                             break
                     else:
-                        # For regular metrics, check if any submission exists
-                        if not submissions.filter(metric=metric).exists():
+                        # For regular metrics, check if any submission has a valid value
+                        has_valid_submission = False
+                        for sub in submissions.filter(metric=metric):
+                            if sub.data and isinstance(sub.data, dict) and 'value' in sub.data:
+                                has_valid_submission = True
+                                break
+                        
+                        if not has_valid_submission:
                             form_metrics_submitted = False
                             break
             
