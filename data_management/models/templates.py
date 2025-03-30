@@ -54,6 +54,12 @@ class ESGMetric(models.Model):
     validation_rules = models.JSONField(default=dict, blank=True)
     location = models.CharField(max_length=3, choices=LOCATION_CHOICES, default='ALL')
     is_required = models.BooleanField(default=True, help_text="Whether this metric must be reported")
+    requires_time_reporting = models.BooleanField(default=False, help_text="Whether this metric requires time-based reporting (e.g., quarterly, monthly)")
+    reporting_frequency = models.CharField(max_length=20, choices=[
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('annual', 'Annual')
+    ], null=True, blank=True, help_text="Reporting frequency, only used for time-based metrics")
     
     # JSON schema fields
     data_schema = models.JSONField(default=dict, blank=True, help_text="JSON Schema for this metric's data")
