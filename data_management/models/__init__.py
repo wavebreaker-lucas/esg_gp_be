@@ -1,7 +1,8 @@
 from .templates import (
     Template, TemplateAssignment,
     ESGFormCategory, ESGForm, ESGMetric,
-    TemplateFormSelection, ESGMetricSubmission, ESGMetricEvidence
+    TemplateFormSelection, ESGMetricSubmission, ESGMetricEvidence,
+    MetricSchemaRegistry, ESGMetricBatchSubmission
 )
 from .esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
 
@@ -18,4 +19,6 @@ __all__ = [
     'EmissionFactor',
     'ESGData',
     'DataEditLog',
+    'MetricSchemaRegistry',
+    'ESGMetricBatchSubmission',
 ] 
