@@ -14,7 +14,8 @@ def attach_evidence_to_submissions(submissions, user):
     This is called during form completion and batch submission to link any pending evidence files.
     Note: This only attaches the evidence files, it does NOT apply OCR data automatically.
     
-    Uses layer and reference_path to improve the matching process:
+    Uses layer, reference_path, and submission_identifier to improve the matching process:
+    - For submissions with identifiers: Uses the identifier for precise matching
     - For time-based metrics: Uses reference_path to match with the correct period in the JSON data
     - For all metrics: Matches primarily on layer and metric
     
@@ -82,6 +83,23 @@ def attach_evidence_to_submissions(submissions, user):
         
         # Process each evidence file
         for evidence in evidence_files:
+            # First, sort submissions by those with identifiers (most specific) first
+            sorted_subs = sorted(subs, key=lambda s: s.submission_identifier != '', reverse=True)
+            
+            # Check if any evidence has a matching submission_identifier
+            if hasattr(evidence, 'submission_identifier') and evidence.submission_identifier:
+                identifier_matches = [s for s in sorted_subs if s.submission_identifier == evidence.submission_identifier]
+                if identifier_matches:
+                    # Perfect match on identifier - use this submission
+                    best_match = identifier_matches[0]
+                    logger.info(f"Found identifier match for evidence {evidence.id}")
+                    evidence.submission = best_match
+                    evidence.save()
+                    attached_count += 1
+                    logger.info(f"Attached evidence {evidence.id} to submission {best_match.id} (identifier match)")
+                    continue
+            
+            # If we reach here, there was no identifier match, try reference path next
             if is_time_based and evidence.reference_path:
                 # For time-based metrics, match using the reference path
                 # reference_path contains the path to the specific period in the JSON data
@@ -89,7 +107,7 @@ def attach_evidence_to_submissions(submissions, user):
                 
                 # Find matching submission by checking if reference_path exists in JSON data
                 best_match = None
-                for sub in subs:
+                for sub in sorted_subs:
                     # Skip submissions without data
                     if not sub.data:
                         continue
@@ -123,21 +141,29 @@ def attach_evidence_to_submissions(submissions, user):
                 if not best_match:
                     logger.info(f"No path match found for evidence {evidence.id}, skipping")
                     continue
-            else:
-                # For non-time-based metrics or evidence without reference path, match primarily on layer
-                best_match = None
                 
-                # First try to find a submission with matching layer
-                for sub in subs:
-                    if sub.layer and evidence.layer and sub.layer.id == evidence.layer.id:
-                        best_match = sub
-                        logger.info(f"Found layer match for evidence {evidence.id}")
-                        break
-                
-                # If no layer match, use first submission
-                if not best_match and subs:
-                    best_match = subs[0]
-                    logger.info(f"No layer match found, using first submission for evidence {evidence.id}")
+                # Attach evidence to the best matching submission
+                evidence.submission = best_match
+                evidence.save()
+                attached_count += 1
+                logger.info(f"Attached evidence {evidence.id} to submission {best_match.id} (path match)")
+                continue
+            
+            # If we reach here, there was no identifier or path match
+            # For non-time-based metrics or evidence without reference path, match primarily on layer
+            best_match = None
+            
+            # First try to find a submission with matching layer
+            for sub in sorted_subs:
+                if sub.layer and evidence.layer and sub.layer.id == evidence.layer.id:
+                    best_match = sub
+                    logger.info(f"Found layer match for evidence {evidence.id}")
+                    break
+            
+            # If no layer match, use first submission
+            if not best_match and sorted_subs:
+                best_match = sorted_subs[0]
+                logger.info(f"No layer match found, using first submission for evidence {evidence.id}")
             
             # Attach evidence to submission if match was found
             if best_match:

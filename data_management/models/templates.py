@@ -185,19 +185,41 @@ class ESGMetricSubmission(models.Model):
         related_name='submissions',
         help_text="The layer this submission's data represents"
     )
+    
+    # Fields for supporting multiple submissions for the same metric/layer
+    submission_identifier = models.CharField(
+        max_length=255, 
+        blank=True, 
+        default='',
+        help_text="Optional identifier to distinguish multiple submissions for the same metric/layer"
+    )
+    data_source = models.CharField(
+        max_length=255, 
+        blank=True, 
+        default='',
+        help_text="Source of the data (e.g., 'Invoice', 'Meter Reading', 'Estimate')"
+    )
 
     class Meta:
-        unique_together = ['assignment', 'metric', 'layer']
+        # Remove unique_together constraint to allow multiple submissions
+        # unique_together = ['assignment', 'metric', 'layer']
         indexes = [
             models.Index(fields=['assignment', 'metric']),
             models.Index(fields=['submitted_by']),
             models.Index(fields=['is_verified']),
-            # Add index for better JSON field querying 
-            models.Index(fields=['data'], name='data_gin_idx', opclasses=['jsonb_path_ops'])
+            # Add index for better JSON field querying - using GinIndex for PostgreSQL
+            models.Index(fields=['data'], name='data_gin_idx'),
+            # Add index for the new identifier field
+            models.Index(fields=['submission_identifier']),
+            # Add composite index for faster lookups 
+            models.Index(fields=['assignment', 'metric', 'layer', 'submission_identifier'])
         ]
 
     def __str__(self):
-        return f"{self.metric.name} - {self.assignment.layer.company_name}"
+        identifier = f" ({self.submission_identifier})" if self.submission_identifier else ""
+        if self.layer:
+            return f"{self.metric.name} - {self.layer.company_name}{identifier}"
+        return f"{self.metric.name} - {self.assignment.layer.company_name}{identifier}"
 
 class ESGMetricEvidence(models.Model):
     """Supporting documentation for ESG metric submissions"""
@@ -220,6 +242,14 @@ class ESGMetricEvidence(models.Model):
     # New field for JSON reference path
     reference_path = models.CharField(max_length=255, null=True, blank=True,
                                     help_text="JSON path this evidence relates to (e.g., 'periods.Jan-2024')")
+    
+    # Field to link to specific submissions
+    submission_identifier = models.CharField(
+        max_length=255, 
+        blank=True, 
+        default='',
+        help_text="Identifier to match with a specific submission"
+    )
     
     intended_metric = models.ForeignKey(ESGMetric, on_delete=models.SET_NULL, null=True, blank=True, 
                                         related_name='intended_evidence',

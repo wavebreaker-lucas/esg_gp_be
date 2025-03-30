@@ -306,8 +306,11 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             # Update period if available - use user-selected period first, then OCR period
             evidence_period = evidence.period or evidence.ocr_period
             if evidence_period:
-                submission.reporting_period = evidence_period
-                
+                # Instead of updating a nonexistent reporting_period field,
+                # we could set the reference_path or store this in the JSON data
+                # but for now, we'll just skip this since reporting_period is removed
+                pass
+            
             submission.save()
             
             return Response({
@@ -316,7 +319,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                 'value_updated': True,
                 'new_value': submission.value,
                 'period_updated': evidence_period is not None,
-                'new_period': submission.reporting_period,
+                'new_period': evidence_period.isoformat() if evidence_period else None,
                 'warning': warning
             })
         

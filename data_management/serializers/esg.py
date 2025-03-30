@@ -64,7 +64,8 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
             'enable_ocr_processing', 'is_processed_by_ocr', 'extracted_value', 
             'period', 'was_manually_edited', 'edited_at', 
             'edited_by', 'edited_by_name', 'submission', 'layer_id', 'layer_name',
-            'reference_path', 'extracted_data', 'ocr_data', 'intended_metric'
+            'reference_path', 'extracted_data', 'ocr_data', 'intended_metric',
+            'submission_identifier'
         ]
         read_only_fields = [
             'uploaded_by', 'uploaded_at', 'is_processed_by_ocr', 
@@ -114,7 +115,8 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             'submitted_by', 'submitted_by_name',
             'submitted_at', 'updated_at', 'notes', 'is_verified',
             'verified_by', 'verified_by_name', 'verified_at', 
-            'verification_notes', 'evidence', 'layer_id', 'layer_name'
+            'verification_notes', 'evidence', 'layer_id', 'layer_name',
+            'submission_identifier', 'data_source'
         ]
         read_only_fields = [
             'submitted_by', 'submitted_at', 'updated_at', 
@@ -221,23 +223,29 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             except JsonSchemaError as e:
                 raise serializers.ValidationError(f"JSON data validation error: {str(e)}")
         
-        # Check for duplicate submissions with the same layer
+        # Check for duplicate submissions with the same layer and identifier
         layer = data.get('layer')
+        submission_identifier = data.get('submission_identifier', '')
         
         # If this is an update, exclude the current instance
         instance = self.instance
         if instance:
-            try:
-                existing = ESGMetricSubmission.objects.exclude(pk=instance.pk).get(
-                    assignment=assignment,
-                    metric=metric,
-                    layer=layer
-                )
-                raise serializers.ValidationError(
-                    f"A submission for this metric with the same layer already exists"
-                )
-            except ESGMetricSubmission.DoesNotExist:
-                pass
+            # Only check for duplicates if the submission has an identifier
+            if submission_identifier:
+                try:
+                    existing = ESGMetricSubmission.objects.exclude(pk=instance.pk).filter(
+                        assignment=assignment,
+                        metric=metric,
+                        layer=layer,
+                        submission_identifier=submission_identifier
+                    ).exists()
+                    
+                    if existing:
+                        raise serializers.ValidationError(
+                            f"A submission for this metric with the same layer and identifier already exists"
+                        )
+                except:
+                    pass
         
         return data
 
@@ -285,62 +293,69 @@ class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
     layer_id = serializers.IntegerField(required=False, allow_null=True)
     auto_attach_evidence = serializers.BooleanField(required=False, default=False)
     update_timestamp = serializers.BooleanField(required=False, default=False)
+    force_new_submission = serializers.BooleanField(required=False, default=False)
+    submission_identifier = serializers.CharField(required=False, allow_blank=True)
     
     def validate(self, data):
-        """Validate that the assignment exists and user has access"""
-        from ..models.templates import TemplateAssignment, ESGMetricSubmission
+        """Validate the batch submission data"""
+        # Validate assignment existence
+        assignment_id = data.get('assignment_id')
+        if assignment_id:
+            from ..models import TemplateAssignment
+            try:
+                TemplateAssignment.objects.get(id=assignment_id)
+            except TemplateAssignment.DoesNotExist:
+                raise serializers.ValidationError(f"Assignment with ID {assignment_id} does not exist")
         
-        try:
-            assignment = TemplateAssignment.objects.get(id=data['assignment_id'])
-            self.context['assignment'] = assignment
-        except TemplateAssignment.DoesNotExist:
-            raise serializers.ValidationError("Template assignment not found")
-        
-        # Validate each submission has required fields
-        for submission in data['submissions']:
+        # Validate each submission in the batch
+        submissions = data.get('submissions', [])
+        for i, submission in enumerate(submissions):
+            # Check for required fields
             if 'metric_id' not in submission:
-                raise serializers.ValidationError("Each submission must include a metric_id")
+                raise serializers.ValidationError(f"Submission at index {i} is missing 'metric_id'")
             
             if 'data' not in submission:
-                raise serializers.ValidationError("Each submission must include JSON data")
-            
-            # Validate metric exists
-            try:
-                metric = ESGMetric.objects.get(id=submission['metric_id'])
-            except ESGMetric.DoesNotExist:
-                raise serializers.ValidationError(f"Metric with ID {submission['metric_id']} not found")
-            
-            # Validate data field
-            if not isinstance(submission['data'], dict):
-                raise serializers.ValidationError(f"Data for metric {metric.name} must be a JSON object")
-            
-            # Check against schema if available
-            schema = None
-            if hasattr(metric, 'schema_registry') and metric.schema_registry and hasattr(metric.schema_registry, 'schema'):
-                schema = metric.schema_registry.schema
-            elif hasattr(metric, 'data_schema') and metric.data_schema:
-                schema = metric.data_schema
+                raise serializers.ValidationError(f"Submission at index {i} is missing 'data'")
                 
-            if schema:
+            # For update operations, validate the update_id exists
+            if 'update_id' in submission:
+                from ..models.templates import ESGMetricSubmission
                 try:
-                    from jsonschema import validate, ValidationError as JsonSchemaError
-                    validate(instance=submission['data'], schema=schema)
-                except ImportError:
-                    # Basic validation if jsonschema not available
-                    pass
-                except JsonSchemaError as e:
-                    raise serializers.ValidationError(f"JSON schema validation failed for {metric.name}: {str(e)}")
+                    ESGMetricSubmission.objects.get(id=submission['update_id'])
+                except ESGMetricSubmission.DoesNotExist:
+                    raise serializers.ValidationError(
+                        f"Submission at index {i} references non-existent update_id: {submission['update_id']}"
+                    )
+            
+            # Validate metric existence
+            metric_id = submission.get('metric_id')
+            from ..models import ESGMetric
+            try:
+                ESGMetric.objects.get(id=metric_id)
+            except ESGMetric.DoesNotExist:
+                raise serializers.ValidationError(f"Metric with ID {metric_id} does not exist")
             
             # Check for duplicate submissions with the same layer
             layer_id = submission.get('layer_id', data.get('layer_id'))
-            if layer_id:
+            submission_identifier = submission.get('submission_identifier', data.get('submission_identifier', ''))
+            force_new = submission.get('force_new_submission', data.get('force_new_submission', False))
+            
+            # Only check for duplicates if:
+            # 1. It's not an update operation (no update_id)
+            # 2. We're not forcing a new submission
+            # 3. We have an identifier
+            if 'update_id' not in submission and not force_new and submission_identifier and layer_id:
+                from ..models.templates import ESGMetricSubmission
                 try:
                     existing = ESGMetricSubmission.objects.get(
                         assignment_id=data['assignment_id'],
                         metric_id=submission['metric_id'],
-                        layer_id=layer_id
+                        layer_id=layer_id,
+                        submission_identifier=submission_identifier
                     )
-                    # Allow updating existing submissions
+                    
+                    # If we found a submission with this identifier, add the update_id
+                    # to automatically update it instead of creating a duplicate
                     submission['update_id'] = existing.id
                 except ESGMetricSubmission.DoesNotExist:
                     pass

@@ -29,7 +29,6 @@ from ..serializers.esg import (
 )
 from .utils import get_required_submission_count, attach_evidence_to_submissions
 from ..services.calculations import validate_and_update_totals
-from ..models.notifications import Notification
 from django.contrib.contenttypes.models import ContentType
 
 
@@ -86,6 +85,12 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 except Exception as e:
                     # Log the error but continue with original data
                     logger.warning(f"Calculation error during submission creation: {e}")
+        
+        # Set default values for new fields if not provided
+        if 'submission_identifier' not in serializer.validated_data:
+            serializer.validated_data['submission_identifier'] = ''
+        if 'data_source' not in serializer.validated_data:
+            serializer.validated_data['data_source'] = ''
         
         submission = serializer.save(submitted_by=self.request.user)
         
@@ -266,6 +271,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         - auto_attach_evidence: (Optional) Boolean to automatically attach standalone evidence
         - default_layer_id: (Optional) Default layer ID for all submissions
         - update_timestamp: (Optional) Boolean to update the submitted_at timestamp
+        - force_new_submission: (Optional) Boolean to force creating a new submission even if one exists
         """
         serializer = ESGMetricBatchSubmissionSerializer(data=request.data)
         
@@ -280,6 +286,8 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         notes = validated_data.get('notes', '')
         layer_id = validated_data.get('layer_id')
         update_timestamp = validated_data.get('update_timestamp', False)
+        force_new_submission = validated_data.get('force_new_submission', False)
+        submission_identifier = validated_data.get('submission_identifier', '')
         
         # Get assignment and validate
         try:
@@ -328,6 +336,9 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             metric_id = sub_data.get('metric_id')
             data = sub_data.get('data')
             notes = sub_data.get('notes', '')
+            sub_identifier = sub_data.get('submission_identifier', submission_identifier)
+            sub_force_new = sub_data.get('force_new_submission', force_new_submission)
+            data_source = sub_data.get('data_source', '')
             
             # Validate metric exists
             try:
@@ -375,7 +386,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     })
                     continue
             
-            # Handle updates if an existing submission was found
+            # Handle updates if an explicit update_id was provided
             if 'update_id' in sub_data:
                 try:
                     submission = ESGMetricSubmission.objects.get(id=sub_data['update_id'])
@@ -384,6 +395,12 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     submission.data = data
                     submission.notes = notes
                     submission.batch_submission = batch
+                    
+                    # Update metadata fields if provided
+                    if sub_identifier:
+                        submission.submission_identifier = sub_identifier
+                    if data_source:
+                        submission.data_source = data_source
                     
                     # Update timestamp if requested
                     if update_timestamp:
@@ -405,32 +422,14 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                         notes=notes,
                         submitted_by=request.user,
                         layer=layer,
-                        batch_submission=batch
+                        batch_submission=batch,
+                        submission_identifier=sub_identifier,
+                        data_source=data_source
                     )
                     created_submissions.append(submission)
             else:
-                # Check if submission already exists for this metric/layer
-                try:
-                    existing = ESGMetricSubmission.objects.get(
-                        assignment=assignment,
-                        metric=metric,
-                        layer=layer
-                    )
-                    
-                    # Update existing submission
-                    existing.data = data
-                    existing.notes = notes
-                    existing.batch_submission = batch
-                    
-                    # Update timestamp if requested
-                    if update_timestamp:
-                        existing.submitted_at = timezone.now()
-                        
-                    existing.save()
-                    updated_submissions.append(existing)
-                    
-                except ESGMetricSubmission.DoesNotExist:
-                    # Create new submission
+                # If force_new_submission is True, always create a new submission
+                if sub_force_new:
                     submission = ESGMetricSubmission.objects.create(
                         assignment=assignment,
                         metric=metric,
@@ -438,9 +437,70 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                         notes=notes,
                         submitted_by=request.user,
                         layer=layer,
-                        batch_submission=batch
+                        batch_submission=batch,
+                        submission_identifier=sub_identifier,
+                        data_source=data_source
                     )
                     created_submissions.append(submission)
+                else:
+                    # Try to find an exact match by identifier if one is provided
+                    existing_submission = None
+                    if sub_identifier:
+                        try:
+                            existing_submission = ESGMetricSubmission.objects.get(
+                                assignment=assignment,
+                                metric=metric,
+                                layer=layer,
+                                submission_identifier=sub_identifier
+                            )
+                        except ESGMetricSubmission.DoesNotExist:
+                            pass
+                    
+                    # If no identifier match but we're not forcing a new submission,
+                    # look for any submission with the same metric/layer and no identifier
+                    if not existing_submission and not sub_identifier and not sub_force_new:
+                        try:
+                            existing_submission = ESGMetricSubmission.objects.filter(
+                                assignment=assignment,
+                                metric=metric,
+                                layer=layer,
+                                submission_identifier=''
+                            ).first()
+                        except ESGMetricSubmission.DoesNotExist:
+                            pass
+                    
+                    # Update existing submission if found
+                    if existing_submission:
+                        existing_submission.data = data
+                        existing_submission.notes = notes
+                        existing_submission.batch_submission = batch
+                        
+                        # Update metadata fields if provided
+                        if sub_identifier:
+                            existing_submission.submission_identifier = sub_identifier
+                        if data_source:
+                            existing_submission.data_source = data_source
+                        
+                        # Update timestamp if requested
+                        if update_timestamp:
+                            existing_submission.submitted_at = timezone.now()
+                        
+                        existing_submission.save()
+                        updated_submissions.append(existing_submission)
+                    else:
+                        # Create new submission if no existing found or if using identifier
+                        submission = ESGMetricSubmission.objects.create(
+                            assignment=assignment,
+                            metric=metric,
+                            data=data,
+                            notes=notes,
+                            submitted_by=request.user,
+                            layer=layer,
+                            batch_submission=batch,
+                            submission_identifier=sub_identifier,
+                            data_source=data_source
+                        )
+                        created_submissions.append(submission)
         
         # Update assignment status
         if assignment.status in ['PENDING', 'IN_PROGRESS']:
