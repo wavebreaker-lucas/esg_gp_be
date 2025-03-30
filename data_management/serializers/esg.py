@@ -126,9 +126,54 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         return obj.metric.name
     
     def get_metric_unit(self, obj):
-        if obj.metric.unit_type == 'custom':
-            return obj.metric.custom_unit
-        return obj.metric.unit_type
+        """Get the unit for this metric from the JSON data structure
+        
+        If the metric has a primary_path, attempt to use that to find the unit.
+        Otherwise, look for a unit in the "_metadata.primary_measurement" field.
+        If none of these paths yield a unit, return None.
+        """
+        # If the metric submission has data
+        if obj.data and isinstance(obj.data, dict):
+            # First check if there's a primary path specified
+            if obj.metric.primary_path:
+                # Split the path into components
+                path_parts = obj.metric.primary_path.split('.')
+                # Try to navigate to the unit along the same path
+                current = obj.data
+                for i, part in enumerate(path_parts):
+                    if part in current:
+                        current = current[part]
+                        # If we're at the leaf node value object, look for unit
+                        if i == len(path_parts) - 1 and isinstance(current, dict) and 'unit' in current:
+                            return current['unit']
+                        # If the last part was 'value', try to get the unit from the parent
+                        elif part == 'value' and i == len(path_parts) - 1:
+                            # Go back one level to the parent object
+                            parent_path = '.'.join(path_parts[:-1])
+                            parent = obj.data
+                            for pp in parent_path.split('.'):
+                                if pp in parent:
+                                    parent = parent[pp]
+                                else:
+                                    parent = None
+                                    break
+                            if parent and isinstance(parent, dict) and 'unit' in parent:
+                                return parent['unit']
+                    else:
+                        break
+            
+            # Next check for _metadata.primary_measurement
+            if '_metadata' in obj.data and 'primary_measurement' in obj.data['_metadata']:
+                primary = obj.data['_metadata']['primary_measurement']
+                if 'unit' in primary:
+                    return primary['unit']
+            
+            # As a fallback, look for a root level unit
+            if 'unit' in obj.data:
+                return obj.data['unit']
+                
+        # Return None if no unit found
+        return None
     
     def get_submitted_by_name(self, obj):
         if obj.submitted_by:

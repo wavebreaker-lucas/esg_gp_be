@@ -27,10 +27,10 @@ class ESGMetricSerializer(serializers.ModelSerializer):
     class Meta:
         model = ESGMetric
         fields = [
-            'id', 'name', 'description', 'unit_type', 'custom_unit', 
+            'id', 'name', 'description', 
             'requires_evidence', 'order', 'validation_rules', 'location', 'is_required',
             'requires_time_reporting', 'reporting_frequency', 'form_id',
-            # New fields
+            # JSON schema fields
             'data_schema', 'schema_registry', 'schema_registry_id', 'schema_registry_details',
             'form_component', 'primary_path', 'ocr_analyzer_id'
         ]

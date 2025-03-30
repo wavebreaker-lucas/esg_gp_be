@@ -2060,6 +2060,140 @@ Example schema for emissions data:
 }
 ```
 
+## Units in JSON and Primary Measurements
+
+The ESG Platform now uses a units-in-JSON approach where each value in the JSON data has its own unit specification, rather than using the separate `unit_type`/`custom_unit` fields on the ESGMetric model.
+
+### Units Embedded in JSON
+
+Every measurement in the JSON data should include its own unit:
+
+```json
+{
+  "value": 1500,
+  "unit": "kWh",
+  "comments": "Monthly electricity consumption"
+}
+```
+
+This approach allows for:
+1. Self-contained data that carries its own unit information
+2. Multiple values with different units in the same submission
+3. Clearer data contracts between frontend and backend
+4. Better support for exports/imports between systems
+
+### Complex Metrics with Multiple Values
+
+For metrics that track multiple related values, each can have its own unit:
+
+```json
+{
+  "electricity": {
+    "value": 1500,
+    "unit": "kWh"
+  },
+  "gas": {
+    "value": 350,
+    "unit": "m³"
+  },
+  "water": {
+    "value": 42000,
+    "unit": "liters"
+  },
+  "comments": "Monthly utility consumption"
+}
+```
+
+### Specifying Primary Measurements
+
+For complex metrics with multiple values, the `_metadata.primary_measurement` field indicates which value is considered the "primary" one:
+
+```json
+{
+  "electricity": {
+    "value": 1500,
+    "unit": "kWh"
+  },
+  "gas": {
+    "value": 350,
+    "unit": "m³"
+  },
+  "_metadata": {
+    "primary_measurement": "electricity.value"
+  }
+}
+```
+
+The `primary_measurement` field contains a JSON path to the primary value, which is used for:
+1. UI highlighting (which value to emphasize in the interface)
+2. Default aggregation (which value to use in calculations)
+3. Legacy system compatibility (where a single value is expected)
+4. Reporting purposes (which value to include in summaries)
+
+### Tabular Data Example
+
+For complex tabular data like supplier assessments or legal case registers:
+
+```json
+{
+  "suppliers": [
+    {
+      "name": "Supplier A",
+      "assessment": {
+        "compliance_status": "Compliant",
+        "score": {
+          "value": 85,
+          "unit": "points"
+        },
+        "date": "2023-05-12"
+      }
+    },
+    {
+      "name": "Supplier B",
+      "assessment": {
+        "compliance_status": "Partially Compliant",
+        "score": {
+          "value": 65,
+          "unit": "points"
+        },
+        "date": "2023-06-15"
+      }
+    }
+  ],
+  "_metadata": {
+    "primary_measurement": "suppliers.length"
+  }
+}
+```
+
+In this example, the primary measurement is set to the number of suppliers (count), but each supplier has its own assessment score with units.
+
+### Time-Based Metrics with Embedded Units
+
+For time-based metrics, each period includes its own value and unit:
+
+```json
+{
+  "periods": {
+    "Q1-2024": {
+      "value": 120.5,
+      "unit": "kWh",
+      "comments": "January-March consumption"
+    },
+    "Q2-2024": {
+      "value": 135.2,
+      "unit": "kWh",
+      "comments": "April-June consumption"
+    }
+  },
+  "annual_total": 255.7,
+  "annual_unit": "kWh",
+  "_metadata": {
+    "primary_measurement": "annual_total"
+  }
+}
+```
+
 ## Example Submission Data
 
 ### Example 1: Emissions Data

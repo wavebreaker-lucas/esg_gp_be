@@ -40,23 +40,6 @@ class ESGForm(models.Model):
 
 class ESGMetric(models.Model):
     """Individual metrics within ESG forms"""
-    UNIT_TYPES = [
-        # Environmental
-        ('kWh', 'Kilowatt Hours'),
-        ('MWh', 'Megawatt Hours'),
-        ('m3', 'Cubic Meters'),
-        ('tonnes', 'Tonnes'),
-        ('tCO2e', 'Tonnes CO2 Equivalent'),
-        # Social
-        ('person', 'Person'),
-        ('hours', 'Hours'),
-        ('days', 'Days'),
-        ('count', 'Count'),
-        ('percentage', 'Percentage'),
-        # Custom
-        ('custom', 'Custom Unit'),
-    ]
-
     LOCATION_CHOICES = [
         ('HK', 'Hong Kong'),
         ('PRC', 'Mainland China'),
@@ -66,18 +49,6 @@ class ESGMetric(models.Model):
     form = models.ForeignKey(ESGForm, on_delete=models.CASCADE, related_name='metrics')
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    # Legacy unit fields - being phased out in favor of unit information embedded in the JSON schema
-    unit_type = models.CharField(
-        max_length=20, 
-        choices=UNIT_TYPES,
-        help_text="Legacy field for default unit type. For metrics with multiple values, use JSON schema with embedded units."
-    )
-    custom_unit = models.CharField(
-        max_length=50, 
-        blank=True, 
-        null=True,
-        help_text="Legacy field for custom unit. For metrics with multiple values, use JSON schema with embedded units."
-    )
     requires_evidence = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
     validation_rules = models.JSONField(default=dict, blank=True)
@@ -93,7 +64,7 @@ class ESGMetric(models.Model):
         max_length=255, 
         null=True, 
         blank=True,
-        help_text="Path to the primary value in the JSON data (e.g., 'electricity.value')"
+        help_text="Path to the primary value in the JSON data (e.g., 'electricity.value' or '_metadata.primary_measurement')"
     )
     
     ocr_analyzer_id = models.CharField(

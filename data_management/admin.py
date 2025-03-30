@@ -80,19 +80,19 @@ class ESGFormAdmin(admin.ModelAdmin):
 
 @admin.register(ESGMetric)
 class ESGMetricAdmin(admin.ModelAdmin):
-    list_display = ('name', 'form', 'unit_type', 'requires_evidence', 'is_required')
-    list_filter = ('form__category', 'form', 'unit_type', 'requires_evidence', 'is_required')
+    list_display = ('name', 'form', 'requires_evidence', 'is_required')
+    list_filter = ('form__category', 'form', 'requires_evidence', 'is_required')
     search_fields = ('name', 'description', 'form__name')
     filter_horizontal = ()
     fieldsets = (
         (None, {
-            'fields': ('form', 'name', 'description', 'unit_type', 'custom_unit', 'location', 
+            'fields': ('form', 'name', 'description', 'location', 
                        'order', 'requires_evidence', 'is_required')
         }),
         ('JSON Schema Configuration', {
             'fields': ('schema_registry', 'data_schema', 'form_component', 'primary_path', 'ocr_analyzer_id'),
             'classes': ('collapse',),
-            'description': 'Configure the JSON schema for this metric.'
+            'description': 'Configure the JSON schema for this metric, including the primary_path which should point to the main value.'
         }),
     )
     formfield_overrides = {
