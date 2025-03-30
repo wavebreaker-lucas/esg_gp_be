@@ -1658,17 +1658,10 @@ Stores user-submitted values for ESG metrics within a template assignment.
 Properties:
 - `assignment`: Link to TemplateAssignment
 - `metric`: Link to ESGMetric
-- `value`: Numeric value (for quantitative metrics)
-- `text_value`: Text value (for qualitative metrics)
-- `reporting_period`: Date field for time-based metrics (e.g., monthly data)
-- `submitted_by`: User who submitted the value
-- `submitted_at`: Submission timestamp
-- `updated_at`: Last update timestamp
-- `notes`: Additional notes about the submission
-- `is_verified`: Whether the submission has been verified
-- `verified_by`: Baker Tilly admin who verified the submission
-- `verified_at`: Verification timestamp
-- `verification_notes`: Notes from the verification process
+- `data`: JSON field containing all metric data in a structured format
+- `layer`: The organizational layer this submission applies to
+- `batch_submission`: Optional reference to a batch submission
+- Metadata fields: `submitted_by`, `submitted_at`, `is_verified`, etc.
 
 **Important Note**: The combination of `assignment`, `metric`, and `reporting_period` must be unique. This allows multiple submissions for the same metric with different reporting periods (e.g., monthly data).
 
@@ -1997,3 +1990,175 @@ When a form is marked as incomplete:
 ### Permissions
 
 Only Baker Tilly administrators can use this endpoint.
+
+# ESG Platform Data Model
+
+This document outlines the data model for the ESG Platform, focusing on the JSON-based approach for metric submissions.
+
+## Core Models
+
+### ESGMetricSubmission
+
+The `ESGMetricSubmission` model is the central model for storing all metric data. It uses a JSON-based approach where all metric data is stored in a structured JSON object.
+
+Key fields:
+- `assignment`: Reference to the template assignment
+- `metric`: Reference to the ESG metric being reported
+- `data`: JSON field containing all metric data in a structured format
+- `layer`: The organizational layer this submission applies to
+- `batch_submission`: Optional reference to a batch submission
+- Metadata fields: `submitted_by`, `submitted_at`, `is_verified`, etc.
+
+### MetricSchemaRegistry
+
+The `MetricSchemaRegistry` model defines standard JSON schemas for different types of metrics.
+
+Key fields:
+- `name`: Name of the schema (e.g. "Emissions", "Resource Consumption")
+- `description`: Description of what the schema is used for
+- `schema`: JSON Schema definition that defines the structure and validation rules
+- `version`: Schema version for tracking changes
+- Metadata fields: `created_by`, `created_at`, `is_active`, etc.
+
+### ESGMetricBatchSubmission
+
+The `ESGMetricBatchSubmission` model represents a group of related metric submissions submitted together.
+
+Key fields:
+- `assignment`: Reference to the template assignment
+- `name`: Optional name for the batch
+- `layer`: The organizational layer this batch applies to
+- `submissions`: Related submissions (reverse relation)
+- Metadata fields: `submitted_by`, `submitted_at`, `is_verified`, etc.
+
+## JSON Schema Structure
+
+Each metric can have its own JSON schema defined either directly on the metric or via reference to the schema registry. 
+
+Example schema for emissions data:
+```json
+{
+  "type": "object",
+  "properties": {
+    "value": {"type": "number"},
+    "unit": {"type": "string", "enum": ["tCO2e", "kgCO2e"]},
+    "scope": {"type": "string", "enum": ["Scope 1", "Scope 2", "Scope 3"]},
+    "source": {"type": "string"},
+    "calculation_method": {"type": "string", "enum": ["location-based", "market-based"]},
+    "periods": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "value": {"type": "number"},
+          "notes": {"type": "string"}
+        }
+      }
+    }
+  },
+  "required": ["value", "unit", "scope"]
+}
+```
+
+## Example Submission Data
+
+### Example 1: Emissions Data
+
+```json
+{
+  "value": 500,
+  "unit": "tCO2e",
+  "scope": "Scope 2",
+  "source": "Electricity",
+  "calculation_method": "location-based",
+  "periods": {
+    "Jan-2024": {"value": 42, "notes": "Lower due to office closure"},
+    "Feb-2024": {"value": 45, "notes": "Normal operations"},
+    "Mar-2024": {"value": 38, "notes": "Energy efficiency improvements"}
+  }
+}
+```
+
+### Example 2: Employee Training Data
+
+```json
+{
+  "total_employees": 250,
+  "employees_trained": 220,
+  "total_hours": 1320,
+  "average_hours_per_employee": 5.28,
+  "training_categories": [
+    {
+      "category": "Health & Safety",
+      "participants": 250,
+      "hours": 500
+    },
+    {
+      "category": "Environmental Awareness",
+      "participants": 150,
+      "hours": 300
+    },
+    {
+      "category": "Anti-corruption",
+      "participants": 220,
+      "hours": 520
+    }
+  ]
+}
+```
+
+## API Endpoints
+
+### Individual Submissions
+
+```
+POST /api/metric-submissions/
+GET /api/metric-submissions/{id}/
+PUT /api/metric-submissions/{id}/
+DELETE /api/metric-submissions/{id}/
+GET /api/metric-submissions/by_assignment/?assignment_id={id}
+```
+
+### Batch Submissions
+
+```
+POST /api/batch-submissions/submit_batch/
+GET /api/batch-submissions/{id}/
+GET /api/batch-submissions/{id}/submissions/
+```
+
+### Schema Registry
+
+```
+GET /api/schemas/
+POST /api/schemas/
+GET /api/schemas/{id}/
+PUT /api/schemas/{id}/
+GET /api/schemas/schema_types/
+GET /api/schemas/{id}/metrics/
+```
+
+## Evidence Linking
+
+Evidence files can be linked to specific parts of a JSON structure using the `reference_path` field.
+
+For example, to link evidence to a specific period in an emissions submission:
+```
+reference_path = "periods.Jan-2024"
+```
+
+This allows for precise evidence linking to any level of the JSON structure.
+
+## Data Validation
+
+All submissions are validated against their schema at submission time. This ensures data integrity and consistency.
+
+## Performance Considerations
+
+- PostgreSQL GIN indexes are used for efficient querying of JSON data
+- For complex queries, consider using the PostgreSQL JSON path operators
+- For high-volume metrics, consider adding specific database indexes on commonly queried JSON paths
+
+## Migration from Legacy System
+
+The platform has migrated from a legacy approach with separate `value` and `text_value` fields to a unified JSON approach. All legacy fields have been removed to enforce a clean data model.

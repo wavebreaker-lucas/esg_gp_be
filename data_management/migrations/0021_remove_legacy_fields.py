@@ -1,10 +1,11 @@
 from django.db import migrations, models
+from django.contrib.postgres.indexes import GinIndex
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('data_management', '0022_update_uniqueness_constraints'),
+        ('data_management', '0020_esgmetricbatchsubmission_metricschemaregistry_and_more'),
     ]
 
     operations = [
@@ -39,9 +40,9 @@ class Migration(migrations.Migration):
             field=models.JSONField(help_text='All metric data in structured JSON format'),
         ),
         
-        # Add PostgreSQL jsonb index
+        # Add PostgreSQL GIN index for JSON field
         migrations.AddIndex(
             model_name='esgmetricsubmission',
-            index=models.Index(fields=['data'], name='data_gin_idx', opclasses=['jsonb_path_ops']),
+            index=GinIndex(fields=['data'], name='data_gin_idx'),
         ),
     ] 

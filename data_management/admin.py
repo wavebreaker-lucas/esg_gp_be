@@ -1,10 +1,36 @@
 from django.contrib import admin
+from django.db import models
+from django.forms import widgets
+from django.urls import reverse
+from django.utils.html import format_html
+from django import forms
 from .models.esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
 from .models.templates import (
     ESGFormCategory, ESGForm, ESGMetric,
     Template, TemplateFormSelection, TemplateAssignment,
     ESGMetricSubmission, ESGMetricEvidence
 )
+from .models import (
+    MetricSchemaRegistry, ESGMetricBatchSubmission
+)
+
+class JSONEditorWidget(widgets.Textarea):
+    """Custom widget for JSON fields that provides a better UI for editing JSON"""
+    def __init__(self, attrs=None):
+        default_attrs = {
+            'class': 'jsoneditor-textarea',
+            'rows': 20,
+            'style': 'width: 100%; font-family: monospace; white-space: pre; overflow: auto;'
+        }
+        if attrs:
+            default_attrs.update(attrs)
+        super().__init__(default_attrs)
+    
+    class Media:
+        css = {
+            'all': ('admin/css/jsoneditor.css',)
+        }
+        js = ('admin/js/jsoneditor.min.js', 'admin/js/json-field-init.js')
 
 class BoundaryItemAdmin(admin.ModelAdmin):
     list_display = ('name', 'is_default')
@@ -54,10 +80,30 @@ class ESGFormAdmin(admin.ModelAdmin):
 
 @admin.register(ESGMetric)
 class ESGMetricAdmin(admin.ModelAdmin):
-    list_display = ['name', 'form', 'unit_type', 'location', 'is_required', 'order']
-    list_filter = ['form', 'unit_type', 'location', 'is_required']
-    search_fields = ['name', 'description']
-    ordering = ['form', 'order']
+    list_display = ('name', 'form', 'unit_type', 'requires_evidence', 'is_required')
+    list_filter = ('form__category', 'form', 'unit_type', 'requires_evidence', 'is_required')
+    search_fields = ('name', 'description', 'form__name')
+    filter_horizontal = ()
+    fieldsets = (
+        (None, {
+            'fields': ('form', 'name', 'description', 'unit_type', 'custom_unit', 'location', 
+                       'order', 'requires_evidence', 'is_required')
+        }),
+        ('JSON Schema Configuration', {
+            'fields': ('schema_registry', 'data_schema', 'form_component', 'ocr_analyzer_id'),
+            'classes': ('collapse',),
+            'description': 'Configure the JSON schema for this metric.'
+        }),
+    )
+    formfield_overrides = {
+        models.JSONField: {'widget': JSONEditorWidget},
+    }
+    
+    def get_readonly_fields(self, request, obj=None):
+        # Make form field read-only in edit mode to prevent accidental changes
+        if obj:  # editing an existing object
+            return ('form',) + self.readonly_fields
+        return self.readonly_fields
 
 @admin.register(Template)
 class TemplateAdmin(admin.ModelAdmin):
@@ -81,29 +127,69 @@ class TemplateAssignmentAdmin(admin.ModelAdmin):
 
 @admin.register(ESGMetricSubmission)
 class ESGMetricSubmissionAdmin(admin.ModelAdmin):
-    list_display = ['metric', 'assignment', 'value', 'text_value', 'reporting_period', 'submitted_by', 'is_verified']
-    list_filter = ['is_verified', 'metric__form', 'reporting_period']
-    search_fields = ['metric__name', 'assignment__template__name', 'assignment__layer__company_name']
+    list_display = ('metric', 'assignment', 'layer', 'submitted_by', 'submitted_at', 'is_verified')
+    list_filter = ('is_verified', 'metric__form', 'assignment__template')
+    search_fields = ('metric__name', 'notes', 'layer__company_name')
     date_hierarchy = 'submitted_at'
-    raw_id_fields = ['metric', 'assignment', 'submitted_by', 'verified_by']
+    formfield_overrides = {
+        models.JSONField: {'widget': JSONEditorWidget},
+    }
+    readonly_fields = ('submitted_by', 'submitted_at', 'verified_by', 'verified_at', 'batch_submission')
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.select_related('metric', 'assignment', 'layer', 'submitted_by')
 
 @admin.register(ESGMetricEvidence)
 class ESGMetricEvidenceAdmin(admin.ModelAdmin):
-    list_display = ['get_submission_display', 'filename', 'file_type', 'uploaded_by', 'uploaded_at', 'is_standalone']
-    list_filter = ['file_type', 'is_processed_by_ocr']
-    search_fields = ['filename', 'description']
-    date_hierarchy = 'uploaded_at'
-    raw_id_fields = ['submission', 'uploaded_by']
+    list_display = ('filename', 'submission', 'uploaded_by', 'uploaded_at', 'is_processed_by_ocr')
+    list_filter = ('is_processed_by_ocr', 'uploaded_at')
+    search_fields = ('filename', 'description')
+    readonly_fields = ('uploaded_by', 'uploaded_at', 'file_type', 'is_processed_by_ocr')
+    formfield_overrides = {
+        models.JSONField: {'widget': JSONEditorWidget},
+    }
+
+@admin.register(MetricSchemaRegistry)
+class MetricSchemaRegistryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'version', 'created_by', 'created_at', 'is_active', 'metrics_count')
+    list_filter = ('is_active', 'created_at')
+    search_fields = ('name', 'description')
+    readonly_fields = ('created_by', 'created_at', 'updated_at')
+    formfield_overrides = {
+        models.JSONField: {'widget': JSONEditorWidget},
+    }
     
-    def get_submission_display(self, obj):
-        """Safely display submission information"""
-        if obj.submission:
-            return f"{obj.submission.metric.name} ({obj.submission.id})"
-        return "Standalone"
-    get_submission_display.short_description = 'Submission'
+    def save_model(self, request, obj, form, change):
+        if not change:  # Only set created_by when creating a new object
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
     
-    def is_standalone(self, obj):
-        """Display if evidence is standalone (not attached to a submission)"""
-        return obj.submission is None
-    is_standalone.boolean = True
-    is_standalone.short_description = "Standalone"
+    def metrics_count(self, obj):
+        count = obj.metrics.count()
+        if count > 0:
+            return format_html(
+                '<a href="{}?schema_registry__id__exact={}">{} metrics</a>',
+                reverse('admin:data_management_esgmetric_changelist'),
+                obj.pk,
+                count
+            )
+        return '0 metrics'
+    metrics_count.short_description = 'Metrics using this schema'
+
+@admin.register(ESGMetricBatchSubmission)
+class BatchSubmissionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'assignment', 'layer', 'submitted_by', 'submitted_at', 'is_verified', 'submission_count')
+    list_filter = ('is_verified', 'submitted_at')
+    search_fields = ('name', 'notes', 'layer__company_name')
+    readonly_fields = ('submitted_by', 'submitted_at', 'verified_by', 'verified_at')
+    
+    def submission_count(self, obj):
+        count = obj.submissions.count()
+        return format_html(
+            '<a href="{}?batch_submission__id__exact={}">{} submissions</a>',
+            reverse('admin:data_management_esgmetricsubmission_changelist'),
+            obj.pk,
+            count
+        )
+    submission_count.short_description = 'Submissions'
