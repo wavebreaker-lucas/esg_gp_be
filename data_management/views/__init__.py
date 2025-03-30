@@ -15,6 +15,8 @@ from .user_templates import UserTemplateAssignmentView
 from .template_viewset import TemplateViewSet
 from .submissions import ESGMetricSubmissionViewSet
 from .forms import ESGFormViewSet
+from .schema_registry import SchemaRegistryViewSet
+from .batch_submissions import BatchSubmissionViewSet
 
 # Re-export all classes for backward compatibility
 __all__ = [
@@ -26,5 +28,7 @@ __all__ = [
     'ESGMetricSubmissionViewSet',
     'TemplateAssignmentView',
     'UserTemplateAssignmentView',
-    'BatchEvidenceView'
+    'BatchEvidenceView',
+    'SchemaRegistryViewSet',
+    'BatchSubmissionViewSet'
 ] 

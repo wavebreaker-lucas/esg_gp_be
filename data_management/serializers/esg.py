@@ -111,7 +111,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'assignment', 'metric', 'metric_name', 'metric_unit',
             'data', 'batch_id', 'batch_submission',
-            'value', 'text_value', 'reporting_period', 'submitted_by', 'submitted_by_name',
+            'submitted_by', 'submitted_by_name',
             'submitted_at', 'updated_at', 'notes', 'is_verified',
             'verified_by', 'verified_by_name', 'verified_at', 
             'verification_notes', 'evidence', 'layer_id', 'layer_name'
@@ -146,45 +146,35 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         return None
     
     def validate(self, data):
-        """Validate submissions based on metric requirements and data structure"""
+        """Validate JSON data against metric schema"""
         metric = data.get('metric')
-        value = data.get('value')
-        text_value = data.get('text_value')
         json_data = data.get('data')
         assignment = data.get('assignment')
         
-        # For JSON-based submissions, validate against schema if available
-        if json_data:
-            # If the metric has a schema, validate against it
-            schema = None
-            if metric.schema_registry and hasattr(metric.schema_registry, 'schema'):
-                schema = metric.schema_registry.schema
-            elif metric.data_schema:
-                schema = metric.data_schema
-                
-            if schema:
-                try:
-                    from jsonschema import validate, ValidationError as JsonSchemaError
-                    validate(instance=json_data, schema=schema)
-                except ImportError:
-                    # If jsonschema is not available, perform basic validation
-                    if not isinstance(json_data, dict):
-                        raise serializers.ValidationError("JSON data must be an object")
-                except JsonSchemaError as e:
-                    raise serializers.ValidationError(f"JSON data validation error: {str(e)}")
+        # Validate that data is provided
+        if not json_data:
+            raise serializers.ValidationError("JSON data is required")
             
-            # For fully JSON-based metrics, we don't need to validate value/text_value
-            return data
+        # Validate data is a JSON object
+        if not isinstance(json_data, dict):
+            raise serializers.ValidationError("Data must be a JSON object")
             
-        # Legacy validation for non-JSON submissions
-        # Check if numeric metrics have a numeric value
-        numeric_units = ['kWh', 'MWh', 'm3', 'tonnes', 'tCO2e', 'percentage']
-        if metric.unit_type in numeric_units and value is None:
-            raise serializers.ValidationError(f"A numeric value is required for {metric.name}")
-        
-        # Check if at least one value type is provided
-        if value is None and not text_value:
-            raise serializers.ValidationError("Either a numeric value or text value must be provided")
+        # If the metric has a schema, validate against it
+        schema = None
+        if metric.schema_registry and hasattr(metric.schema_registry, 'schema'):
+            schema = metric.schema_registry.schema
+        elif metric.data_schema:
+            schema = metric.data_schema
+            
+        if schema:
+            try:
+                from jsonschema import validate, ValidationError as JsonSchemaError
+                validate(instance=json_data, schema=schema)
+            except ImportError:
+                # If jsonschema is not available, perform basic validation
+                pass
+            except JsonSchemaError as e:
+                raise serializers.ValidationError(f"JSON data validation error: {str(e)}")
         
         # Check for duplicate submissions with the same layer
         layer = data.get('layer')
@@ -218,15 +208,25 @@ class ESGMetricSubmissionCreateSerializer(ESGMetricSubmissionSerializer):
         
         # Check if submission already exists and update instead
         try:
-            submission = ESGMetricSubmission.objects.get(
-                assignment=validated_data['assignment'],
-                metric=validated_data['metric']
-            )
+            # Note: Now we check for uniqueness based on assignment, metric, and layer
+            layer = validated_data.get('layer')
+            existing_filter = {
+                'assignment': validated_data['assignment'],
+                'metric': validated_data['metric']
+            }
+            
+            if layer:
+                existing_filter['layer'] = layer
+                
+            submission = ESGMetricSubmission.objects.get(**existing_filter)
+            
+            # Update existing submission
             for attr, value in validated_data.items():
                 setattr(submission, attr, value)
             submission.save()
             return submission
         except ESGMetricSubmission.DoesNotExist:
+            # Create a new submission
             return super().create(validated_data)
 
 class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
@@ -254,42 +254,35 @@ class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
             if 'metric_id' not in submission:
                 raise serializers.ValidationError("Each submission must include a metric_id")
             
+            if 'data' not in submission:
+                raise serializers.ValidationError("Each submission must include JSON data")
+            
             # Validate metric exists
             try:
                 metric = ESGMetric.objects.get(id=submission['metric_id'])
             except ESGMetric.DoesNotExist:
                 raise serializers.ValidationError(f"Metric with ID {submission['metric_id']} not found")
             
-            # If using JSON data approach, validate data field
-            if 'data' in submission:
-                if not isinstance(submission['data'], dict):
-                    raise serializers.ValidationError(f"Data for metric {metric.name} must be a JSON object")
+            # Validate data field
+            if not isinstance(submission['data'], dict):
+                raise serializers.ValidationError(f"Data for metric {metric.name} must be a JSON object")
+            
+            # Check against schema if available
+            schema = None
+            if hasattr(metric, 'schema_registry') and metric.schema_registry and hasattr(metric.schema_registry, 'schema'):
+                schema = metric.schema_registry.schema
+            elif hasattr(metric, 'data_schema') and metric.data_schema:
+                schema = metric.data_schema
                 
-                # Check against schema if available
-                schema = None
-                if hasattr(metric, 'schema_registry') and metric.schema_registry and hasattr(metric.schema_registry, 'schema'):
-                    schema = metric.schema_registry.schema
-                elif hasattr(metric, 'data_schema') and metric.data_schema:
-                    schema = metric.data_schema
-                    
-                if schema:
-                    try:
-                        from jsonschema import validate, ValidationError as JsonSchemaError
-                        validate(instance=submission['data'], schema=schema)
-                    except ImportError:
-                        # Basic validation if jsonschema not available
-                        pass
-                    except JsonSchemaError as e:
-                        raise serializers.ValidationError(f"JSON schema validation failed for {metric.name}: {str(e)}")
-            else:
-                # Legacy validation for value/text_value
-                # Validate value based on metric type
-                numeric_units = ['kWh', 'MWh', 'm3', 'tonnes', 'tCO2e', 'percentage']
-                if metric.unit_type in numeric_units and 'value' not in submission:
-                    raise serializers.ValidationError(f"A numeric value is required for {metric.name}")
-                
-                if 'value' not in submission and 'text_value' not in submission:
-                    raise serializers.ValidationError(f"Either value or text_value must be provided for {metric.name}")
+            if schema:
+                try:
+                    from jsonschema import validate, ValidationError as JsonSchemaError
+                    validate(instance=submission['data'], schema=schema)
+                except ImportError:
+                    # Basic validation if jsonschema not available
+                    pass
+                except JsonSchemaError as e:
+                    raise serializers.ValidationError(f"JSON schema validation failed for {metric.name}: {str(e)}")
             
             # Check for duplicate submissions with the same layer
             layer_id = submission.get('layer_id', data.get('layer_id'))

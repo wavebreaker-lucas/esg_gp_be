@@ -62,12 +62,6 @@ class ESGMetric(models.Model):
         ('PRC', 'Mainland China'),
         ('ALL', 'All Locations'),
     ]
-    
-    REPORTING_FREQUENCY_CHOICES = [
-        ('monthly', 'Monthly'),
-        ('quarterly', 'Quarterly'),
-        ('annual', 'Annual'),
-    ]
 
     form = models.ForeignKey(ESGForm, on_delete=models.CASCADE, related_name='metrics')
     name = models.CharField(max_length=255)
@@ -80,21 +74,12 @@ class ESGMetric(models.Model):
     location = models.CharField(max_length=3, choices=LOCATION_CHOICES, default='ALL')
     is_required = models.BooleanField(default=True, help_text="Whether this metric must be reported")
     
-    # New JSON schema fields
+    # JSON schema fields
     data_schema = models.JSONField(default=dict, blank=True, help_text="JSON Schema for this metric's data")
     schema_registry = models.ForeignKey('MetricSchemaRegistry', on_delete=models.SET_NULL, null=True, blank=True, 
                                       related_name='metrics', help_text="Reference to a registered schema for this metric")
     form_component = models.CharField(max_length=50, null=True, blank=True, help_text="Frontend component to use for this metric")
     
-    # Keep these for backward compatibility during migration
-    requires_time_reporting = models.BooleanField(default=False, help_text="Whether this metric requires reporting for multiple time periods")
-    reporting_frequency = models.CharField(
-        max_length=20, 
-        choices=REPORTING_FREQUENCY_CHOICES,
-        null=True, 
-        blank=True,
-        help_text="Required frequency of reporting for time-based metrics"
-    )
     ocr_analyzer_id = models.CharField(
         max_length=100, 
         blank=True, 
@@ -181,18 +166,13 @@ class ESGMetricSubmission(models.Model):
     assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='submissions')
     metric = models.ForeignKey(ESGMetric, on_delete=models.CASCADE)
     
-    # New unified data field
-    data = models.JSONField(null=True, blank=True, help_text="All metric data in structured JSON format")
+    # JSON data field - now required 
+    data = models.JSONField(help_text="All metric data in structured JSON format")
     
     # Batch submission relationship
     batch_submission = models.ForeignKey('ESGMetricBatchSubmission', on_delete=models.SET_NULL, 
                                        null=True, blank=True, related_name='submissions',
                                        help_text="Batch this submission belongs to, if any")
-    
-    # Keep these for backward compatibility during migration
-    value = models.FloatField(null=True, blank=True)
-    text_value = models.TextField(null=True, blank=True, help_text="For non-numeric metrics")
-    reporting_period = models.DateField(null=True, blank=True, help_text="For time-based metrics (e.g., monthly data)")
     
     # Metadata fields
     submitted_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='metric_submissions')
@@ -212,15 +192,13 @@ class ESGMetricSubmission(models.Model):
     )
 
     class Meta:
-        # Update uniqueness constraint to remove reporting_period
         unique_together = ['assignment', 'metric', 'layer']
         indexes = [
             models.Index(fields=['assignment', 'metric']),
             models.Index(fields=['submitted_by']),
             models.Index(fields=['is_verified']),
-            # Add index for better JSON field querying if using PostgreSQL
-            # If using PostgreSQL, uncomment this:
-            # models.Index(fields=['data'], name='data_gin_idx', opclasses=['jsonb_path_ops'])
+            # Add index for better JSON field querying 
+            models.Index(fields=['data'], name='data_gin_idx', opclasses=['jsonb_path_ops'])
         ]
 
     def __str__(self):
