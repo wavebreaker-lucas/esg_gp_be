@@ -380,8 +380,33 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         except ESGMetricSubmission.DoesNotExist:
             return Response({'error': 'Submission not found'}, status=404)
         
-        # Attach evidence to submission
+        # Get the target path for this evidence
+        target_path = evidence.reference_path
+        
+        # If no explicit path is set, try to use the metric's primary_path
+        if not target_path and submission.metric and submission.metric.primary_path:
+            target_path = submission.metric.primary_path
+        
+        # Determine if this is a time-based metric
+        is_time_based = False
+        if submission.metric and submission.metric.requires_time_reporting:
+            is_time_based = True
+        
+        # For time-based metrics without an explicit path, default to periods structure
+        if is_time_based and not target_path:
+            # Use the period from the evidence to create a default path
+            evidence_period = evidence.period or evidence.ocr_period
+            if evidence_period:
+                period_key = evidence_period.strftime("%m/%Y")
+                target_path = f"periods.{period_key}.value"
+                
+        # Attach evidence to submission and store the json_path
         evidence.submission = submission
+        
+        # Always store the path in json_path field - this is the key improvement for Option 2
+        if target_path:
+            evidence.json_path = target_path
+            
         evidence.save()
         
         # Apply OCR data if requested and available
@@ -390,26 +415,6 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             # Initialize submission data if not present
             if not submission.data:
                 submission.data = {}
-            
-            # Get the target path for this OCR data
-            target_path = evidence.reference_path
-            
-            # If no explicit path is set, try to use the metric's primary_path
-            if not target_path and submission.metric and submission.metric.primary_path:
-                target_path = submission.metric.primary_path
-            
-            # Determine if this is a time-based metric
-            is_time_based = False
-            if submission.metric and submission.metric.requires_time_reporting:
-                is_time_based = True
-            
-            # For time-based metrics without an explicit path, default to periods structure
-            if is_time_based and not target_path:
-                # Use the period from the evidence to create a default path
-                evidence_period = evidence.period or evidence.ocr_period
-                if evidence_period:
-                    period_key = evidence_period.strftime("%m/%Y")
-                    target_path = f"periods.{period_key}.value"
             
             if target_path:
                 # Validate against schema if available
@@ -533,10 +538,11 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                     'evidence_id': evidence.id
                 }, status=200)
         
-        # Return success without applying OCR data
+        # OCR data not applied, return success with path info
         return Response({
             'message': 'Evidence attached to submission successfully',
-            'submission_id': submission.id
+            'submission_id': submission.id,
+            'json_path': evidence.json_path
         })
 
     @action(detail=True, methods=['post'])
@@ -569,14 +575,15 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                     'metric_id': evidence.intended_metric.id
                 }, status=400)
         
-        # Set the reference path
+        # Set both the reference_path and json_path fields
         evidence.reference_path = reference_path
+        evidence.json_path = reference_path  # Set json_path too for consistency
         evidence.save()
         
         return Response({
             'message': f'Target path set to {reference_path}',
             'evidence_id': evidence.id,
-            'reference_path': evidence.reference_path
+            'json_path': evidence.json_path
         })
         
     def _is_valid_json_path(self, path):
@@ -768,6 +775,11 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         # Set evidence status if not already attached
         if not evidence.submission_id:
             evidence.submission = submission
+            
+            # Set json_path to indicate this evidence is for multiple periods
+            # This helps identify which evidence supports which parts of the JSON structure
+            evidence.json_path = f"{base_path}.multiple"
+            
             evidence.save()
         
         # Validate against schema if available

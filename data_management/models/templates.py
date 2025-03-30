@@ -239,9 +239,13 @@ class ESGMetricEvidence(models.Model):
         help_text="The layer this evidence is from"
     )
     
-    # New field for JSON reference path
-    reference_path = models.CharField(max_length=255, null=True, blank=True,
-                                    help_text="JSON path this evidence relates to (e.g., 'periods.Jan-2024')")
+    # New field for JSON data path
+    json_path = models.CharField(
+        max_length=255, 
+        null=True, 
+        blank=True,
+        help_text="JSON path this evidence supports in the submission's data structure"
+    )
     
     # Field to link to specific submissions
     submission_identifier = models.CharField(
@@ -266,6 +270,10 @@ class ESGMetricEvidence(models.Model):
     was_manually_edited = models.BooleanField(default=False, help_text="Whether the OCR result was manually edited")
     edited_at = models.DateTimeField(null=True, blank=True, help_text="When the OCR result was edited")
     edited_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='edited_evidence', help_text="Who edited the OCR result")
+    
+    # New field for original JSON path reference used in OCR
+    reference_path = models.CharField(max_length=255, null=True, blank=True,
+                                    help_text="JSON path this evidence relates to (e.g., 'periods.Jan-2024')")
 
     def __str__(self):
         if self.submission:

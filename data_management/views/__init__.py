@@ -8,7 +8,6 @@ from .modules.evidence import ESGMetricEvidenceViewSet
 
 # Import refactored views
 from .metrics import ESGMetricViewSet
-from .evidence import BatchEvidenceView
 from .form_categories import ESGFormCategoryViewSet
 from .template_assignments import TemplateAssignmentView
 from .user_templates import UserTemplateAssignmentView
@@ -27,6 +26,5 @@ __all__ = [
     'ESGMetricSubmissionViewSet',
     'TemplateAssignmentView',
     'UserTemplateAssignmentView',
-    'BatchEvidenceView',
     'SchemaRegistryViewSet'
 ] 

@@ -3,7 +3,7 @@ from django.urls import path
 from .views import (
     ESGFormViewSet, ESGFormCategoryViewSet, TemplateViewSet, 
     ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, ESGMetricViewSet, 
-    UserTemplateAssignmentView, TemplateAssignmentView, BatchEvidenceView,
+    UserTemplateAssignmentView, TemplateAssignmentView,
     SchemaRegistryViewSet
 )
 
@@ -27,5 +27,6 @@ urlpatterns += [
     path('user-templates/', UserTemplateAssignmentView.as_view(), name='user-templates'),
     path('user-templates/<int:assignment_id>/', UserTemplateAssignmentView.as_view(), name='user-template-detail'),
     path('layer/<int:layer_id>/templates/', TemplateAssignmentView.as_view(), name='layer-templates'),
-    path('metric-evidence/batch/', BatchEvidenceView.as_view(), name='batch-evidence'),
+    # The batch_evidence action is now directly accessible via the router-generated URL:
+    # /metric-evidence/batch_evidence/
 ] 
