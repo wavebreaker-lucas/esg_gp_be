@@ -20,88 +20,88 @@ FRESH_WATER_HK_SCHEMA = {
             "periods": {
                 "type": "object",
                 "properties": {
-                    "Jan-2024": {
+                    "Jan-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["m³", "liters"]}
+                            "unit": {"type": "string", "enum": ["m³"]}
                         }
                     },
-                    "Feb-2024": {
+                    "Feb-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["m³", "liters"]}
+                            "unit": {"type": "string", "enum": ["m³"]}
                         }
                     },
-                    "Mar-2024": {
+                    "Mar-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["m³", "liters"]}
+                            "unit": {"type": "string", "enum": ["m³"]}
                         }
                     },
-                    "Apr-2024": {
+                    "Apr-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["m³", "liters"]}
+                            "unit": {"type": "string", "enum": ["m³"]}
                         }
                     },
-                    "May-2024": {
+                    "May-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["m³", "liters"]}
+                            "unit": {"type": "string", "enum": ["m³"]}
                         }
                     },
-                    "Jun-2024": {
+                    "Jun-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["m³", "liters"]}
+                            "unit": {"type": "string", "enum": ["m³"]}
                         }
                     },
-                    "Jul-2024": {
+                    "Jul-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["m³", "liters"]}
+                            "unit": {"type": "string", "enum": ["m³"]}
                         }
                     },
-                    "Aug-2024": {
+                    "Aug-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["m³", "liters"]}
+                            "unit": {"type": "string", "enum": ["m³"]}
                         }
                     },
-                    "Sep-2024": {
+                    "Sep-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["m³", "liters"]}
+                            "unit": {"type": "string", "enum": ["m³"]}
                         }
                     },
-                    "Oct-2024": {
+                    "Oct-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["m³", "liters"]}
+                            "unit": {"type": "string", "enum": ["m³"]}
                         }
                     },
-                    "Nov-2024": {
+                    "Nov-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["m³", "liters"]}
+                            "unit": {"type": "string", "enum": ["m³"]}
                         }
                     },
-                    "Dec-2024": {
+                    "Dec-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["m³", "liters"]}
+                            "unit": {"type": "string", "enum": ["m³"]}
                         }
                     }
                 }
@@ -111,7 +111,7 @@ FRESH_WATER_HK_SCHEMA = {
                 "x-calculated": True,
                 "properties": {
                     "value": {"type": "number"},
-                    "unit": {"type": "string", "enum": ["m³", "liters"]}
+                    "unit": {"type": "string", "enum": ["m³"]}
                 }
             },
             "kpi_reference": {
