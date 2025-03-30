@@ -1,11 +1,19 @@
 """
-Schema for monthly electricity consumption metrics.
+Schema for Hong Kong fresh water consumption.
+Used for KPI A2.2 reporting.
 """
 
-ELECTRICITY_MONTHLY_SCHEMA = {
-    "type": "electricity_monthly",
-    "name": "Monthly Electricity Consumption",
-    "description": "For tracking monthly electricity usage with unit information",
+FRESH_WATER_HK_SCHEMA = {
+    "type": "fresh_water_hk",
+    "name": "Hong Kong Fresh Water Consumption",
+    "description": "For tracking fresh water consumption in Hong Kong",
+    "calculated_fields": [
+        {
+            "path": "total_consumption", 
+            "calculation": "sum(periods.*.value)",
+            "description": "Total Hong Kong fresh water consumption"
+        }
+    ],
     "template": {
         "type": "object",
         "properties": {
@@ -16,114 +24,114 @@ ELECTRICITY_MONTHLY_SCHEMA = {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
-                            "comments": {"type": "string"}
+                            "unit": {"type": "string", "enum": ["m³", "liters"]}
                         }
                     },
                     "Feb-2024": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
-                            "comments": {"type": "string"}
+                            "unit": {"type": "string", "enum": ["m³", "liters"]}
                         }
                     },
                     "Mar-2024": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
-                            "comments": {"type": "string"}
+                            "unit": {"type": "string", "enum": ["m³", "liters"]}
                         }
                     },
                     "Apr-2024": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
-                            "comments": {"type": "string"}
+                            "unit": {"type": "string", "enum": ["m³", "liters"]}
                         }
                     },
                     "May-2024": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
-                            "comments": {"type": "string"}
+                            "unit": {"type": "string", "enum": ["m³", "liters"]}
                         }
                     },
                     "Jun-2024": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
-                            "comments": {"type": "string"}
+                            "unit": {"type": "string", "enum": ["m³", "liters"]}
                         }
                     },
                     "Jul-2024": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
-                            "comments": {"type": "string"}
+                            "unit": {"type": "string", "enum": ["m³", "liters"]}
                         }
                     },
                     "Aug-2024": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
-                            "comments": {"type": "string"}
+                            "unit": {"type": "string", "enum": ["m³", "liters"]}
                         }
                     },
                     "Sep-2024": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
-                            "comments": {"type": "string"}
+                            "unit": {"type": "string", "enum": ["m³", "liters"]}
                         }
                     },
                     "Oct-2024": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
-                            "comments": {"type": "string"}
+                            "unit": {"type": "string", "enum": ["m³", "liters"]}
                         }
                     },
                     "Nov-2024": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
-                            "comments": {"type": "string"}
+                            "unit": {"type": "string", "enum": ["m³", "liters"]}
                         }
                     },
                     "Dec-2024": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
-                            "comments": {"type": "string"}
+                            "unit": {"type": "string", "enum": ["m³", "liters"]}
                         }
                     }
                 }
             },
-            "_metadata": {
+            "total_consumption": {
                 "type": "object",
+                "x-calculated": True,
                 "properties": {
-                    "primary_measurement": {
-                        "type": "object",
-                        "properties": {
-                            "path": {"type": "string", "default": "periods.Jan-2024.value"},
-                            "unit": {"type": "string", "default": "kWh"}
-                        }
-                    },
-                    "total_consumption": {"type": "number"}
+                    "value": {"type": "number"},
+                    "unit": {"type": "string", "enum": ["m³", "liters"]}
                 }
+            },
+            "kpi_reference": {
+                "type": "string",
+                "default": "KPI A2.2"
+            },
+            "water_type": {
+                "type": "string",
+                "enum": ["Fresh Water"],
+                "default": "Fresh Water"
+            },
+            "region": {
+                "type": "string",
+                "enum": ["Hong Kong"],
+                "default": "Hong Kong"
             }
         }
     },
-    "primary_path_example": "periods.Jan-2024.value"
+    "ui_hints": {
+        "editable_fields": ["periods", "kpi_reference", "water_type"],
+        "read_only_fields": ["total_consumption", "region"]
+    }
 } 
