@@ -421,7 +421,7 @@ formData.append('file', fileObject);
 
 // Add other parameters
 formData.append('metric_id', '123');
-formData.append('period', '2023-06-30');
+formData.append('reference_path', 'periods.Q1-2024');
 
 // Send request - DO NOT set Content-Type header
 POST /api/metric-evidence/
@@ -446,9 +446,9 @@ Evidence attachment happens at two critical points in the workflow:
 2. **Batch Submission** - When users submit multiple metric values at once via the `batch_submit` endpoint with `auto_attach_evidence=true`, the system attaches relevant evidence files to those submissions.
 
 The system uses a smart period matching strategy when attaching evidence:
-1. First attempts to match using the user-selected period (`period` field)
-2. If no match is found, falls back to the OCR-extracted period (`ocr_period` field)
-3. If neither period matches, attaches to the first available submission for that metric
+1. First attempts to match using the reference path
+2. If reference path matches, prioritizes evidence with matching layer
+3. If no match is found with reference path, falls back to matching by layer and metric
 
 This approach ensures that evidence is attached at the most logical points in the user workflow, where users are actively working with specific forms or metrics.
 
@@ -468,7 +468,7 @@ The evidence attachment functionality has been modularized to improve maintainab
 
 3. **Evidence Attachment Service**
    - Manages the attachment of evidence to submissions
-   - Handles period matching logic
+   - Handles reference path matching logic
    - Supports both manual and automatic attachment
 
 4. **Frontend Integration**
@@ -485,7 +485,7 @@ The evidence attachment functionality has been modularized to improve maintainab
    {
      "file": [file data],
      "metric_id": 456,
-     "period": "2023-04-30",
+     "reference_path": "periods.Q1-2024",
      "enable_ocr_processing": "true"
    }
    ```
@@ -535,21 +535,20 @@ python manage.py test_ocr 123 --format json
 
 ## Best Practices for Evidence Management
 
-1. **Always specify the reporting period** when uploading evidence files
+1. **Always specify the reference path** when uploading evidence files
 2. **Use per-metric uploads** to organize evidence files by the metrics they support
 3. **Enable OCR for utility bills** to extract consumption data and period when appropriate
 4. **Review OCR results before applying** to ensure accuracy
 5. **Explicitly apply OCR data** only when needed - never rely on automatic application
 6. **Set appropriate analyzer IDs** for metrics to improve extraction accuracy
-7. **Use period matching** by ensuring evidence periods match the reporting periods of submissions
+7. **Use reference path matching** by ensuring evidence reference paths match the JSON data structure of submissions
 
 ## Technical Implementation Details
 
 1. All evidence is initially created as standalone (without a submission)
-2. The `metric_id` is stored in the `ocr_data` field as `intended_metric_id`
-3. Evidence is attached to submissions during form completion and batch submission
-4. The system never automatically applies OCR data to submissions, only attaches the evidence files
-5. Template submission no longer handles evidence attachment as this happens at the form level
+2. Evidence is attached to submissions during form completion and batch submission
+3. The system never automatically applies OCR data to submissions, only attaches the evidence files
+4. Template submission no longer handles evidence attachment as this happens at the form level
 
 ## Migration Notes
 

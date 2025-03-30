@@ -66,8 +66,18 @@ class ESGMetric(models.Model):
     form = models.ForeignKey(ESGForm, on_delete=models.CASCADE, related_name='metrics')
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    unit_type = models.CharField(max_length=20, choices=UNIT_TYPES)
-    custom_unit = models.CharField(max_length=50, blank=True, null=True)
+    # Legacy unit fields - being phased out in favor of unit information embedded in the JSON schema
+    unit_type = models.CharField(
+        max_length=20, 
+        choices=UNIT_TYPES,
+        help_text="Legacy field for default unit type. For metrics with multiple values, use JSON schema with embedded units."
+    )
+    custom_unit = models.CharField(
+        max_length=50, 
+        blank=True, 
+        null=True,
+        help_text="Legacy field for custom unit. For metrics with multiple values, use JSON schema with embedded units."
+    )
     requires_evidence = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
     validation_rules = models.JSONField(default=dict, blank=True)
@@ -79,6 +89,12 @@ class ESGMetric(models.Model):
     schema_registry = models.ForeignKey('MetricSchemaRegistry', on_delete=models.SET_NULL, null=True, blank=True, 
                                       related_name='metrics', help_text="Reference to a registered schema for this metric")
     form_component = models.CharField(max_length=50, null=True, blank=True, help_text="Frontend component to use for this metric")
+    primary_path = models.CharField(
+        max_length=255, 
+        null=True, 
+        blank=True,
+        help_text="Path to the primary value in the JSON data (e.g., 'electricity.value')"
+    )
     
     ocr_analyzer_id = models.CharField(
         max_length=100, 

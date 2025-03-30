@@ -90,7 +90,7 @@ class ESGMetricAdmin(admin.ModelAdmin):
                        'order', 'requires_evidence', 'is_required')
         }),
         ('JSON Schema Configuration', {
-            'fields': ('schema_registry', 'data_schema', 'form_component', 'ocr_analyzer_id'),
+            'fields': ('schema_registry', 'data_schema', 'form_component', 'primary_path', 'ocr_analyzer_id'),
             'classes': ('collapse',),
             'description': 'Configure the JSON schema for this metric.'
         }),

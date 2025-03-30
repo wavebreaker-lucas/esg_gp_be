@@ -32,7 +32,7 @@ class ESGMetricSerializer(serializers.ModelSerializer):
             'requires_time_reporting', 'reporting_frequency', 'form_id',
             # New fields
             'data_schema', 'schema_registry', 'schema_registry_id', 'schema_registry_details',
-            'form_component'
+            'form_component', 'primary_path', 'ocr_analyzer_id'
         ]
         read_only_fields = ['id']
 

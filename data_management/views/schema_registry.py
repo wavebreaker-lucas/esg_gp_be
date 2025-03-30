@@ -71,6 +71,7 @@ class SchemaRegistryViewSet(viewsets.ModelViewSet):
                                 "type": "object",
                                 "properties": {
                                     "value": {"type": "number"},
+                                    "unit": {"type": "string", "enum": ["tCO2e", "kgCO2e"]},
                                     "notes": {"type": "string"}
                                 }
                             }
@@ -80,23 +81,23 @@ class SchemaRegistryViewSet(viewsets.ModelViewSet):
                 }
             },
             {
-                "type": "resource_consumption",
-                "name": "Resource Consumption",
-                "description": "For tracking energy, water, or material usage",
+                "type": "electricity",
+                "name": "Electricity Consumption",
+                "description": "For tracking electricity usage with unit information",
                 "template": {
                     "type": "object",
                     "properties": {
                         "value": {"type": "number"},
-                        "unit": {"type": "string"},
-                        "resource_type": {"type": "string"},
-                        "renewable_percentage": {"type": "number", "minimum": 0, "maximum": 100},
+                        "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
+                        "comments": {"type": "string"},
                         "periods": {
                             "type": "object",
                             "additionalProperties": {
                                 "type": "object",
                                 "properties": {
                                     "value": {"type": "number"},
-                                    "notes": {"type": "string"}
+                                    "unit": {"type": "string", "enum": ["kWh", "MWh", "GWh"]},
+                                    "comments": {"type": "string"}
                                 }
                             }
                         }
@@ -105,59 +106,90 @@ class SchemaRegistryViewSet(viewsets.ModelViewSet):
                 }
             },
             {
-                "type": "training",
-                "name": "Employee Training",
-                "description": "For tracking employee training metrics",
+                "type": "utility_bundle",
+                "name": "Multiple Utility Consumption",
+                "description": "For tracking multiple utility consumptions together",
                 "template": {
                     "type": "object",
                     "properties": {
-                        "total_employees": {"type": "integer"},
-                        "employees_trained": {"type": "integer"},
-                        "total_hours": {"type": "number"},
-                        "average_hours_per_employee": {"type": "number"},
-                        "training_categories": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "category": {"type": "string"},
-                                    "participants": {"type": "integer"},
-                                    "hours": {"type": "number"}
-                                }
+                        "electricity": {
+                            "type": "object",
+                            "properties": {
+                                "value": {"type": "number"},
+                                "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            }
+                        },
+                        "water": {
+                            "type": "object",
+                            "properties": {
+                                "value": {"type": "number"},
+                                "unit": {"type": "string", "enum": ["m3", "liters"]}
+                            }
+                        },
+                        "gas": {
+                            "type": "object",
+                            "properties": {
+                                "value": {"type": "number"},
+                                "unit": {"type": "string", "enum": ["m3", "BTU"]}
+                            }
+                        },
+                        "comments": {"type": "string"},
+                        "_metadata": {
+                            "type": "object",
+                            "properties": {
+                                "primary_measurement": {"type": "string", "enum": ["electricity", "water", "gas"]}
                             }
                         }
-                    },
-                    "required": ["total_employees", "employees_trained"]
+                    }
                 }
             },
             {
-                "type": "legal_cases",
-                "name": "Legal Cases",
-                "description": "For tracking legal cases and compliance issues",
+                "type": "supplier_assessment",
+                "name": "Supplier Assessment",
+                "description": "For tracking supplier compliance and assessments",
                 "template": {
                     "type": "object",
                     "properties": {
-                        "total_cases": {"type": "integer"},
-                        "open_cases": {"type": "integer"},
-                        "closed_cases": {"type": "integer"},
-                        "cases": {
+                        "suppliers": {
                             "type": "array",
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "case_id": {"type": "string"},
-                                    "description": {"type": "string"},
-                                    "status": {"type": "string", "enum": ["open", "closed", "pending"]},
-                                    "resolution": {"type": "string"},
-                                    "monetary_impact": {"type": "number"},
-                                    "date_opened": {"type": "string", "format": "date"},
-                                    "date_closed": {"type": "string", "format": "date"}
-                                },
-                                "required": ["case_id", "description", "status"]
+                                    "name": {"type": "string"},
+                                    "id": {"type": "string"},
+                                    "assessment": {
+                                        "type": "object",
+                                        "properties": {
+                                            "compliance_status": {
+                                                "type": "string", 
+                                                "enum": ["Compliant", "Partially Compliant", "Non-Compliant"]
+                                            },
+                                            "score": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "value": {"type": "number"},
+                                                    "unit": {"type": "string", "enum": ["points", "percentage"]}
+                                                }
+                                            },
+                                            "date": {"type": "string", "format": "date"}
+                                        }
+                                    },
+                                    "categories": {
+                                        "type": "array",
+                                        "items": {"type": "string"}
+                                    }
+                                }
+                            }
+                        },
+                        "assessment_period": {"type": "string"},
+                        "comments": {"type": "string"},
+                        "_metadata": {
+                            "type": "object",
+                            "properties": {
+                                "primary_measurement": {"type": "string", "default": "suppliers[0].assessment.score"}
                             }
                         }
-                    },
-                    "required": ["total_cases"]
+                    }
                 }
             }
         ]
