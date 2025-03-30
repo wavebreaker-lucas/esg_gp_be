@@ -1,7 +1,10 @@
 from rest_framework import serializers
 from accounts.models import CustomUser, LayerProfile
 from ..models import BoundaryItem, EmissionFactor, ESGData, DataEditLog
-from ..models.templates import ESGMetricSubmission, ESGMetricEvidence, ESGMetric
+from ..models.templates import (
+    ESGMetricSubmission, ESGMetricEvidence, ESGMetric, 
+    MetricSchemaRegistry, ESGMetricBatchSubmission
+)
 
 class BoundaryItemSerializer(serializers.ModelSerializer):
     class Meta:
@@ -60,12 +63,13 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
             'uploaded_by', 'uploaded_by_name', 'uploaded_at', 'description',
             'enable_ocr_processing', 'is_processed_by_ocr', 'extracted_value', 
             'period', 'was_manually_edited', 'edited_at', 
-            'edited_by', 'edited_by_name', 'submission', 'layer_id', 'layer_name'
+            'edited_by', 'edited_by_name', 'submission', 'layer_id', 'layer_name',
+            'reference_path', 'extracted_data', 'ocr_data', 'intended_metric'
         ]
         read_only_fields = [
             'uploaded_by', 'uploaded_at', 'is_processed_by_ocr', 
             'extracted_value', 'period', 'was_manually_edited',
-            'edited_at', 'edited_by', 'layer_name'
+            'edited_at', 'edited_by', 'layer_name', 'extracted_data', 'ocr_data'
         ]
     
     def get_uploaded_by_name(self, obj):
@@ -97,11 +101,16 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     layer_name = serializers.SerializerMethodField()
+    batch_id = serializers.PrimaryKeyRelatedField(
+        source='batch_submission',
+        read_only=True
+    )
     
     class Meta:
         model = ESGMetricSubmission
         fields = [
             'id', 'assignment', 'metric', 'metric_name', 'metric_unit',
+            'data', 'batch_id', 'batch_submission',
             'value', 'text_value', 'reporting_period', 'submitted_by', 'submitted_by_name',
             'submitted_at', 'updated_at', 'notes', 'is_verified',
             'verified_by', 'verified_by_name', 'verified_at', 
@@ -109,7 +118,8 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'submitted_by', 'submitted_at', 'updated_at', 
-            'is_verified', 'verified_by', 'verified_at', 'layer_name'
+            'is_verified', 'verified_by', 'verified_at', 'layer_name',
+            'batch_id'
         ]
     
     def get_metric_name(self, obj):
@@ -136,11 +146,37 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         return None
     
     def validate(self, data):
-        """Validate that either value or text_value is provided based on metric type"""
+        """Validate submissions based on metric requirements and data structure"""
         metric = data.get('metric')
         value = data.get('value')
         text_value = data.get('text_value')
+        json_data = data.get('data')
+        assignment = data.get('assignment')
         
+        # For JSON-based submissions, validate against schema if available
+        if json_data:
+            # If the metric has a schema, validate against it
+            schema = None
+            if metric.schema_registry and hasattr(metric.schema_registry, 'schema'):
+                schema = metric.schema_registry.schema
+            elif metric.data_schema:
+                schema = metric.data_schema
+                
+            if schema:
+                try:
+                    from jsonschema import validate, ValidationError as JsonSchemaError
+                    validate(instance=json_data, schema=schema)
+                except ImportError:
+                    # If jsonschema is not available, perform basic validation
+                    if not isinstance(json_data, dict):
+                        raise serializers.ValidationError("JSON data must be an object")
+                except JsonSchemaError as e:
+                    raise serializers.ValidationError(f"JSON data validation error: {str(e)}")
+            
+            # For fully JSON-based metrics, we don't need to validate value/text_value
+            return data
+            
+        # Legacy validation for non-JSON submissions
         # Check if numeric metrics have a numeric value
         numeric_units = ['kWh', 'MWh', 'm3', 'tonnes', 'tCO2e', 'percentage']
         if metric.unit_type in numeric_units and value is None:
@@ -150,9 +186,8 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         if value is None and not text_value:
             raise serializers.ValidationError("Either a numeric value or text value must be provided")
         
-        # Check for duplicate submissions with the same reporting period
-        assignment = data.get('assignment')
-        reporting_period = data.get('reporting_period')
+        # Check for duplicate submissions with the same layer
+        layer = data.get('layer')
         
         # If this is an update, exclude the current instance
         instance = self.instance
@@ -161,10 +196,10 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                 existing = ESGMetricSubmission.objects.exclude(pk=instance.pk).get(
                     assignment=assignment,
                     metric=metric,
-                    reporting_period=reporting_period
+                    layer=layer
                 )
                 raise serializers.ValidationError(
-                    f"A submission for this metric with reporting period {reporting_period} already exists"
+                    f"A submission for this metric with the same layer already exists"
                 )
             except ESGMetricSubmission.DoesNotExist:
                 pass
@@ -195,11 +230,14 @@ class ESGMetricSubmissionCreateSerializer(ESGMetricSubmissionSerializer):
             return super().create(validated_data)
 
 class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
-    """Serializer for batch submission of multiple metrics"""
+    """Serializer for batch submission of multiple metrics through API"""
     assignment_id = serializers.IntegerField()
     submissions = serializers.ListField(
         child=serializers.DictField()
     )
+    name = serializers.CharField(required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    layer_id = serializers.IntegerField(required=False, allow_null=True)
     
     def validate(self, data):
         """Validate that the assignment exists and user has access"""
@@ -222,25 +260,48 @@ class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
             except ESGMetric.DoesNotExist:
                 raise serializers.ValidationError(f"Metric with ID {submission['metric_id']} not found")
             
-            # Validate value based on metric type
-            numeric_units = ['kWh', 'MWh', 'm3', 'tonnes', 'tCO2e', 'percentage']
-            if metric.unit_type in numeric_units and 'value' not in submission:
-                raise serializers.ValidationError(f"A numeric value is required for {metric.name}")
+            # If using JSON data approach, validate data field
+            if 'data' in submission:
+                if not isinstance(submission['data'], dict):
+                    raise serializers.ValidationError(f"Data for metric {metric.name} must be a JSON object")
+                
+                # Check against schema if available
+                schema = None
+                if hasattr(metric, 'schema_registry') and metric.schema_registry and hasattr(metric.schema_registry, 'schema'):
+                    schema = metric.schema_registry.schema
+                elif hasattr(metric, 'data_schema') and metric.data_schema:
+                    schema = metric.data_schema
+                    
+                if schema:
+                    try:
+                        from jsonschema import validate, ValidationError as JsonSchemaError
+                        validate(instance=submission['data'], schema=schema)
+                    except ImportError:
+                        # Basic validation if jsonschema not available
+                        pass
+                    except JsonSchemaError as e:
+                        raise serializers.ValidationError(f"JSON schema validation failed for {metric.name}: {str(e)}")
+            else:
+                # Legacy validation for value/text_value
+                # Validate value based on metric type
+                numeric_units = ['kWh', 'MWh', 'm3', 'tonnes', 'tCO2e', 'percentage']
+                if metric.unit_type in numeric_units and 'value' not in submission:
+                    raise serializers.ValidationError(f"A numeric value is required for {metric.name}")
+                
+                if 'value' not in submission and 'text_value' not in submission:
+                    raise serializers.ValidationError(f"Either value or text_value must be provided for {metric.name}")
             
-            if 'value' not in submission and 'text_value' not in submission:
-                raise serializers.ValidationError(f"Either value or text_value must be provided for {metric.name}")
-            
-            # Check for duplicate submissions with the same reporting period
-            if 'reporting_period' in submission:
+            # Check for duplicate submissions with the same layer
+            layer_id = submission.get('layer_id', data.get('layer_id'))
+            if layer_id:
                 try:
                     existing = ESGMetricSubmission.objects.get(
                         assignment_id=data['assignment_id'],
                         metric_id=submission['metric_id'],
-                        reporting_period=submission['reporting_period']
+                        layer_id=layer_id
                     )
-                    raise serializers.ValidationError(
-                        f"A submission for metric ID {submission['metric_id']} with reporting period {submission['reporting_period']} already exists"
-                    )
+                    # Allow updating existing submissions
+                    submission['update_id'] = existing.id
                 except ESGMetricSubmission.DoesNotExist:
                     pass
         
@@ -261,3 +322,80 @@ class ESGMetricSubmissionVerifySerializer(serializers.Serializer):
             raise serializers.ValidationError("Only Baker Tilly admins can verify submissions")
             
         return data 
+
+class MetricSchemaRegistrySerializer(serializers.ModelSerializer):
+    """Serializer for metric JSON schemas"""
+    created_by_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MetricSchemaRegistry
+        fields = [
+            'id', 'name', 'description', 'schema', 'version',
+            'created_at', 'updated_at', 'created_by', 'created_by_name',
+            'is_active'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+    
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.email
+        return None
+    
+    def validate_schema(self, value):
+        """Validate that the schema is a valid JSON Schema"""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Schema must be a JSON object")
+        
+        # Check for required JSON Schema fields
+        if 'type' not in value:
+            raise serializers.ValidationError("Schema must have a 'type' field")
+            
+        # For objects, check for properties
+        if value.get('type') == 'object' and 'properties' not in value:
+            raise serializers.ValidationError("Object schemas must define 'properties'")
+            
+        return value
+    
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            validated_data['created_by'] = request.user
+        return super().create(validated_data) 
+
+class BatchSubmissionModelSerializer(serializers.ModelSerializer):
+    """ModelSerializer for ESGMetricBatchSubmission"""
+    submission_count = serializers.SerializerMethodField()
+    submitted_by_name = serializers.SerializerMethodField()
+    verified_by_name = serializers.SerializerMethodField()
+    layer_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ESGMetricBatchSubmission
+        fields = [
+            'id', 'name', 'assignment', 'submitted_by', 'submitted_by_name',
+            'submitted_at', 'updated_at', 'layer', 'layer_name', 'notes',
+            'is_verified', 'verified_by', 'verified_by_name', 'verified_at',
+            'verification_notes', 'submission_count'
+        ]
+        read_only_fields = [
+            'submitted_by', 'submitted_at', 'updated_at',
+            'is_verified', 'verified_by', 'verified_at', 'submission_count'
+        ]
+    
+    def get_submission_count(self, obj):
+        return obj.submissions.count()
+    
+    def get_submitted_by_name(self, obj):
+        if obj.submitted_by:
+            return obj.submitted_by.email
+        return None
+    
+    def get_verified_by_name(self, obj):
+        if obj.verified_by:
+            return obj.verified_by.email
+        return None
+    
+    def get_layer_name(self, obj):
+        if obj.layer:
+            return obj.layer.company_name
+        return None 

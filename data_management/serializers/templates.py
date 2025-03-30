@@ -2,8 +2,10 @@ from rest_framework import serializers
 from accounts.models import CustomUser, LayerProfile
 from ..models import (
     ESGFormCategory, ESGForm, ESGMetric,
-    Template, TemplateFormSelection, TemplateAssignment
+    Template, TemplateFormSelection, TemplateAssignment,
+    MetricSchemaRegistry
 )
+from .esg import MetricSchemaRegistrySerializer
 
 class ESGMetricSerializer(serializers.ModelSerializer):
     """Serializer for ESG metrics"""
@@ -13,12 +15,25 @@ class ESGMetricSerializer(serializers.ModelSerializer):
         source='form',
         required=False
     )
+    schema_registry_details = MetricSchemaRegistrySerializer(source='schema_registry', read_only=True)
+    schema_registry_id = serializers.PrimaryKeyRelatedField(
+        queryset=MetricSchemaRegistry.objects.all(),
+        write_only=True,
+        source='schema_registry',
+        required=False,
+        allow_null=True
+    )
     
     class Meta:
         model = ESGMetric
-        fields = ['id', 'name', 'description', 'unit_type', 'custom_unit', 
-                 'requires_evidence', 'order', 'validation_rules', 'location', 'is_required',
-                 'requires_time_reporting', 'reporting_frequency', 'form_id']
+        fields = [
+            'id', 'name', 'description', 'unit_type', 'custom_unit', 
+            'requires_evidence', 'order', 'validation_rules', 'location', 'is_required',
+            'requires_time_reporting', 'reporting_frequency', 'form_id',
+            # New fields
+            'data_schema', 'schema_registry', 'schema_registry_id', 'schema_registry_details',
+            'form_component'
+        ]
         read_only_fields = ['id']
 
 class ESGFormCategorySerializer(serializers.ModelSerializer):
