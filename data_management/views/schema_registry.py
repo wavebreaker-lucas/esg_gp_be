@@ -9,7 +9,7 @@ from django.db.models import Count
 
 from ..models import MetricSchemaRegistry, ESGMetric
 from ..serializers.esg import MetricSchemaRegistrySerializer
-from ..schema_templates import SCHEMA_TEMPLATES
+from ..json_schemas import SCHEMA_TEMPLATES
 
 
 class SchemaRegistryViewSet(viewsets.ModelViewSet):
