@@ -10,6 +10,10 @@ from django.db import transaction
 from django.utils import timezone
 from datetime import datetime
 import copy
+import logging
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 from accounts.models import CustomUser, AppUser, LayerProfile
 from accounts.services import get_accessible_layers, has_layer_access
@@ -61,6 +65,9 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         return self.serializer_class
 
     def perform_create(self, serializer):
+        """
+        Process a single submission during standard REST create operation.
+        """
         # Get the data and calculate totals for time-based metrics
         if hasattr(serializer, 'validated_data') and 'data' in serializer.validated_data:
             data = serializer.validated_data['data']
@@ -72,8 +79,13 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             
             # Update data with calculated fields if needed
             if data and isinstance(data, dict):
-                updated_data = validate_and_update_totals(data, metric)
-                serializer.validated_data['data'] = updated_data
+                try:
+                    # Calculate totals based on the metric schema
+                    updated_data = validate_and_update_totals(data, metric)
+                    serializer.validated_data['data'] = updated_data
+                except Exception as e:
+                    # Log the error but continue with original data
+                    logger.warning(f"Calculation error during submission creation: {e}")
         
         submission = serializer.save(submitted_by=self.request.user)
         
@@ -94,9 +106,6 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     submission.layer = default_layer
                     submission.save()
             except Exception as e:
-                # Just log the error, don't fail the submission creation
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.warning(f"Could not set default layer for submission: {e}")
                 
         # Check if form is complete after new submission
@@ -256,6 +265,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         - submissions: List of submission objects with metric_id, data
         - auto_attach_evidence: (Optional) Boolean to automatically attach standalone evidence
         - default_layer_id: (Optional) Default layer ID for all submissions
+        - update_timestamp: (Optional) Boolean to update the submitted_at timestamp
         """
         serializer = ESGMetricBatchSubmissionSerializer(data=request.data)
         
@@ -269,6 +279,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         name = validated_data.get('name', '')
         notes = validated_data.get('notes', '')
         layer_id = validated_data.get('layer_id')
+        update_timestamp = validated_data.get('update_timestamp', False)
         
         # Get assignment and validate
         try:
@@ -311,16 +322,36 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         # Process each submission
         created_submissions = []
         updated_submissions = []
+        failed_submissions = []
         
         for sub_data in submissions_data:
             metric_id = sub_data.get('metric_id')
             data = sub_data.get('data')
             notes = sub_data.get('notes', '')
             
+            # Validate metric exists
+            try:
+                metric = ESGMetric.objects.get(id=metric_id)
+            except ESGMetric.DoesNotExist:
+                failed_submissions.append({
+                    'metric_id': metric_id,
+                    'error': f'Metric with ID {metric_id} not found'
+                })
+                continue
+            
             # Calculate and validate totals
-            if data and isinstance(data, dict) and 'periods' in data:
-                # For time-based metrics, calculate totals on the backend
-                data = validate_and_update_totals(data)
+            if data and isinstance(data, dict):
+                try:
+                    # Calculate totals for the data
+                    data = validate_and_update_totals(data, metric)
+                except Exception as e:
+                    # Log error but continue with original data
+                    logger.warning(f"Calculation error for metric {metric_id}: {e}")
+                    failed_submissions.append({
+                        'metric_id': metric_id,
+                        'error': f'Calculation error: {str(e)}'
+                    })
+                    # Continue with the original data
             
             # Get layer for this submission (submission-specific or default)
             layer = default_layer
@@ -332,17 +363,17 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     if not (request.user.is_staff or request.user.is_superuser or 
                             request.user.is_baker_tilly_admin or 
                             LayerProfile.objects.filter(id=submission_layer_id, app_users__user=request.user).exists()):
-                        return Response({'error': f'You do not have access to the layer with ID {submission_layer_id}'}, status=403)
+                        failed_submissions.append({
+                            'metric_id': metric_id,
+                            'error': f'No access to layer with ID {submission_layer_id}'
+                        })
+                        continue
                 except LayerProfile.DoesNotExist:
-                    return Response({'error': f'Layer with ID {submission_layer_id} not found'}, status=404)
-            
-            # Validate metric exists
-            try:
-                metric = ESGMetric.objects.get(id=metric_id)
-            except ESGMetric.DoesNotExist:
-                return Response({
-                    'error': f'Metric with ID {metric_id} not found'
-                }, status=400)
+                    failed_submissions.append({
+                        'metric_id': metric_id,
+                        'error': f'Layer with ID {submission_layer_id} not found'
+                    })
+                    continue
             
             # Handle updates if an existing submission was found
             if 'update_id' in sub_data:
@@ -353,6 +384,10 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     submission.data = data
                     submission.notes = notes
                     submission.batch_submission = batch
+                    
+                    # Update timestamp if requested
+                    if update_timestamp:
+                        submission.submitted_at = timezone.now()
                     
                     # Only update layer if specified
                     if layer:
@@ -386,6 +421,11 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     existing.data = data
                     existing.notes = notes
                     existing.batch_submission = batch
+                    
+                    # Update timestamp if requested
+                    if update_timestamp:
+                        existing.submitted_at = timezone.now()
+                        
                     existing.save()
                     updated_submissions.append(existing)
                     
@@ -419,13 +459,19 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             all_submissions = created_submissions + updated_submissions
             evidence_count = attach_evidence_to_submissions(all_submissions, request.user)
         
-        return Response({
+        # Prepare response
+        response_data = {
             'status': 'success',
             'message': f'Created {len(created_submissions)} and updated {len(updated_submissions)} submissions',
             'evidence_attached': evidence_count,
             'assignment_status': assignment.status,
             'batch_id': batch.id
-        })
+        }
+        
+        if failed_submissions:
+            response_data['failed_submissions'] = failed_submissions
+        
+        return Response(response_data)
 
     @action(detail=False, methods=['get'])
     def by_assignment(self, request):
@@ -1086,68 +1132,6 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         return Response(result)
 
     @action(detail=True, methods=['post'])
-    def submit(self, request, *args, **kwargs):
-        """
-        Submit a metric for review, recalculates totals and notifies approvers.
-        """
-        instance = self.get_object()
-        
-        # Validate all required fields are present
-        if not instance.data:
-            return Response(
-                {"detail": "Metric data is required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        if not instance.metric:
-            return Response(
-                {"detail": "Metric reference is required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Validate and update data with calculated fields
-        if instance.data:
-            try:
-                # Use metric object directly for calculations
-                instance.data = validate_and_update_totals(instance.data, instance.metric)
-                instance.save()
-            except Exception as e:
-                return Response(
-                    {"detail": f"Error validating metric data: {str(e)}"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        
-        # Update timestamp
-        instance.submitted_at = timezone.now()
-        instance.save()
-        
-        # Check for any assignment status updates
-        self._check_form_completion(instance)
-        
-        # Create notification for approvers if available
-        try:
-            # Get the appropriate approver - this might be from the assignment or a designated approver
-            approver = None
-            if instance.assignment and instance.assignment.assigned_to:
-                approver = instance.assignment.assigned_to
-                
-            if approver:
-                Notification.objects.create(
-                    recipient=approver,
-                    message=f"Metric '{instance.metric.name}' requires your review",
-                    notification_type=Notification.Type.APPROVAL_REQUIRED,
-                    related_object_id=instance.id,
-                    related_object_type=ContentType.objects.get_for_model(instance)
-                )
-        except Exception as e:
-            # Log error but don't block submission
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to create notification: {str(e)}")
-        
-        return Response({"detail": "Metric submitted for review successfully."})
-
-    @action(detail=True, methods=['post'])
     def clone(self, request, *args, **kwargs):
         """
         Create a copy of the current metric submission for a new reporting period.
@@ -1208,7 +1192,12 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                                 period_data['value'] = None
             
             # Update any total_consumption fields
-            new_data = validate_and_update_totals(new_data, instance.metric)
+            try:
+                new_data = validate_and_update_totals(new_data, instance.metric)
+            except Exception as e:
+                logger.warning(f"Calculation error during cloning: {e}")
+                # Continue with original data
+                
             new_instance.data = new_data
         
         # Save the new instance

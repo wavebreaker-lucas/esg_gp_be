@@ -283,6 +283,8 @@ class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
     name = serializers.CharField(required=False, allow_blank=True)
     notes = serializers.CharField(required=False, allow_blank=True)
     layer_id = serializers.IntegerField(required=False, allow_null=True)
+    auto_attach_evidence = serializers.BooleanField(required=False, default=False)
+    update_timestamp = serializers.BooleanField(required=False, default=False)
     
     def validate(self, data):
         """Validate that the assignment exists and user has access"""
