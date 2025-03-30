@@ -1088,24 +1088,22 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def submit(self, request, *args, **kwargs):
         """
-        Submit a metric for approval, handling all validation and state changes.
+        Submit a metric for review, recalculates totals and notifies approvers.
         """
         instance = self.get_object()
         
-        # Check if already submitted
-        if instance.status not in [Metric.Status.DRAFT, Metric.Status.REJECTED]:
-            return Response({"detail": "Only draft or rejected metrics can be submitted."}, 
-                            status=status.HTTP_400_BAD_REQUEST)
-        
         # Validate all required fields are present
-        # TODO: Add more comprehensive validation based on schema
-        required_fields = ['metric_type', 'data', 'period_end']
-        for field in required_fields:
-            if not getattr(instance, field):
-                return Response(
-                    {"detail": f"Missing required field: {field}"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        if not instance.data:
+            return Response(
+                {"detail": "Metric data is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        if not instance.metric:
+            return Response(
+                {"detail": "Metric reference is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Validate and update data with calculated fields
         if instance.data:
@@ -1119,37 +1117,47 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
-        # Update status to submitted
-        instance.status = Metric.Status.SUBMITTED
+        # Update timestamp
         instance.submitted_at = timezone.now()
         instance.save()
         
-        # Create notification for approvers
+        # Check for any assignment status updates
+        self._check_form_completion(instance)
+        
+        # Create notification for approvers if available
         try:
-            Notification.objects.create(
-                recipient=instance.approver,
-                message=f"Metric '{instance.name}' requires your approval",
-                notification_type=Notification.Type.APPROVAL_REQUIRED,
-                related_object_id=instance.id,
-                related_object_type=ContentType.objects.get_for_model(instance)
-            )
+            # Get the appropriate approver - this might be from the assignment or a designated approver
+            approver = None
+            if instance.assignment and instance.assignment.assigned_to:
+                approver = instance.assignment.assigned_to
+                
+            if approver:
+                Notification.objects.create(
+                    recipient=approver,
+                    message=f"Metric '{instance.metric.name}' requires your review",
+                    notification_type=Notification.Type.APPROVAL_REQUIRED,
+                    related_object_id=instance.id,
+                    related_object_type=ContentType.objects.get_for_model(instance)
+                )
         except Exception as e:
             # Log error but don't block submission
+            import logging
+            logger = logging.getLogger(__name__)
             logger.error(f"Failed to create notification: {str(e)}")
         
-        return Response({"detail": "Metric submitted for approval."})
+        return Response({"detail": "Metric submitted for review successfully."})
 
     @action(detail=True, methods=['post'])
     def clone(self, request, *args, **kwargs):
         """
-        Create a copy of the current metric for a new reporting period.
+        Create a copy of the current metric submission for a new reporting period.
         """
         instance = self.get_object()
         
         # Get parameters for the new period
         new_period_start = request.data.get('period_start')
         new_period_end = request.data.get('period_end')
-        new_name = request.data.get('name', f"Copy of {instance.name}")
+        new_name = request.data.get('name', f"Copy of {instance.metric.name}")
         
         # Validate period dates
         if not new_period_end:
@@ -1171,17 +1179,12 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             )
         
         # Create a new instance with copied base attributes
-        new_instance = Metric(
-            name=new_name,
-            description=instance.description,
-            metric_type=instance.metric_type,
-            period_start=new_period_start,
-            period_end=new_period_end,
-            unit=instance.unit,
-            status=Metric.Status.DRAFT,
-            created_by=request.user,
-            organization=instance.organization,
-            approver=instance.approver
+        new_instance = ESGMetricSubmission(
+            assignment=instance.assignment,
+            metric=instance.metric,
+            notes=instance.notes,
+            submitted_by=request.user,
+            layer=instance.layer
         )
         
         # Copy the data structure but reset values if needed
@@ -1205,7 +1208,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                                 period_data['value'] = None
             
             # Update any total_consumption fields
-            new_data = validate_and_update_totals(new_data, instance.metric_type)
+            new_data = validate_and_update_totals(new_data, instance.metric)
             new_instance.data = new_data
         
         # Save the new instance
