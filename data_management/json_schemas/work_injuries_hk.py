@@ -7,6 +7,9 @@ WORK_INJURIES_HK_SCHEMA = {
     "type": "work_injuries_hk",
     "name": "Hong Kong Work Injuries",
     "description": "For tracking work-related injuries and fatalities in Hong Kong",
+    "schema_type": "non_periodic_measurement",
+    "requires_calculation": False,
+    "calculation_type": "none",
     "template": {
         "type": "object",
         "properties": {

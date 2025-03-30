@@ -7,11 +7,15 @@ FRESH_WATER_PRC_SCHEMA = {
     "type": "fresh_water_prc",
     "name": "PRC Fresh Water Consumption",
     "description": "For tracking fresh water consumption in the PRC",
+    "schema_type": "periodic_measurement",
+    "requires_calculation": True,
+    "calculation_type": "sum_by_period",
     "calculated_fields": [
         {
             "path": "total_consumption", 
             "calculation": "sum(periods.*.value)",
-            "description": "Total PRC fresh water consumption"
+            "description": "Total PRC fresh water consumption",
+            "dependency_paths": ["periods.*"]
         }
     ],
     "template": {
@@ -108,6 +112,7 @@ FRESH_WATER_PRC_SCHEMA = {
             },
             "total_consumption": {
                 "type": "object",
+                "is_calculated": True,
                 "x-calculated": True,
                 "properties": {
                     "value": {"type": "number"},
@@ -132,6 +137,7 @@ FRESH_WATER_PRC_SCHEMA = {
     },
     "ui_hints": {
         "editable_fields": ["periods", "kpi_reference", "water_type"],
-        "read_only_fields": ["total_consumption", "region"]
+        "read_only_fields": ["total_consumption", "region"],
+        "display_order": ["periods", "total_consumption", "region", "water_type", "kpi_reference"]
     }
 } 

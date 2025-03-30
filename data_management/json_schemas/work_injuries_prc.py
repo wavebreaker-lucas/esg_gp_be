@@ -7,6 +7,9 @@ WORK_INJURIES_PRC_SCHEMA = {
     "type": "work_injuries_prc",
     "name": "PRC Work Injuries",
     "description": "For tracking work-related injuries and fatalities in the PRC",
+    "schema_type": "non_periodic_measurement",
+    "requires_calculation": False,
+    "calculation_type": "none",
     "template": {
         "type": "object",
         "properties": {

@@ -7,11 +7,15 @@ ELECTRICITY_PRC_SCHEMA = {
     "type": "electricity_prc",
     "name": "PRC Electricity Consumption",
     "description": "For tracking electricity consumption in the PRC",
+    "schema_type": "periodic_measurement",
+    "requires_calculation": True,
+    "calculation_type": "sum_by_period",
     "calculated_fields": [
         {
             "path": "total_consumption", 
             "calculation": "sum(periods.*.value)",
-            "description": "Total PRC electricity consumption"
+            "description": "Total PRC electricity consumption",
+            "dependency_paths": ["periods.*"]
         }
     ],
     "template": {
@@ -20,108 +24,115 @@ ELECTRICITY_PRC_SCHEMA = {
             "periods": {
                 "type": "object",
                 "properties": {
-                    "Jan-2024": {
+                    "Jan-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            "unit": {"type": "string", "enum": ["kWh"]}
                         }
                     },
-                    "Feb-2024": {
+                    "Feb-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            "unit": {"type": "string", "enum": ["kWh"]}
                         }
                     },
-                    "Mar-2024": {
+                    "Mar-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            "unit": {"type": "string", "enum": ["kWh"]}
                         }
                     },
-                    "Apr-2024": {
+                    "Apr-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            "unit": {"type": "string", "enum": ["kWh"]}
                         }
                     },
-                    "May-2024": {
+                    "May-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            "unit": {"type": "string", "enum": ["kWh"]}
                         }
                     },
-                    "Jun-2024": {
+                    "Jun-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            "unit": {"type": "string", "enum": ["kWh"]}
                         }
                     },
-                    "Jul-2024": {
+                    "Jul-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            "unit": {"type": "string", "enum": ["kWh"]}
                         }
                     },
-                    "Aug-2024": {
+                    "Aug-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            "unit": {"type": "string", "enum": ["kWh"]}
                         }
                     },
-                    "Sep-2024": {
+                    "Sep-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            "unit": {"type": "string", "enum": ["kWh"]}
                         }
                     },
-                    "Oct-2024": {
+                    "Oct-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            "unit": {"type": "string", "enum": ["kWh"]}
                         }
                     },
-                    "Nov-2024": {
+                    "Nov-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            "unit": {"type": "string", "enum": ["kWh"]}
                         }
                     },
-                    "Dec-2024": {
+                    "Dec-2025": {
                         "type": "object",
                         "properties": {
                             "value": {"type": "number"},
-                            "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                            "unit": {"type": "string", "enum": ["kWh"]}
                         }
                     }
                 }
             },
             "total_consumption": {
                 "type": "object",
+                "is_calculated": True,
                 "x-calculated": True,
                 "properties": {
                     "value": {"type": "number"},
-                    "unit": {"type": "string", "enum": ["kWh", "MWh"]}
+                    "unit": {"type": "string", "enum": ["kWh"]}
                 }
             },
             "kpi_reference": {
                 "type": "string",
                 "default": "KPI A1.2, A2.1"
+            },
+            "region": {
+                "type": "string",
+                "enum": ["PRC"],
+                "default": "PRC"
             }
         }
     },
     "ui_hints": {
         "editable_fields": ["periods", "kpi_reference"],
-        "read_only_fields": ["total_consumption"]
+        "read_only_fields": ["total_consumption", "region"],
+        "display_order": ["periods", "total_consumption", "region", "kpi_reference"]
     }
 } 
