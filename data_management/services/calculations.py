@@ -9,6 +9,21 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
+# Registry of calculation handlers for different schema types
+CALCULATION_HANDLERS = {}
+
+def register_calculation_handler(schema_type, handler_function):
+    """
+    Register a calculation handler for a specific schema type.
+    
+    Args:
+        schema_type (str): The type identifier of the schema
+        handler_function (callable): Function that processes data for this schema
+    """
+    global CALCULATION_HANDLERS
+    CALCULATION_HANDLERS[schema_type] = handler_function
+    logger.info(f"Registered calculation handler for schema type: {schema_type}")
+
 def get_calculation_metadata(schema_type):
     """
     Get calculation metadata for a specific schema type.
@@ -240,27 +255,202 @@ def apply_schema_calculations(data, schema_type):
     
     return data
 
+# Handler functions for different schema types
+
+def calculate_electricity_hk(data):
+    """
+    Handler for Hong Kong electricity consumption (CLP/HKE).
+    
+    Args:
+        data (dict): The data to process
+        
+    Returns:
+        dict: The data with updated totals
+    """
+    if not data or not isinstance(data, dict) or 'periods' not in data:
+        return data
+        
+    periods = data.get('periods', {})
+    if not isinstance(periods, dict) or not periods:
+        return data
+    
+    totals = {
+        'CLP': {'value': 0, 'unit': None},
+        'HKE': {'value': 0, 'unit': None}
+    }
+    
+    for period_key, period_data in periods.items():
+        # Sum CLP values
+        if 'CLP' in period_data and isinstance(period_data['CLP'], dict):
+            clp_data = period_data['CLP']
+            if 'value' in clp_data and clp_data['value'] is not None:
+                totals['CLP']['value'] += float(clp_data['value'])
+                # Capture unit from the first valid entry
+                if totals['CLP']['unit'] is None and 'unit' in clp_data:
+                    totals['CLP']['unit'] = clp_data['unit']
+        
+        # Sum HKE values
+        if 'HKE' in period_data and isinstance(period_data['HKE'], dict):
+            hke_data = period_data['HKE']
+            if 'value' in hke_data and hke_data['value'] is not None:
+                totals['HKE']['value'] += float(hke_data['value'])
+                # Capture unit from the first valid entry
+                if totals['HKE']['unit'] is None and 'unit' in hke_data:
+                    totals['HKE']['unit'] = hke_data['unit']
+    
+    # Set or update total consumption
+    if 'total_consumption' not in data:
+        data['total_consumption'] = totals
+    else:
+        # Update existing totals
+        for key in ['CLP', 'HKE']:
+            if key not in data['total_consumption']:
+                data['total_consumption'][key] = totals[key]
+            else:
+                data['total_consumption'][key]['value'] = totals[key]['value']
+                if 'unit' not in data['total_consumption'][key] and totals[key]['unit']:
+                    data['total_consumption'][key]['unit'] = totals[key]['unit']
+    
+    return data
+
+def calculate_electricity_prc(data):
+    """
+    Handler for PRC electricity consumption (single value per period).
+    
+    Args:
+        data (dict): The data to process
+        
+    Returns:
+        dict: The data with updated totals
+    """
+    if not data or not isinstance(data, dict) or 'periods' not in data:
+        return data
+        
+    periods = data.get('periods', {})
+    if not isinstance(periods, dict) or not periods:
+        return data
+    
+    total = {'value': 0, 'unit': None}
+    
+    for period_key, period_data in periods.items():
+        if isinstance(period_data, dict) and 'value' in period_data and period_data['value'] is not None:
+            total['value'] += float(period_data['value'])
+            # Capture unit from the first valid entry
+            if total['unit'] is None and 'unit' in period_data:
+                total['unit'] = period_data['unit']
+    
+    # Set or update total consumption
+    if 'total_consumption' not in data:
+        data['total_consumption'] = total
+    else:
+        if isinstance(data['total_consumption'], dict):
+            data['total_consumption']['value'] = total['value']
+            if 'unit' not in data['total_consumption'] and total['unit']:
+                data['total_consumption']['unit'] = total['unit']
+    
+    return data
+
+def calculate_water_consumption(data):
+    """
+    Handler for water consumption tracking (HK/PRC regions).
+    
+    Args:
+        data (dict): The data to process
+        
+    Returns:
+        dict: The data with updated totals
+    """
+    if not data or not isinstance(data, dict) or 'periods' not in data:
+        return data
+        
+    periods = data.get('periods', {})
+    if not isinstance(periods, dict) or not periods:
+        return data
+    
+    totals = {
+        'HK': {'value': 0, 'unit': None},
+        'PRC': {'value': 0, 'unit': None}
+    }
+    
+    for period_key, period_data in periods.items():
+        # Sum HK values
+        if 'HK' in period_data and isinstance(period_data['HK'], dict):
+            hk_data = period_data['HK']
+            if 'value' in hk_data and hk_data['value'] is not None:
+                totals['HK']['value'] += float(hk_data['value'])
+                # Capture unit from the first valid entry
+                if totals['HK']['unit'] is None and 'unit' in hk_data:
+                    totals['HK']['unit'] = hk_data['unit']
+        
+        # Sum PRC values
+        if 'PRC' in period_data and isinstance(period_data['PRC'], dict):
+            prc_data = period_data['PRC']
+            if 'value' in prc_data and prc_data['value'] is not None:
+                totals['PRC']['value'] += float(prc_data['value'])
+                # Capture unit from the first valid entry
+                if totals['PRC']['unit'] is None and 'unit' in prc_data:
+                    totals['PRC']['unit'] = prc_data['unit']
+    
+    # Set or update total consumption
+    if 'total_consumption' not in data:
+        data['total_consumption'] = totals
+    else:
+        for key in ['HK', 'PRC']:
+            if key not in data['total_consumption']:
+                data['total_consumption'][key] = totals[key]
+            else:
+                data['total_consumption'][key]['value'] = totals[key]['value']
+                if 'unit' not in data['total_consumption'][key] and totals[key]['unit']:
+                    data['total_consumption'][key]['unit'] = totals[key]['unit']
+    
+    return data
+
+# Register calculation handlers
+register_calculation_handler('electricity_hk', calculate_electricity_hk)
+register_calculation_handler('electricity_prc', calculate_electricity_prc)
+register_calculation_handler('fresh_water', calculate_water_consumption)
+register_calculation_handler('wastewater', calculate_water_consumption)
+register_calculation_handler('water_consumption', calculate_water_consumption)
+
 def validate_and_update_totals(data, schema_type=None):
     """
     Validate and update total consumption in a submission's data.
-    If schema_type is provided, use schema-specific calculations.
-    Otherwise fall back to schema structure detection.
+    Uses explicit schema type if provided, with fallback to structure detection.
     
     Args:
         data: The JSON data structure from an ESG metric submission
-        schema_type: Optional schema type for specific calculation rules
+        schema_type: Optional schema type or ESGMetric object with schema_registry
         
     Returns:
         dict: The updated data with correct totals
     """
-    if not data or not isinstance(data, dict) or 'periods' not in data:
+    if not data or not isinstance(data, dict):
         return data
     
-    # If schema_type is provided, use schema-specific calculations
+    # Extract schema type if an ESGMetric object was passed
+    metric_obj = None
+    if hasattr(schema_type, '__class__') and hasattr(schema_type, 'schema_registry'):
+        metric_obj = schema_type
+        if schema_type.schema_registry:
+            schema_type = schema_type.schema_registry.name
+        else:
+            schema_type = None
+    
+    # Try schema-based calculation through explicit registry
+    if schema_type and schema_type in CALCULATION_HANDLERS:
+        logger.info(f"Using registered calculation handler for schema type: {schema_type}")
+        return CALCULATION_HANDLERS[schema_type](data)
+    
+    # If we have a schema_registry but no explicit handler, use calculation metadata approach
     if schema_type:
+        logger.info(f"Using schema-based calculation for: {schema_type}")
         return apply_schema_calculations(data, schema_type)
     
-    # Otherwise, fall back to old behavior that detects schema structure
+    # Structure detection as a fallback (legacy mode)
+    if 'periods' not in data:
+        return data
+        
+    logger.warning("No schema type provided, falling back to structure detection (legacy mode)")
     periods = data.get('periods', {})
     if not isinstance(periods, dict) or not periods:
         return data
@@ -270,99 +460,14 @@ def validate_and_update_totals(data, schema_type=None):
     
     # Handle electricity_hk schema (CLP/HKE providers)
     if 'CLP' in sample_period and 'HKE' in sample_period:
-        totals = {
-            'CLP': {'value': 0, 'unit': None},
-            'HKE': {'value': 0, 'unit': None}
-        }
-        
-        for period_key, period_data in periods.items():
-            # Sum CLP values
-            if 'CLP' in period_data and isinstance(period_data['CLP'], dict):
-                clp_data = period_data['CLP']
-                if 'value' in clp_data and clp_data['value'] is not None:
-                    totals['CLP']['value'] += float(clp_data['value'])
-                    # Capture unit from the first valid entry
-                    if totals['CLP']['unit'] is None and 'unit' in clp_data:
-                        totals['CLP']['unit'] = clp_data['unit']
-            
-            # Sum HKE values
-            if 'HKE' in period_data and isinstance(period_data['HKE'], dict):
-                hke_data = period_data['HKE']
-                if 'value' in hke_data and hke_data['value'] is not None:
-                    totals['HKE']['value'] += float(hke_data['value'])
-                    # Capture unit from the first valid entry
-                    if totals['HKE']['unit'] is None and 'unit' in hke_data:
-                        totals['HKE']['unit'] = hke_data['unit']
-        
-        # Set or update total consumption
-        if 'total_consumption' not in data:
-            data['total_consumption'] = totals
-        else:
-            # Update existing totals
-            for key in ['CLP', 'HKE']:
-                if key not in data['total_consumption']:
-                    data['total_consumption'][key] = totals[key]
-                else:
-                    data['total_consumption'][key]['value'] = totals[key]['value']
-                    if 'unit' not in data['total_consumption'][key] and totals[key]['unit']:
-                        data['total_consumption'][key]['unit'] = totals[key]['unit']
+        return calculate_electricity_hk(data)
     
     # Handle electricity_prc schema (single value per period)
     elif 'value' in sample_period and 'unit' in sample_period:
-        total = {'value': 0, 'unit': None}
-        
-        for period_key, period_data in periods.items():
-            if isinstance(period_data, dict) and 'value' in period_data and period_data['value'] is not None:
-                total['value'] += float(period_data['value'])
-                # Capture unit from the first valid entry
-                if total['unit'] is None and 'unit' in period_data:
-                    total['unit'] = period_data['unit']
-        
-        # Set or update total consumption
-        if 'total_consumption' not in data:
-            data['total_consumption'] = total
-        else:
-            if isinstance(data['total_consumption'], dict):
-                data['total_consumption']['value'] = total['value']
-                if 'unit' not in data['total_consumption'] and total['unit']:
-                    data['total_consumption']['unit'] = total['unit']
+        return calculate_electricity_prc(data)
     
     # Handle water schemas (HK/PRC regions)
     elif 'HK' in sample_period and 'PRC' in sample_period:
-        totals = {
-            'HK': {'value': 0, 'unit': None},
-            'PRC': {'value': 0, 'unit': None}
-        }
-        
-        for period_key, period_data in periods.items():
-            # Sum HK values
-            if 'HK' in period_data and isinstance(period_data['HK'], dict):
-                hk_data = period_data['HK']
-                if 'value' in hk_data and hk_data['value'] is not None:
-                    totals['HK']['value'] += float(hk_data['value'])
-                    # Capture unit from the first valid entry
-                    if totals['HK']['unit'] is None and 'unit' in hk_data:
-                        totals['HK']['unit'] = hk_data['unit']
-            
-            # Sum PRC values
-            if 'PRC' in period_data and isinstance(period_data['PRC'], dict):
-                prc_data = period_data['PRC']
-                if 'value' in prc_data and prc_data['value'] is not None:
-                    totals['PRC']['value'] += float(prc_data['value'])
-                    # Capture unit from the first valid entry
-                    if totals['PRC']['unit'] is None and 'unit' in prc_data:
-                        totals['PRC']['unit'] = prc_data['unit']
-        
-        # Set or update total consumption
-        if 'total_consumption' not in data:
-            data['total_consumption'] = totals
-        else:
-            for key in ['HK', 'PRC']:
-                if key not in data['total_consumption']:
-                    data['total_consumption'][key] = totals[key]
-                else:
-                    data['total_consumption'][key]['value'] = totals[key]['value']
-                    if 'unit' not in data['total_consumption'][key] and totals[key]['unit']:
-                        data['total_consumption'][key]['unit'] = totals[key]['unit']
+        return calculate_water_consumption(data)
     
     return data 

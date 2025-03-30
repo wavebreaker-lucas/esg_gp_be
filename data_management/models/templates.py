@@ -65,6 +65,8 @@ class ESGMetric(models.Model):
     data_schema = models.JSONField(default=dict, blank=True, help_text="JSON Schema for this metric's data")
     schema_registry = models.ForeignKey('MetricSchemaRegistry', on_delete=models.SET_NULL, null=True, blank=True, 
                                       related_name='metrics', help_text="Reference to a registered schema for this metric")
+    schema_type = models.CharField(max_length=50, null=True, blank=True, 
+                                help_text="Direct reference to schema type (e.g., 'electricity_hk', 'electricity_prc')")
     form_component = models.CharField(max_length=50, null=True, blank=True, help_text="Frontend component to use for this metric")
     primary_path = models.CharField(
         max_length=255, 
