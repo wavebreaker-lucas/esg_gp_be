@@ -1,6 +1,5 @@
 from ..models.templates import ESGMetricEvidence
 import logging
-from datetime import datetime
 
 # Configure logging to show in console
 logging.basicConfig(
@@ -15,9 +14,9 @@ def attach_evidence_to_submissions(submissions, user):
     This is called during form completion and batch submission to link any pending evidence files.
     Note: This only attaches the evidence files, it does NOT apply OCR data automatically.
     
-    Uses layer and period to improve the matching process:
-    - For time-based metrics: Matches on both layer AND period
-    - For non-time-based metrics: Matches primarily on layer
+    Uses layer and reference_path to improve the matching process:
+    - For time-based metrics: Uses reference_path to match with the correct period in the JSON data
+    - For all metrics: Matches primarily on layer and metric
     
     Args:
         submissions: List of ESGMetricSubmission objects
@@ -83,44 +82,49 @@ def attach_evidence_to_submissions(submissions, user):
         
         # Process each evidence file
         for evidence in evidence_files:
-            if is_time_based:
-                # For time-based metrics, match on both layer and period
-                evidence_period = evidence.period or evidence.ocr_period
+            if is_time_based and evidence.reference_path:
+                # For time-based metrics, match using the reference path
+                # reference_path contains the path to the specific period in the JSON data
+                # e.g., "periods.Q1-2024" or "periods.Jan-2024"
                 
-                if not evidence_period:
-                    # Skip evidence without a period for time-based metrics
-                    logger.info(f"Evidence {evidence.id} has no period, skipping for time-based metric")
-                    continue
-                
-                # Find matching submission by period and layer
+                # Find matching submission by checking if reference_path exists in JSON data
                 best_match = None
                 for sub in subs:
-                    # Convert submission period to date if it's a string
-                    sub_period = sub.reporting_period
-                    if isinstance(sub_period, str):
-                        try:
-                            sub_period = datetime.strptime(sub_period, '%Y-%m-%d').date()
-                        except ValueError:
-                            logger.warning(f"Could not parse submission period {sub_period}")
-                            continue
+                    # Skip submissions without data
+                    if not sub.data:
+                        continue
                     
-                    # Perfect match: same period and layer
-                    if sub_period == evidence_period and sub.layer and evidence.layer and sub.layer.id == evidence.layer.id:
-                        best_match = sub
-                        logger.info(f"Found perfect match (period+layer) for evidence {evidence.id}")
-                        break
-                    # Period match only
-                    elif sub_period == evidence_period:
-                        best_match = sub
-                        logger.info(f"Found period match for evidence {evidence.id}")
-                        # Keep looking for better match with matching layer
+                    # Check if the reference path exists in the JSON data
+                    parts = evidence.reference_path.split('.')
+                    current = sub.data
+                    path_exists = True
+                    
+                    for part in parts:
+                        if isinstance(current, dict) and part in current:
+                            current = current[part]
+                        else:
+                            path_exists = False
+                            break
+                    
+                    if path_exists:
+                        # Found a submission with matching reference path in data
+                        if sub.layer and evidence.layer and sub.layer.id == evidence.layer.id:
+                            # Perfect match: reference path exists and layer matches
+                            best_match = sub
+                            logger.info(f"Found perfect match (path+layer) for evidence {evidence.id}")
+                            break
+                        elif not best_match:
+                            # Path match but layer doesn't match - use as fallback
+                            best_match = sub
+                            logger.info(f"Found path match for evidence {evidence.id}")
+                            # Keep looking for better match with matching layer
                 
-                # If no period match found, skip this evidence for time-based metrics
+                # If no matching path found, skip this evidence
                 if not best_match:
-                    logger.info(f"No period match found for evidence {evidence.id}, skipping")
+                    logger.info(f"No path match found for evidence {evidence.id}, skipping")
                     continue
             else:
-                # For non-time-based metrics, match primarily on layer
+                # For non-time-based metrics or evidence without reference path, match primarily on layer
                 best_match = None
                 
                 # First try to find a submission with matching layer
@@ -141,9 +145,5 @@ def attach_evidence_to_submissions(submissions, user):
                 evidence.save()
                 attached_count += 1
                 logger.info(f"Attached evidence {evidence.id} to submission {best_match.id}")
-                
-                # We intentionally do NOT apply OCR data automatically
-                # Users need to explicitly choose to use OCR data by calling attach_to_submission
-                # with apply_ocr_data=true
     
     return attached_count 

@@ -3,6 +3,81 @@
 ## Overview
 The ESG Platform includes automated OCR (Optical Character Recognition) processing for utility bills, using the Azure Content Understanding API. This feature extracts consumption data and billing periods from utility bills, reducing manual data entry and improving accuracy.
 
+## JSON Data Approach and Evidence Integration
+
+The ESG Platform now uses a JSON-based approach for all metric submissions, with evidence files linked to specific parts of the JSON data structure using the `reference_path` field.
+
+### JSON Data Structure
+
+All metric submissions now use a single `data` JSON field instead of separate value/text_value/reporting_period fields:
+
+- **Regular metrics** use a simple structure like:
+  ```json
+  {
+    "value": 42.5,
+    "comments": "Additional information"
+  }
+  ```
+
+- **Time-based metrics** use a nested structure like:
+  ```json
+  {
+    "periods": {
+      "Q1-2024": { "value": 120.5, "comments": "January-March consumption" },
+      "Q2-2024": { "value": 135.2, "comments": "April-June consumption" }
+    },
+    "annual_total": 255.7
+  }
+  ```
+
+### Reference Path for Evidence
+
+The `reference_path` field specifies which part of the JSON data structure an evidence file relates to:
+
+```python
+class ESGMetricEvidence(models.Model):
+    # ... other fields ...
+    reference_path = models.CharField(
+        max_length=255, 
+        null=True, 
+        blank=True,
+        help_text="JSON path this evidence relates to (e.g., 'periods.Q1-2024')"
+    )
+```
+
+- For regular metrics, the reference path might be simply `"value"`
+- For time-based metrics, it could be `"periods.Q1-2024"` to link to a specific reporting period
+
+### Automatic Evidence Attachment
+
+When submissions are created or updated, the system can automatically attach relevant standalone evidence files:
+
+1. For regular metrics:
+   - System finds standalone evidence files for the metric
+   - Matches them primarily by layer
+   - Attaches them to the submission
+
+2. For time-based metrics:
+   - System uses the `reference_path` to match evidence to the right part of the data
+   - Checks if the path exists in the submission's JSON data
+   - Prioritizes matches with the same layer
+   - Perfect matches occur when both reference path and layer match
+
+### Evidence Upload with Reference Path
+
+When uploading evidence, you can specify a reference path:
+
+```
+POST /api/metric-evidence/
+{
+  "file": [file data],
+  "metric_id": 123,
+  "layer_id": 3,
+  "reference_path": "periods.Q1-2024",
+  "description": "Q1 2024 utility bill"
+}
+```
+
 ## Evidence Layer Support
 
 The system now includes layer-based organization for evidence files, enabling better categorization and filtering of evidence by organizational units:
@@ -20,10 +95,10 @@ When uploading evidence, users can specify a layer:
 ```
 POST /api/metric-evidence/
 {
-  file: [file data],
-  metric_id: 123,
-  layer_id: 3,  // Layer association
-  period: "2024-06-30"
+  "file": [file data],
+  "metric_id": 123,
+  "layer_id": 3,  // Layer association
+  "reference_path": "periods.Q1-2024"
 }
 ```
 
@@ -54,7 +129,7 @@ GET /api/metric-submissions/available_layers/
   3. Continue without a layer if needed
 
 ### ESGMetricEvidence Model Enhancement
-The evidence model has been updated with a layer field:
+The evidence model has been updated with layer and reference path fields:
 
 ```python
 class ESGMetricEvidence(models.Model):
@@ -68,6 +143,13 @@ class ESGMetricEvidence(models.Model):
         blank=True,
         related_name='evidence_files',
         help_text="The layer this evidence is from"
+    )
+    # Reference path for JSON data
+    reference_path = models.CharField(
+        max_length=255, 
+        null=True, 
+        blank=True,
+        help_text="JSON path this evidence relates to (e.g., 'periods.Q1-2024')"
     )
     ...
 ```
@@ -158,7 +240,8 @@ Evidence files can be stored in two ways:
    - Parameters:
      - `file`: The evidence file to upload (required)
      - `metric_id`: (Optional) ID of the metric this evidence relates to; sets the `intended_metric` field for easier association with submissions
-     - `period`: (Optional) Reporting period in YYYY-MM-DD format
+     - `reference_path`: (Optional) JSON path this evidence relates to (e.g., 'periods.Q1-2024')
+     - `layer_id`: (Optional) ID of the layer this evidence belongs to
      - `description`: (Optional) Description of the evidence
    - Response:
      - Returns the created evidence record with additional metadata
@@ -180,6 +263,7 @@ Evidence files can be stored in two ways:
      - Upload dates and times
      - Filename and description
      - OCR processing status and results if available
+     - Reference path and layer information
    - Perfect for showing users the evidence they've just uploaded
    - Example response:
      ```json
@@ -191,6 +275,9 @@ Evidence files can be stored in two ways:
          "uploaded_at": "2025-03-24T01:03:25Z",
          "is_standalone": true,
          "description": "",
+         "reference_path": "periods.Q1-2024",
+         "layer_id": 3,
+         "layer_name": "Subsidiary A",
          "is_processed_by_ocr": false,
          "uploaded_by": "user@example.com",
          "metric_id": 123
@@ -204,6 +291,35 @@ Evidence files can be stored in two ways:
    - Optional: `apply_ocr_data=true|false` to apply OCR data to the submission
    - Only works for evidence files that aren't already attached to a submission
    - When `apply_ocr_data=true`, displays warnings if overriding existing values
+
+### Batch Submission with Auto Evidence Attachment
+
+When submitting multiple metric values at once, you can automatically attach standalone evidence files:
+
+```
+POST /api/metric-submissions/batch_submit/
+{
+  "assignment_id": 42,
+  "submissions": [
+    {
+      "metric_id": 123,
+      "data": {
+        "periods": {
+          "Q1-2024": { "value": 120.5 },
+          "Q2-2024": { "value": 135.2 }
+        }
+      }
+    }
+  ],
+  "auto_attach_evidence": true
+}
+```
+
+The `auto_attach_evidence` parameter triggers automatic attachment of relevant standalone evidence files:
+- For each submission, the system finds standalone evidence with matching metric ID
+- For time-based metrics, it uses the `reference_path` to match with the correct period
+- For regular metrics, it primarily matches by layer
+- Returns the number of evidence files attached in the response
 
 ### OCR-Specific Endpoints
 
