@@ -257,7 +257,7 @@ FRESH_WATER_SCHEMA = {
             },
             "total_consumption": {
                 "type": "object",
-                "x-calculated": true,
+                "x-calculated": True,
                 "properties": {
                     "HK": {
                         "type": "object",

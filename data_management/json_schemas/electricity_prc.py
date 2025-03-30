@@ -108,7 +108,7 @@ ELECTRICITY_PRC_SCHEMA = {
             },
             "total_consumption": {
                 "type": "object",
-                "x-calculated": true,
+                "x-calculated": True,
                 "properties": {
                     "value": {"type": "number"},
                     "unit": {"type": "string", "enum": ["kWh", "MWh"]}

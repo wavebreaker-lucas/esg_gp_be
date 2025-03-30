@@ -257,7 +257,7 @@ ELECTRICITY_HK_SCHEMA = {
             },
             "total_consumption": {
                 "type": "object",
-                "x-calculated": true,
+                "x-calculated": True,
                 "properties": {
                     "CLP": {
                         "type": "object",
