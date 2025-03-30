@@ -7,6 +7,18 @@ WASTEWATER_SCHEMA = {
     "type": "wastewater",
     "name": "Wastewater Consumption by Region",
     "description": "For tracking wastewater consumption across Hong Kong and the PRC",
+    "calculated_fields": [
+        {
+            "path": "total_consumption.HK", 
+            "calculation": "sum(periods.*.HK.value)",
+            "description": "Total Hong Kong wastewater consumption"
+        },
+        {
+            "path": "total_consumption.PRC", 
+            "calculation": "sum(periods.*.PRC.value)",
+            "description": "Total PRC wastewater consumption"
+        }
+    ],
     "template": {
         "type": "object",
         "properties": {
@@ -245,6 +257,7 @@ WASTEWATER_SCHEMA = {
             },
             "total_consumption": {
                 "type": "object",
+                "x-calculated": true,
                 "properties": {
                     "HK": {
                         "type": "object",
@@ -272,5 +285,9 @@ WASTEWATER_SCHEMA = {
                 "default": "Wastewater"
             }
         }
+    },
+    "ui_hints": {
+        "editable_fields": ["periods", "kpi_reference", "water_type"],
+        "read_only_fields": ["total_consumption"]
     }
 } 

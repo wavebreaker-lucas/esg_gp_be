@@ -7,6 +7,13 @@ ELECTRICITY_PRC_SCHEMA = {
     "type": "electricity_prc",
     "name": "PRC Electricity Consumption",
     "description": "For tracking electricity consumption in the PRC",
+    "calculated_fields": [
+        {
+            "path": "total_consumption", 
+            "calculation": "sum(periods.*.value)",
+            "description": "Total PRC electricity consumption"
+        }
+    ],
     "template": {
         "type": "object",
         "properties": {
@@ -101,6 +108,7 @@ ELECTRICITY_PRC_SCHEMA = {
             },
             "total_consumption": {
                 "type": "object",
+                "x-calculated": true,
                 "properties": {
                     "value": {"type": "number"},
                     "unit": {"type": "string", "enum": ["kWh", "MWh"]}
@@ -111,5 +119,9 @@ ELECTRICITY_PRC_SCHEMA = {
                 "default": "KPI A1.2, A2.1"
             }
         }
+    },
+    "ui_hints": {
+        "editable_fields": ["periods", "kpi_reference"],
+        "read_only_fields": ["total_consumption"]
     }
 } 

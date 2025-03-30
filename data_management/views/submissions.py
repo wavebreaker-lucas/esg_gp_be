@@ -8,6 +8,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from django.utils import timezone
+from datetime import datetime
+import copy
 
 from accounts.models import CustomUser, AppUser, LayerProfile
 from accounts.services import get_accessible_layers, has_layer_access
@@ -22,6 +24,9 @@ from ..serializers.esg import (
     ESGMetricSubmissionVerifySerializer
 )
 from .utils import get_required_submission_count, attach_evidence_to_submissions
+from ..services.calculations import validate_and_update_totals
+from ..models.notifications import Notification
+from django.contrib.contenttypes.models import ContentType
 
 
 class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
@@ -56,6 +61,20 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         return self.serializer_class
 
     def perform_create(self, serializer):
+        # Get the data and calculate totals for time-based metrics
+        if hasattr(serializer, 'validated_data') and 'data' in serializer.validated_data:
+            data = serializer.validated_data['data']
+            
+            # Get metric object for calculation if available
+            metric = None
+            if 'metric' in serializer.validated_data:
+                metric = serializer.validated_data['metric']
+            
+            # Update data with calculated fields if needed
+            if data and isinstance(data, dict):
+                updated_data = validate_and_update_totals(data, metric)
+                serializer.validated_data['data'] = updated_data
+        
         submission = serializer.save(submitted_by=self.request.user)
         
         # If no layer was specified, try to set a default layer
@@ -297,6 +316,11 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             metric_id = sub_data.get('metric_id')
             data = sub_data.get('data')
             notes = sub_data.get('notes', '')
+            
+            # Calculate and validate totals
+            if data and isinstance(data, dict) and 'periods' in data:
+                # For time-based metrics, calculate totals on the backend
+                data = validate_and_update_totals(data)
             
             # Get layer for this submission (submission-specific or default)
             layer = default_layer
@@ -1059,4 +1083,134 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 
             result['aggregation'].append(metric_data)
             
-        return Response(result) 
+        return Response(result)
+
+    @action(detail=True, methods=['post'])
+    def submit(self, request, *args, **kwargs):
+        """
+        Submit a metric for approval, handling all validation and state changes.
+        """
+        instance = self.get_object()
+        
+        # Check if already submitted
+        if instance.status not in [Metric.Status.DRAFT, Metric.Status.REJECTED]:
+            return Response({"detail": "Only draft or rejected metrics can be submitted."}, 
+                            status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate all required fields are present
+        # TODO: Add more comprehensive validation based on schema
+        required_fields = ['metric_type', 'data', 'period_end']
+        for field in required_fields:
+            if not getattr(instance, field):
+                return Response(
+                    {"detail": f"Missing required field: {field}"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Validate and update data with calculated fields
+        if instance.data:
+            try:
+                # Use metric object directly for calculations
+                instance.data = validate_and_update_totals(instance.data, instance.metric)
+                instance.save()
+            except Exception as e:
+                return Response(
+                    {"detail": f"Error validating metric data: {str(e)}"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Update status to submitted
+        instance.status = Metric.Status.SUBMITTED
+        instance.submitted_at = timezone.now()
+        instance.save()
+        
+        # Create notification for approvers
+        try:
+            Notification.objects.create(
+                recipient=instance.approver,
+                message=f"Metric '{instance.name}' requires your approval",
+                notification_type=Notification.Type.APPROVAL_REQUIRED,
+                related_object_id=instance.id,
+                related_object_type=ContentType.objects.get_for_model(instance)
+            )
+        except Exception as e:
+            # Log error but don't block submission
+            logger.error(f"Failed to create notification: {str(e)}")
+        
+        return Response({"detail": "Metric submitted for approval."})
+
+    @action(detail=True, methods=['post'])
+    def clone(self, request, *args, **kwargs):
+        """
+        Create a copy of the current metric for a new reporting period.
+        """
+        instance = self.get_object()
+        
+        # Get parameters for the new period
+        new_period_start = request.data.get('period_start')
+        new_period_end = request.data.get('period_end')
+        new_name = request.data.get('name', f"Copy of {instance.name}")
+        
+        # Validate period dates
+        if not new_period_end:
+            return Response(
+                {"detail": "New period_end date is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            # Convert to date objects if they are strings
+            if isinstance(new_period_end, str):
+                new_period_end = datetime.strptime(new_period_end, '%Y-%m-%d').date()
+            if new_period_start and isinstance(new_period_start, str):
+                new_period_start = datetime.strptime(new_period_start, '%Y-%m-%d').date()
+        except ValueError:
+            return Response(
+                {"detail": "Invalid date format. Use YYYY-MM-DD"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create a new instance with copied base attributes
+        new_instance = Metric(
+            name=new_name,
+            description=instance.description,
+            metric_type=instance.metric_type,
+            period_start=new_period_start,
+            period_end=new_period_end,
+            unit=instance.unit,
+            status=Metric.Status.DRAFT,
+            created_by=request.user,
+            organization=instance.organization,
+            approver=instance.approver
+        )
+        
+        # Copy the data structure but reset values if needed
+        if instance.data:
+            # Create a deep copy
+            new_data = copy.deepcopy(instance.data)
+            
+            # Reset values in periods if requested
+            if request.data.get('reset_values', False):
+                if 'periods' in new_data and isinstance(new_data['periods'], dict):
+                    # Reset based on schema structure
+                    for period_key, period_data in new_data['periods'].items():
+                        if isinstance(period_data, dict):
+                            # If it's a nested structure (like HK/PRC or CLP/HKE)
+                            if any(k in period_data for k in ['HK', 'PRC', 'CLP', 'HKE']):
+                                for region_key, region_data in list(period_data.items()):
+                                    if isinstance(region_data, dict) and 'value' in region_data:
+                                        region_data['value'] = None
+                            # If it's a simple value/unit structure
+                            elif 'value' in period_data:
+                                period_data['value'] = None
+            
+            # Update any total_consumption fields
+            new_data = validate_and_update_totals(new_data, instance.metric_type)
+            new_instance.data = new_data
+        
+        # Save the new instance
+        new_instance.save()
+        
+        # Return the new instance
+        serializer = self.get_serializer(new_instance)
+        return Response(serializer.data) 

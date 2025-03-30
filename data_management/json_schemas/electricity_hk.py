@@ -7,6 +7,18 @@ ELECTRICITY_HK_SCHEMA = {
     "type": "electricity_hk",
     "name": "Hong Kong Electricity Consumption (CLP/HKE)",
     "description": "For tracking electricity consumption in Hong Kong split by provider (CLP, HKE)",
+    "calculated_fields": [
+        {
+            "path": "total_consumption.CLP", 
+            "calculation": "sum(periods.*.CLP.value)",
+            "description": "Total CLP electricity consumption"
+        },
+        {
+            "path": "total_consumption.HKE", 
+            "calculation": "sum(periods.*.HKE.value)",
+            "description": "Total HKE electricity consumption"
+        }
+    ],
     "template": {
         "type": "object",
         "properties": {
@@ -245,6 +257,7 @@ ELECTRICITY_HK_SCHEMA = {
             },
             "total_consumption": {
                 "type": "object",
+                "x-calculated": true,
                 "properties": {
                     "CLP": {
                         "type": "object",
@@ -267,5 +280,9 @@ ELECTRICITY_HK_SCHEMA = {
                 "default": "KPI A1.2, A2.1"
             }
         }
+    },
+    "ui_hints": {
+        "editable_fields": ["periods", "kpi_reference"],
+        "read_only_fields": ["total_consumption"]
     }
 } 

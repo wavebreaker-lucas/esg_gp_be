@@ -7,6 +7,18 @@ FRESH_WATER_SCHEMA = {
     "type": "fresh_water",
     "name": "Fresh Water Consumption by Region",
     "description": "For tracking fresh water consumption across Hong Kong and the PRC",
+    "calculated_fields": [
+        {
+            "path": "total_consumption.HK", 
+            "calculation": "sum(periods.*.HK.value)",
+            "description": "Total Hong Kong fresh water consumption"
+        },
+        {
+            "path": "total_consumption.PRC", 
+            "calculation": "sum(periods.*.PRC.value)",
+            "description": "Total PRC fresh water consumption"
+        }
+    ],
     "template": {
         "type": "object",
         "properties": {
@@ -245,6 +257,7 @@ FRESH_WATER_SCHEMA = {
             },
             "total_consumption": {
                 "type": "object",
+                "x-calculated": true,
                 "properties": {
                     "HK": {
                         "type": "object",
@@ -272,5 +285,9 @@ FRESH_WATER_SCHEMA = {
                 "default": "Fresh Water"
             }
         }
+    },
+    "ui_hints": {
+        "editable_fields": ["periods", "kpi_reference", "water_type"],
+        "read_only_fields": ["total_consumption"]
     }
 } 

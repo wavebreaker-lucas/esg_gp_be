@@ -5,6 +5,7 @@ from .templates import (
     MetricSchemaRegistry, ESGMetricBatchSubmission
 )
 from .esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
+from .notifications import Notification
 
 __all__ = [
     'Template',
@@ -21,4 +22,5 @@ __all__ = [
     'DataEditLog',
     'MetricSchemaRegistry',
     'ESGMetricBatchSubmission',
+    'Notification',
 ] 
