@@ -167,30 +167,6 @@ class MetricSchemaRegistryAdmin(admin.ModelAdmin):
         # Otherwise use standard permission check
         return super().has_module_permission(request)
     
-    def has_view_permission(self, request, obj=None):
-        # Allow Baker Tilly admins to view objects
-        if hasattr(request.user, 'is_baker_tilly_admin') and request.user.is_baker_tilly_admin:
-            return True
-        return super().has_view_permission(request, obj)
-    
-    def has_add_permission(self, request):
-        # Allow Baker Tilly admins to add objects
-        if hasattr(request.user, 'is_baker_tilly_admin') and request.user.is_baker_tilly_admin:
-            return True
-        return super().has_add_permission(request)
-    
-    def has_change_permission(self, request, obj=None):
-        # Allow Baker Tilly admins to change objects
-        if hasattr(request.user, 'is_baker_tilly_admin') and request.user.is_baker_tilly_admin:
-            return True
-        return super().has_change_permission(request, obj)
-    
-    def has_delete_permission(self, request, obj=None):
-        # Allow Baker Tilly admins to delete objects
-        if hasattr(request.user, 'is_baker_tilly_admin') and request.user.is_baker_tilly_admin:
-            return True
-        return super().has_delete_permission(request, obj)
-    
     def save_model(self, request, obj, form, change):
         if not change:  # Only set created_by when creating a new object
             obj.created_by = request.user
