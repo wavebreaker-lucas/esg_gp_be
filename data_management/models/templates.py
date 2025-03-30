@@ -79,6 +79,14 @@ class ESGMetric(models.Model):
     validation_rules = models.JSONField(default=dict, blank=True)
     location = models.CharField(max_length=3, choices=LOCATION_CHOICES, default='ALL')
     is_required = models.BooleanField(default=True, help_text="Whether this metric must be reported")
+    
+    # New JSON schema fields
+    data_schema = models.JSONField(default=dict, blank=True, help_text="JSON Schema for this metric's data")
+    schema_registry = models.ForeignKey('MetricSchemaRegistry', on_delete=models.SET_NULL, null=True, blank=True, 
+                                      related_name='metrics', help_text="Reference to a registered schema for this metric")
+    form_component = models.CharField(max_length=50, null=True, blank=True, help_text="Frontend component to use for this metric")
+    
+    # Keep these for backward compatibility during migration
     requires_time_reporting = models.BooleanField(default=False, help_text="Whether this metric requires reporting for multiple time periods")
     reporting_frequency = models.CharField(
         max_length=20, 
@@ -172,9 +180,21 @@ class ESGMetricSubmission(models.Model):
     """User-submitted values for ESG metrics within a template assignment"""
     assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='submissions')
     metric = models.ForeignKey(ESGMetric, on_delete=models.CASCADE)
+    
+    # New unified data field
+    data = models.JSONField(null=True, blank=True, help_text="All metric data in structured JSON format")
+    
+    # Batch submission relationship
+    batch_submission = models.ForeignKey('ESGMetricBatchSubmission', on_delete=models.SET_NULL, 
+                                       null=True, blank=True, related_name='submissions',
+                                       help_text="Batch this submission belongs to, if any")
+    
+    # Keep these for backward compatibility during migration
     value = models.FloatField(null=True, blank=True)
     text_value = models.TextField(null=True, blank=True, help_text="For non-numeric metrics")
     reporting_period = models.DateField(null=True, blank=True, help_text="For time-based metrics (e.g., monthly data)")
+    
+    # Metadata fields
     submitted_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='metric_submissions')
     submitted_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -192,17 +212,19 @@ class ESGMetricSubmission(models.Model):
     )
 
     class Meta:
-        unique_together = ['assignment', 'metric', 'reporting_period']
+        # Update uniqueness constraint to remove reporting_period
+        unique_together = ['assignment', 'metric', 'layer']
         indexes = [
             models.Index(fields=['assignment', 'metric']),
-            models.Index(fields=['reporting_period']),
             models.Index(fields=['submitted_by']),
             models.Index(fields=['is_verified']),
+            # Add index for better JSON field querying if using PostgreSQL
+            # If using PostgreSQL, uncomment this:
+            # models.Index(fields=['data'], name='data_gin_idx', opclasses=['jsonb_path_ops'])
         ]
 
     def __str__(self):
-        period_str = f" ({self.reporting_period})" if self.reporting_period else ""
-        return f"{self.metric.name}{period_str} - {self.assignment.layer.company_name}"
+        return f"{self.metric.name} - {self.assignment.layer.company_name}"
 
 class ESGMetricEvidence(models.Model):
     """Supporting documentation for ESG metric submissions"""
@@ -222,18 +244,22 @@ class ESGMetricEvidence(models.Model):
         help_text="The layer this evidence is from"
     )
     
-    # New field for explicit metric relationship
+    # New field for JSON reference path
+    reference_path = models.CharField(max_length=255, null=True, blank=True,
+                                    help_text="JSON path this evidence relates to (e.g., 'periods.Jan-2024')")
+    
     intended_metric = models.ForeignKey(ESGMetric, on_delete=models.SET_NULL, null=True, blank=True, 
                                         related_name='intended_evidence',
                                         help_text="The metric this evidence is intended for, before being attached to a submission")
     
-    # OCR-related fields
+    # Update OCR-related fields
     enable_ocr_processing = models.BooleanField(default=True, help_text="Whether OCR processing is available for this evidence file")
     is_processed_by_ocr = models.BooleanField(default=False, help_text="Whether OCR processing has been attempted")
     extracted_value = models.FloatField(null=True, blank=True, help_text="Value extracted by OCR")
     period = models.DateField(null=True, blank=True, help_text="User-selected reporting period")
     ocr_period = models.DateField(null=True, blank=True, help_text="Reporting period extracted by OCR")
     ocr_data = models.JSONField(null=True, blank=True, help_text="Raw data extracted by OCR")
+    extracted_data = models.JSONField(null=True, blank=True, help_text="Structured data extracted by OCR")
     was_manually_edited = models.BooleanField(default=False, help_text="Whether the OCR result was manually edited")
     edited_at = models.DateTimeField(null=True, blank=True, help_text="When the OCR result was edited")
     edited_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='edited_evidence', help_text="Who edited the OCR result")
@@ -241,4 +267,53 @@ class ESGMetricEvidence(models.Model):
     def __str__(self):
         if self.submission:
             return f"Evidence for {self.submission.metric.name}"
-        return f"Standalone evidence: {self.filename}" 
+        return f"Standalone evidence: {self.filename}"
+
+class MetricSchemaRegistry(models.Model):
+    """Registry of JSON schemas for ESG metrics"""
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    schema = models.JSONField(help_text="JSON Schema definition for this metric type")
+    version = models.CharField(max_length=20, default="1.0.0")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='created_schemas')
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        verbose_name = "Metric Schema"
+        verbose_name_plural = "Metric Schemas"
+        ordering = ['name']
+        
+    def __str__(self):
+        return f"{self.name} v{self.version}"
+
+class ESGMetricBatchSubmission(models.Model):
+    """Group of related metric submissions submitted together"""
+    assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='batch_submissions')
+    name = models.CharField(max_length=255, blank=True, null=True, help_text="Optional name for this batch")
+    submitted_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    layer = models.ForeignKey(LayerProfile, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='batch_submissions',
+        help_text="The layer this submission's data represents"
+    )
+    notes = models.TextField(blank=True)
+    
+    # These fields track the batch verification status
+    is_verified = models.BooleanField(default=False)
+    verified_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_batches')
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verification_notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-submitted_at']
+        
+    def __str__(self):
+        if self.name:
+            return f"{self.name} - {self.assignment.layer.company_name} ({self.submitted_at.strftime('%Y-%m-%d')})"
+        return f"Batch {self.id} - {self.assignment.layer.company_name} ({self.submitted_at.strftime('%Y-%m-%d')})" 
