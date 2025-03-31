@@ -17,7 +17,6 @@ Key fields:
 - `layer`: The organizational layer this submission applies to
 - `batch_submission`: Optional reference to a batch submission
 - `submission_identifier`: Optional identifier to distinguish multiple submissions for the same metric/layer
-- `data_source`: Source of the data (e.g., 'Invoice', 'Meter Reading').
 - Metadata fields: `submitted_by`, `submitted_at`, `is_verified`, etc.
 
 ### MetricSchemaRegistry
@@ -52,8 +51,9 @@ Key fields:
 - `filename`, `file_type`: File metadata
 - `layer`: The layer this evidence is associated with
 - `submission_identifier`: Identifier to link evidence to a specific submission instance when multiple exist for the same metric/layer.
-- `json_path`: General JSON path this evidence relates to within the submission's `data` (e.g., 'periods.Jan-2024').
-- `reference_path`: Specific JSON path used primarily for OCR context (e.g., 'periods.Jan-2024').
+- `reference_path`: JSON path this evidence relates to in the submission's data structure (e.g., 'periods.Jan-2024'). Used for both general reference and OCR context.
+- `supports_multiple_periods`: Boolean flag indicating if this evidence supports multiple periods or values across different paths (e.g., a utility bill covering multiple months).
+- `source_type`: Standardized type of the source document (e.g., 'UTILITY_BILL', 'METER_READING', 'INVOICE').
 - `intended_metric`: The metric this evidence is intended for (useful before linking to a specific submission).
 - OCR-related fields: `enable_ocr_processing`, `is_processed_by_ocr`, `extracted_value`, `ocr_period`, `ocr_data`, `extracted_data`, `was_manually_edited`, `edited_at`, `edited_by`.
 - Metadata fields: `uploaded_by`, `uploaded_at`, `description`.
@@ -202,18 +202,28 @@ This approach allows for:
 
 ## Evidence Linking
 
-Evidence files can be linked to specific parts of a JSON structure using the `json_path` field on the `ESGMetricEvidence` model.
+Evidence files can be linked to specific parts of a JSON structure using the `reference_path` field on the `ESGMetricEvidence` model. The `supports_multiple_periods` flag determines how this path is used:
 
-For example, to link evidence to a specific period in an emissions submission:
+- If `supports_multiple_periods` is `False`, the `reference_path` should point to a specific value (e.g., `"periods.Jan-2024.value"`). The evidence is logically linked to that exact data point.
+- If `supports_multiple_periods` is `True`, the `reference_path` should point to the base container (e.g., `"periods"`). The evidence is linked to the submission as a whole, indicating it supports multiple values within that container.
+
+Example: Linking evidence to a specific period:
 ```python
-# ESGMetricEvidence instance
-evidence.json_path = "periods.Jan-2024"
+# ESGMetricEvidence instance for a single period
+evidence.reference_path = "periods.Jan-2024.value"
+evidence.supports_multiple_periods = False
 ```
 
-The `reference_path` field is also available, primarily intended for use with OCR to specify the target path for extracted data.
+Example: Linking evidence covering multiple periods:
+```python
+# ESGMetricEvidence instance for a multi-period bill
+evidence.reference_path = "periods"
+evidence.supports_multiple_periods = True
+```
 
 This allows for precise evidence linking to any level of the JSON structure, including:
-- Linking a bill to a specific monthly period
+- Linking a bill to a specific monthly period (if `supports_multiple_periods` is false)
+- Linking a single bill covering multiple months to the general periods section (if `supports_multiple_periods` is true)
 - Attaching evidence to a particular measurement in a complex structure
 - Providing documentation for specific data points within tabular data
 
@@ -1675,18 +1685,28 @@ GET /api/schemas/{id}/metrics/
 
 ## Evidence Linking
 
-Evidence files can be linked to specific parts of a JSON structure using the `json_path` field on the `ESGMetricEvidence` model.
+Evidence files can be linked to specific parts of a JSON structure using the `reference_path` field on the `ESGMetricEvidence` model. The `supports_multiple_periods` flag determines how this path is used:
 
-For example, to link evidence to a specific period in an emissions submission:
+- If `supports_multiple_periods` is `False`, the `reference_path` should point to a specific value (e.g., `"periods.Jan-2024.value"`). The evidence is logically linked to that exact data point.
+- If `supports_multiple_periods` is `True`, the `reference_path` should point to the base container (e.g., `"periods"`). The evidence is linked to the submission as a whole, indicating it supports multiple values within that container.
+
+Example: Linking evidence to a specific period:
 ```python
-# ESGMetricEvidence instance
-evidence.json_path = "periods.Jan-2024"
+# ESGMetricEvidence instance for a single period
+evidence.reference_path = "periods.Jan-2024.value"
+evidence.supports_multiple_periods = False
 ```
 
-The `reference_path` field is also available, primarily intended for use with OCR to specify the target path for extracted data.
+Example: Linking evidence covering multiple periods:
+```python
+# ESGMetricEvidence instance for a multi-period bill
+evidence.reference_path = "periods"
+evidence.supports_multiple_periods = True
+```
 
 This allows for precise evidence linking to any level of the JSON structure, including:
-- Linking a bill to a specific monthly period
+- Linking a bill to a specific monthly period (if `supports_multiple_periods` is false)
+- Linking a single bill covering multiple months to the general periods section (if `supports_multiple_periods` is true)
 - Attaching evidence to a particular measurement in a complex structure
 - Providing documentation for specific data points within tabular data
 

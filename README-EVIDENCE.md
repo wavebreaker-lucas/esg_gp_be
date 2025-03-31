@@ -31,22 +31,36 @@ All metric submissions use a `data` JSON field rather than separate value fields
 
 ### Evidence and JSON Path Association
 
-Evidence files are associated with specific parts of the JSON data structure using the `json_path` field:
+Evidence files are associated with specific parts of the JSON data structure using the `reference_path` and `supports_multiple_periods` fields:
 
 ```python
 # ESGMetricEvidence model includes:
-json_path = models.CharField(
+reference_path = models.CharField(
     max_length=255, 
     null=True, 
     blank=True,
-    help_text="JSON path this evidence supports in the submission's data structure"
+    help_text="JSON path this evidence relates to in the submission's data structure (e.g., 'periods.Jan-2024')"
+)
+supports_multiple_periods = models.BooleanField(
+    default=False,
+    help_text="Indicates this evidence supports multiple periods or values across different paths"
+)
+source_type = models.CharField(
+    max_length=30,
+    choices=SOURCE_TYPE_CHOICES, # Defined in the model
+    default='OTHER',
+    help_text="Type of source document this evidence represents"
 )
 ```
 
-Common JSON paths:
-- Regular metrics: `"value"` 
-- Time-based metrics: `"periods.01/2024.value"`
-- Multiple periods: `"periods.multiple"`
+- The `reference_path` specifies the JSON path the evidence supports.
+- The `supports_multiple_periods` flag indicates if the evidence covers multiple periods/values. If true, the `reference_path` should be a base path (e.g., `"periods"`); if false, it should be a specific path (e.g., `"periods.01/2024.value"`).
+- The `source_type` field categorizes the evidence (e.g., 'UTILITY_BILL', 'METER_READING').
+
+Common `reference_path` values:
+- Regular metrics: `"value"` (with `supports_multiple_periods=False`)
+- Specific period in time-based metrics: `"periods.01/2024.value"` (with `supports_multiple_periods=False`)
+- Evidence covering multiple periods: `"periods"` (with `supports_multiple_periods=True`)
 
 ## API Endpoints
 
@@ -60,7 +74,9 @@ Upload a new evidence file (must use `multipart/form-data`):
 - `file`: The evidence file (required)
 - `metric_id`: ID of the related metric (recommended)
 - `layer_id`: ID of the organizational layer this evidence belongs to
-- `reference_path`: JSON path this evidence supports (will be stored in both `reference_path` and `json_path` fields)
+- `reference_path`: JSON path this evidence supports.
+- `supports_multiple_periods`: Boolean flag (`true`/`false`) indicating if the evidence covers multiple periods/values.
+- `source_type`: Type of source document (e.g., 'UTILITY_BILL').
 - `description`: Optional description of the evidence
 
 ### Process OCR
@@ -84,16 +100,10 @@ Retrieves OCR results, including:
 - Period information
 - Additional periods found in the document
 
-### Set Target Path
+### Set Target Path (Deprecated - use Upload with correct path instead)
 
-```
-POST /api/metric-evidence/{id}/set_target_path/
-```
-
-Parameters:
-- `reference_path`: JSON path where OCR data should be applied (e.g., `"periods.01/2024.value"`)
-
-Sets both the `reference_path` and `json_path` fields to the same value for consistency.
+~~`POST /api/metric-evidence/{id}/set_target_path/`~~ 
+This endpoint is deprecated. The `reference_path` should be set during the initial upload.
 
 ### Attach to Submission
 
@@ -139,26 +149,42 @@ Response is a dictionary mapping submission IDs to their data and associated evi
 POST /api/metric-evidence/{id}/apply_multiple_periods/
 ```
 
-Applies OCR-extracted data for multiple billing periods to a submission's JSON structure.
+Applies OCR-extracted data for multiple billing periods to a submission's JSON structure. This should only be used for evidence where `supports_multiple_periods` is true.
 
 Parameters:
 - `submission_id`: ID of the submission to apply periods to
-- `base_path`: Base path in the JSON (default: `"periods"`)
+- `base_path`: Base path in the JSON (default: `"periods"`) - Should match the evidence's `reference_path`.
 - `value_field`: Name of the field for consumption values (default: `"value"`)
 
 ## Evidence Workflow
 
 ### 1. Initial Upload
 
-All evidence is initially created as standalone, not associated with any submission:
+All evidence is initially created as standalone, not associated with any submission.
 
+**Example 1: Single Period Evidence**
 ```
 POST /api/metric-evidence/
 {
   "file": [file data],
   "metric_id": 123,
   "layer_id": 7,
-  "reference_path": "periods.01/2024.value"
+  "reference_path": "periods.01/2024.value",
+  "supports_multiple_periods": false,
+  "source_type": "METER_READING"
+}
+```
+
+**Example 2: Multi-Period Evidence (e.g., Utility Bill)**
+```
+POST /api/metric-evidence/
+{
+  "file": [file data],
+  "metric_id": 123,
+  "layer_id": 7,
+  "reference_path": "periods",
+  "supports_multiple_periods": true,
+  "source_type": "UTILITY_BILL"
 }
 ```
 
@@ -184,16 +210,18 @@ Attach evidence to a submission with or without applying OCR data:
 POST /api/metric-evidence/42/attach_to_submission/
 {
   "submission_id": 123,
-  "apply_ocr_data": "true"
+  "apply_ocr_data": "true" // Only applies single primary value if set
 }
 ```
 
+For multi-period evidence, use the `apply_multiple_periods` endpoint after attaching.
+
 ### 4. Automatic Attachment
 
-Evidence can be automatically attached during batch submission:
+Evidence can be automatically attached during batch submission or form completion based on matching logic (identifier, path, layer).
 
 ```
-POST /api/metric-submissions/batch_submit/
+POST /api/batch-submissions/submit_batch/
 {
   "assignment_id": 42,
   "submissions": [...],
@@ -225,13 +253,14 @@ Benefits:
 
 ## Best Practices
 
-1. **Always specify the `metric_id`** when uploading standalone evidence
-2. **Always specify the `json_path`** to make evidence-to-data relationships clear
-3. **Include a layer association** for better organization
-4. **Review OCR results** before applying them to submissions
-5. **Use standardized paths** for consistent data structure
-6. **Prefer batch operations** for better performance when working with multiple submissions
-7. **Include `.value` in paths** for time-based metrics (e.g., `periods.01/2024.value`)
+1. **Always specify the `metric_id`** when uploading standalone evidence.
+2. **Set `reference_path` and `supports_multiple_periods` correctly** during upload to define the evidence scope (specific value vs. multiple values).
+3. **Select the appropriate `source_type`** to categorize the evidence.
+4. **Include a layer association** for better organization.
+5. **Review OCR results** before applying them to submissions.
+6. **Use standardized paths** for consistent data structure.
+7. **Prefer batch operations** for better performance when working with multiple submissions.
+8. **Use `supports_multiple_periods=true` and a base path** for evidence covering multiple time periods or data points (like a comprehensive utility bill).
 
 ## Error Handling
 
@@ -244,17 +273,20 @@ Common errors:
 
 1. The evidence system is fully integrated with the JSON data structure
 2. OCR data is never automatically applied to submissions without explicit request
-3. The `json_path` field clarifies which part of the JSON structure the evidence supports
-4. The `reference_path` field is maintained for backward compatibility
+3. The `reference_path` field clarifies which part of the JSON structure the evidence supports
+4. The `source_type` field categorizes the evidence
 5. Batch operations are now supported through direct actions on the `ESGMetricEvidenceViewSet` 
 6. The standalone `BatchEvidenceView` has been removed in favor of the more RESTful action-based approach
 
 ## Migration Notes
 
 Recent changes:
-1. Added `json_path` field to track which part of the JSON structure the evidence supports
-2. Improved OCR processing to better handle multiple billing periods
-3. Enhanced evidence attachment logic for time-based metrics
-4. Added schema validation when applying OCR data
-5. Replaced standalone `BatchEvidenceView` with the `batch_evidence` action on `ESGMetricEvidenceViewSet`
-6. Changed URL from `/api/metric-evidence/batch/` to the router-generated `/api/metric-evidence/batch_evidence/` 
+1. Consolidated `json_path` and `reference_path` into a single `reference_path` field.
+2. Added `supports_multiple_periods` boolean flag to explicitly handle evidence covering multiple periods/values.
+3. Added `source_type` field to `ESGMetricEvidence` to categorize source documents.
+4. Removed `data_source` field from `ESGMetricSubmission`.
+5. Improved OCR processing to better handle multiple billing periods.
+6. Enhanced evidence attachment logic for time-based metrics using the new fields.
+7. Added schema validation when applying OCR data.
+8. Replaced standalone `BatchEvidenceView` with the `batch_evidence` action on `ESGMetricEvidenceViewSet`.
+9. Changed URL from `/api/metric-evidence/batch/` to the router-generated `/api/metric-evidence/batch_evidence/`. 
