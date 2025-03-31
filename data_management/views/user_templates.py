@@ -82,7 +82,6 @@ class UserTemplateAssignmentView(views.APIView):
                                 'unit_type': metric.unit_type,
                                 'custom_unit': metric.custom_unit,
                                 'requires_evidence': metric.requires_evidence,
-                                'validation_rules': metric.validation_rules,
                                 'location': metric.location,
                                 'is_required': metric.is_required,
                                 'order': metric.order,

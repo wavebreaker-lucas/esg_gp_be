@@ -66,7 +66,6 @@ class TemplateViewSet(viewsets.ModelViewSet):
                         'id': metric.id,
                         'name': metric.name,
                         'requires_evidence': metric.requires_evidence,
-                        'validation_rules': metric.validation_rules,
                         'location': metric.location,
                         'is_required': metric.is_required,
                         'order': metric.order,

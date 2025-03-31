@@ -28,7 +28,7 @@ class ESGMetricSerializer(serializers.ModelSerializer):
         model = ESGMetric
         fields = [
             'id', 'name', 'description', 
-            'requires_evidence', 'order', 'validation_rules', 'location', 'is_required',
+            'requires_evidence', 'order', 'location', 'is_required',
             'requires_time_reporting', 'reporting_frequency', 'form_id',
             # JSON schema fields
             'schema_registry', 'schema_registry_id', 'schema_registry_details',

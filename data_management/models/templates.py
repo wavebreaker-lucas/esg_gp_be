@@ -51,7 +51,6 @@ class ESGMetric(models.Model):
     description = models.TextField(blank=True)
     requires_evidence = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
-    validation_rules = models.JSONField(default=dict, blank=True)
     location = models.CharField(max_length=3, choices=LOCATION_CHOICES, default='ALL')
     is_required = models.BooleanField(default=True, help_text="Whether this metric must be reported")
     requires_time_reporting = models.BooleanField(default=False, help_text="Whether this metric requires time-based reporting (e.g., quarterly, monthly)")
