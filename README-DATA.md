@@ -30,6 +30,22 @@ Key fields:
 - `version`: Schema version for tracking changes
 - Metadata fields: `created_by`, `created_at`, `is_active`, etc.
 
+### ESGMetric
+
+The `ESGMetric` model defines individual metrics within ESG forms.
+
+Key fields:
+- `form`: Reference to the parent ESGForm
+- `name`, `description`: Basic details of the metric
+- `requires_evidence`, `is_required`, `order`, `location`: Configuration details
+- `requires_time_reporting`, `reporting_frequency`: Configuration for time-based metrics
+- `schema_registry`: Foreign key linking to a `MetricSchemaRegistry` entry defining the JSON structure and rules for the `ESGMetricSubmission.data` field.
+- `form_component`: Optional identifier for a specific frontend component to render the metric's input form.
+- `primary_path`: Optional JSON path indicating the primary value within the submission's `data` (e.g., `total_consumption.value`).
+- `ocr_analyzer_id`: Optional identifier for a specific OCR analyzer to use for evidence processing.
+
+*Note: The `validation_rules` field has been removed, as validation is now handled by the linked schema in `MetricSchemaRegistry`.*
+
 ### ESGMetricBatchSubmission
 
 The `ESGMetricBatchSubmission` model represents a group of related metric submissions submitted together. Submissions are linked to a batch via the `batch_submission` field on `ESGMetricSubmission`.
@@ -123,7 +139,7 @@ For metrics that track multiple related values, each can have its own unit:
 
 ### Specifying Primary Measurements
 
-For complex metrics with multiple values, the `primary_path` field on the `ESGMetric` model indicates which value within the `data` JSON is considered the "primary" one. This path points to the relevant value (e.g., `"electricity.value"` or `"annual_total"`).
+For complex metrics with multiple values, the `primary_path` field on the `ESGMetric` model indicates which value within the submission's `data` JSON is considered the "primary" one. This path uses dot notation to point to the relevant value (e.g., `"electricity.value"` or `"total_consumption.value"`).
 
 ```python
 # Example ESGMetric field definition:
@@ -131,24 +147,23 @@ primary_path = models.CharField(
     max_length=255,
     null=True,
     blank=True,
-    help_text="Path to the primary value in the JSON data (e.g., 'electricity.value')"
+    help_text="Path to the primary value in the JSON data (e.g., 'total_consumption.value')"
 )
 ```
 
-If the `ESGMetric.primary_path` is set, the system uses this path to identify the primary measurement. An optional `_metadata.primary_measurement` field within the JSON data itself can also be used as a fallback or alternative mechanism, but the model field is the primary configuration point.
+If the `ESGMetric.primary_path` is set, the system uses this path to identify the primary measurement.
 
-Example JSON data structure (assuming `primary_path` on the metric is set to `"electricity.value"`):
+Example JSON data structure (assuming `primary_path` on the metric is set to `"total_consumption.value"`):
 ```json
 {
-  "electricity": {
-    "value": 1500,
+  "periods": [
+    {"month": "Jan-2024", "value": 1500, "unit": "kWh"},
+    {"month": "Feb-2024", "value": 1450, "unit": "kWh"}
+  ],
+  "total_consumption": {
+    "value": 2950,
     "unit": "kWh"
-  },
-  "gas": {
-    "value": 350,
-    "unit": "m³"
   }
-  // No _metadata needed here if ESGMetric.primary_path is set
 }
 ```
 
@@ -162,57 +177,68 @@ The primary measurement is used for:
 
 The system supports time-based reporting with periods embedded in the JSON structure:
 
-### Time Periods in JSON
+### Time Periods in JSON (Array Format)
+
+For metrics requiring periodic reporting (e.g., monthly consumption), the data is structured as an array of period objects.
 
 ```json
 {
-  "periods": {
-    "Jan-2024": {
+  "periods": [
+    {
+      "month": "Jan-2024",
       "value": 120.5,
       "unit": "kWh",
       "comments": "January consumption"
     },
-    "Feb-2024": {
+    {
+      "month": "Feb-2024",
       "value": 115.2,
       "unit": "kWh",
       "comments": "February consumption"
     },
-    "Mar-2024": {
+    {
+      "month": "Mar-2024",
       "value": 130.8,
       "unit": "kWh",
       "comments": "March consumption"
     }
+    // ... more periods
+  ],
+  "total_consumption": {
+     "value": 366.5,
+     "unit": "kWh"
   },
-  "annual_total": 366.5,
-  "annual_unit": "kWh",
   "_metadata": {
-    "primary_measurement": "annual_total"
+    // Optional: Can still specify primary measurement here if needed,
+    // but ESGMetric.primary_path is preferred.
+    "primary_measurement_path": "total_consumption.value"
   }
 }
 ```
 
-This approach allows for:
-- Flexible period naming (monthly, quarterly, custom periods)
-- Period-specific metadata and comments
-- Storage of aggregated values alongside period details
+This array-based approach allows for:
+- Consistent structure regardless of the number of periods.
+- Easier querying and aggregation across periods.
+- Period-specific metadata and comments within each object.
+- Storage of calculated totals alongside period details.
 
 ## Evidence Linking
 
 Evidence files can be linked to specific parts of a JSON structure using the `reference_path` field on the `ESGMetricEvidence` model. The `supports_multiple_periods` flag determines how this path is used:
 
-- If `supports_multiple_periods` is `False`, the `reference_path` should point to a specific value (e.g., `"periods.Jan-2024.value"`). The evidence is logically linked to that exact data point.
-- If `supports_multiple_periods` is `True`, the `reference_path` should point to the base container (e.g., `"periods"`). The evidence is linked to the submission as a whole, indicating it supports multiple values within that container.
+- If `supports_multiple_periods` is `False`, the `reference_path` should point to a specific data point using dot notation and potentially array indices (e.g., `"periods[0].value"` for the value of the first period in the array, or `"total_consumption.value"` for a single total). The evidence is logically linked to that exact data point.
+- If `supports_multiple_periods` is `True`, the `reference_path` should point to the base container (e.g., `"periods"`). The evidence is linked to the submission as a whole, indicating it supports multiple values within that container (like a single bill covering multiple months represented in the `periods` array).
 
-Example: Linking evidence to a specific period:
+Example: Linking evidence to a specific period's value:
 ```python
-# ESGMetricEvidence instance for a single period
-evidence.reference_path = "periods.Jan-2024.value"
+# ESGMetricEvidence instance for the first period's value
+evidence.reference_path = "periods[0].value"
 evidence.supports_multiple_periods = False
 ```
 
-Example: Linking evidence covering multiple periods:
+Example: Linking evidence covering multiple periods (represented in an array):
 ```python
-# ESGMetricEvidence instance for a multi-period bill
+# ESGMetricEvidence instance for a multi-period bill affecting the periods array
 evidence.reference_path = "periods"
 evidence.supports_multiple_periods = True
 ```
@@ -227,20 +253,21 @@ The `submission_identifier` field can be used to link evidence to a specific ins
 
 ## Data Validation
 
-All submissions are validated against their schema at submission time, ensuring data integrity and consistency.
+All submissions are validated against their associated schema at submission time, ensuring data integrity and consistency.
 
 ### Validation Process
 
-1. When a submission is created or updated, the system checks for a valid JSON schema by looking up the metric's associated `schema_registry` entry.
-   
-2. If a schema is found in the registry, the submission's `data` field is validated against it using the jsonschema library:
-   - Type validation (numbers, strings, objects)
-   - Required field validation
-   - Enum validation (values must be from a predefined set)
-   - Range validation (min/max values)
-   - Pattern validation (regex matching)
+1. When a submission is created or updated, the system identifies the associated `ESGMetric`.
+2. It retrieves the `MetricSchemaRegistry` entry linked via the `ESGMetric.schema_registry` field.
+3. If a schema is found in the registry, the submission's `data` field is validated against it using the `jsonschema` library. This includes checks for:
+   - Data types (numbers, strings, objects, arrays)
+   - Required fields
+   - Enum values (values must be from a predefined set)
+   - Numeric ranges (min/max values)
+   - String patterns (regex matching)
+   - Array constraints (min/max items)
 
-3. If validation fails, the API returns detailed error messages indicating which parts of the submission failed validation.
+4. If validation fails, the API returns detailed error messages indicating which parts of the submission failed validation and why.
 
 ## Example JSON Schemas and Data
 
@@ -1415,6 +1442,22 @@ Key fields:
 - `version`: Schema version for tracking changes
 - Metadata fields: `created_by`, `created_at`, `is_active`, etc.
 
+### ESGMetric
+
+The `ESGMetric` model defines individual metrics within ESG forms.
+
+Key fields:
+- `form`: Reference to the parent ESGForm
+- `name`, `description`: Basic details of the metric
+- `requires_evidence`, `is_required`, `order`, `location`: Configuration details
+- `requires_time_reporting`, `reporting_frequency`: Configuration for time-based metrics
+- `schema_registry`: Foreign key linking to a `MetricSchemaRegistry` entry defining the JSON structure and rules for the `ESGMetricSubmission.data` field.
+- `form_component`: Optional identifier for a specific frontend component to render the metric's input form.
+- `primary_path`: Optional JSON path indicating the primary value within the submission's `data` (e.g., `total_consumption.value`).
+- `ocr_analyzer_id`: Optional identifier for a specific OCR analyzer to use for evidence processing.
+
+*Note: The `validation_rules` field has been removed, as validation is now handled by the linked schema in `MetricSchemaRegistry`.*
+
 ### ESGMetricBatchSubmission
 
 The `ESGMetricBatchSubmission` model represents a group of related metric submissions submitted together.
@@ -1425,6 +1468,23 @@ Key fields:
 - `layer`: The organizational layer this batch applies to
 - `submissions`: Related submissions (reverse relation)
 - Metadata fields: `submitted_by`, `submitted_at`, `is_verified`, etc.
+
+### ESGMetricEvidence
+
+The `ESGMetricEvidence` model stores supporting documentation for ESG metric submissions.
+
+Key fields:
+- `submission`: Link to ESGMetricSubmission (can be null for standalone evidence)
+- `file`: Uploaded evidence file
+- `filename`, `file_type`: File metadata
+- `layer`: The layer this evidence is associated with
+- `submission_identifier`: Identifier to link evidence to a specific submission instance when multiple exist for the same metric/layer.
+- `reference_path`: JSON path this evidence relates to in the submission's data structure (e.g., 'periods.Jan-2024'). Used for both general reference and OCR context.
+- `supports_multiple_periods`: Boolean flag indicating if this evidence supports multiple periods or values across different paths (e.g., a utility bill covering multiple months).
+- `source_type`: Standardized type of the source document (e.g., 'UTILITY_BILL', 'METER_READING', 'INVOICE').
+- `intended_metric`: The metric this evidence is intended for (useful before linking to a specific submission).
+- OCR-related fields: `enable_ocr_processing`, `is_processed_by_ocr`, `extracted_value`, `ocr_period`, `ocr_data`, `extracted_data`, `was_manually_edited`, `edited_at`, `edited_by`.
+- Metadata fields: `uploaded_by`, `uploaded_at`, `description`.
 
 ## JSON Schema Structure
 
@@ -1501,7 +1561,7 @@ For metrics that track multiple related values, each can have its own unit:
 
 ### Specifying Primary Measurements
 
-For complex metrics with multiple values, the `primary_path` field on the `ESGMetric` model indicates which value within the `data` JSON is considered the "primary" one. This path points to the relevant value (e.g., `"electricity.value"` or `"annual_total"`).
+For complex metrics with multiple values, the `primary_path` field on the `ESGMetric` model indicates which value within the submission's `data` JSON is considered the "primary" one. This path uses dot notation to point to the relevant value (e.g., `"electricity.value"` or `"total_consumption.value"`).
 
 ```python
 # Example ESGMetric field definition:
@@ -1509,24 +1569,23 @@ primary_path = models.CharField(
     max_length=255,
     null=True,
     blank=True,
-    help_text="Path to the primary value in the JSON data (e.g., 'electricity.value')"
+    help_text="Path to the primary value in the JSON data (e.g., 'total_consumption.value')"
 )
 ```
 
-If the `ESGMetric.primary_path` is set, the system uses this path to identify the primary measurement. An optional `_metadata.primary_measurement` field within the JSON data itself can also be used as a fallback or alternative mechanism, but the model field is the primary configuration point.
+If the `ESGMetric.primary_path` is set, the system uses this path to identify the primary measurement.
 
-Example JSON data structure (assuming `primary_path` on the metric is set to `"electricity.value"`):
+Example JSON data structure (assuming `primary_path` on the metric is set to `"total_consumption.value"`):
 ```json
 {
-  "electricity": {
-    "value": 1500,
+  "periods": [
+    {"month": "Jan-2024", "value": 1500, "unit": "kWh"},
+    {"month": "Feb-2024", "value": 1450, "unit": "kWh"}
+  ],
+  "total_consumption": {
+    "value": 2950,
     "unit": "kWh"
-  },
-  "gas": {
-    "value": 350,
-    "unit": "m³"
   }
-  // No _metadata needed here if ESGMetric.primary_path is set
 }
 ```
 
@@ -1536,71 +1595,105 @@ The primary measurement is used for:
 3. Legacy system compatibility (where a single value is expected)
 4. Reporting purposes (which value to include in summaries)
 
-### Tabular Data Example
+## Time-Based Data
 
-For complex tabular data like supplier assessments or legal case registers:
+The system supports time-based reporting with periods embedded in the JSON structure:
 
-```json
-{
-  "suppliers": [
-    {
-      "name": "Supplier A",
-      "assessment": {
-        "compliance_status": "Compliant",
-        "score": {
-          "value": 85,
-          "unit": "points"
-        },
-        "date": "2023-05-12"
-      }
-    },
-    {
-      "name": "Supplier B",
-      "assessment": {
-        "compliance_status": "Partially Compliant",
-        "score": {
-          "value": 65,
-          "unit": "points"
-        },
-        "date": "2023-06-15"
-      }
-    }
-  ],
-  "_metadata": {
-    "primary_measurement": "suppliers.length"
-  }
-}
-```
+### Time Periods in JSON (Array Format)
 
-In this example, the primary measurement is set to the number of suppliers (count), but each supplier has its own assessment score with units.
-
-### Time-Based Metrics with Embedded Units
-
-For time-based metrics, each period includes its own value and unit:
+For metrics requiring periodic reporting (e.g., monthly consumption), the data is structured as an array of period objects.
 
 ```json
 {
-  "periods": {
-    "Q1-2024": {
+  "periods": [
+    {
+      "month": "Jan-2024",
       "value": 120.5,
       "unit": "kWh",
-      "comments": "January-March consumption"
+      "comments": "January consumption"
     },
-    "Q2-2024": {
-      "value": 135.2,
+    {
+      "month": "Feb-2024",
+      "value": 115.2,
       "unit": "kWh",
-      "comments": "April-June consumption"
+      "comments": "February consumption"
+    },
+    {
+      "month": "Mar-2024",
+      "value": 130.8,
+      "unit": "kWh",
+      "comments": "March consumption"
     }
+    // ... more periods
+  ],
+  "total_consumption": {
+     "value": 366.5,
+     "unit": "kWh"
   },
-  "annual_total": 255.7,
-  "annual_unit": "kWh",
   "_metadata": {
-    "primary_measurement": "annual_total"
+    // Optional: Can still specify primary measurement here if needed,
+    // but ESGMetric.primary_path is preferred.
+    "primary_measurement_path": "total_consumption.value"
   }
 }
 ```
 
-## Example Submission Data
+This array-based approach allows for:
+- Consistent structure regardless of the number of periods.
+- Easier querying and aggregation across periods.
+- Period-specific metadata and comments within each object.
+- Storage of calculated totals alongside period details.
+
+## Evidence Linking
+
+Evidence files can be linked to specific parts of a JSON structure using the `reference_path` field on the `ESGMetricEvidence` model. The `supports_multiple_periods` flag determines how this path is used:
+
+- If `supports_multiple_periods` is `False`, the `reference_path` should point to a specific data point using dot notation and potentially array indices (e.g., `"periods[0].value"` for the value of the first period in the array, or `"total_consumption.value"` for a single total). The evidence is logically linked to that exact data point.
+- If `supports_multiple_periods` is `True`, the `reference_path` should point to the base container (e.g., `"periods"`). The evidence is linked to the submission as a whole, indicating it supports multiple values within that container (like a single bill covering multiple months represented in the `periods` array).
+
+Example: Linking evidence to a specific period's value:
+```python
+# ESGMetricEvidence instance for the first period's value
+evidence.reference_path = "periods[0].value"
+evidence.supports_multiple_periods = False
+```
+
+Example: Linking evidence covering multiple periods (represented in an array):
+```python
+# ESGMetricEvidence instance for a multi-period bill affecting the periods array
+evidence.reference_path = "periods"
+evidence.supports_multiple_periods = True
+```
+
+This allows for precise evidence linking to any level of the JSON structure, including:
+- Linking a bill to a specific monthly period (if `supports_multiple_periods` is false)
+- Linking a single bill covering multiple months to the general periods section (if `supports_multiple_periods` is true)
+- Attaching evidence to a particular measurement in a complex structure
+- Providing documentation for specific data points within tabular data
+
+The `submission_identifier` field can be used to link evidence to a specific instance of `ESGMetricSubmission` if multiple submissions exist for the same metric/assignment/layer combination.
+
+## Data Validation
+
+All submissions are validated against their associated schema at submission time, ensuring data integrity and consistency.
+
+### Validation Process
+
+1. When a submission is created or updated, the system identifies the associated `ESGMetric`.
+2. It retrieves the `MetricSchemaRegistry` entry linked via the `ESGMetric.schema_registry` field.
+3. If a schema is found in the registry, the submission's `data` field is validated against it using the `jsonschema` library. This includes checks for:
+   - Data types (numbers, strings, objects, arrays)
+   - Required fields
+   - Enum values (values must be from a predefined set)
+   - Numeric ranges (min/max values)
+   - String patterns (regex matching)
+   - Array constraints (min/max items)
+
+4. If validation fails, the API returns detailed error messages indicating which parts of the submission failed validation and why.
+
+## Example JSON Schemas and Data
+
+*(Note: Examples below should be updated to reflect the array-based period structure where applicable)*
 
 ### Example 1: Emissions Data
 
@@ -1647,6 +1740,40 @@ For time-based metrics, each period includes its own value and unit:
 }
 ```
 
+### Example 3: Supplier Assessment Data
+
+```json
+{
+  "suppliers": [
+    {
+      "name": "Supplier A",
+      "assessment": {
+        "compliance_status": "Compliant",
+        "score": {
+          "value": 85,
+          "unit": "points"
+        },
+        "date": "2023-05-12"
+      }
+    },
+    {
+      "name": "Supplier B",
+      "assessment": {
+        "compliance_status": "Partially Compliant",
+        "score": {
+          "value": 65,
+          "unit": "points"
+        },
+        "date": "2023-06-15"
+      }
+    }
+  ],
+  "_metadata": {
+    "primary_measurement": "suppliers.length"
+  }
+}
+```
+
 ## API Endpoints
 
 ### Individual Submissions
@@ -1682,19 +1809,19 @@ GET /api/schemas/{id}/metrics/
 
 Evidence files can be linked to specific parts of a JSON structure using the `reference_path` field on the `ESGMetricEvidence` model. The `supports_multiple_periods` flag determines how this path is used:
 
-- If `supports_multiple_periods` is `False`, the `reference_path` should point to a specific value (e.g., `"periods.Jan-2024.value"`). The evidence is logically linked to that exact data point.
-- If `supports_multiple_periods` is `True`, the `reference_path` should point to the base container (e.g., `"periods"`). The evidence is linked to the submission as a whole, indicating it supports multiple values within that container.
+- If `supports_multiple_periods` is `False`, the `reference_path` should point to a specific data point using dot notation and potentially array indices (e.g., `"periods[0].value"` for the value of the first period in the array, or `"total_consumption.value"` for a single total). The evidence is logically linked to that exact data point.
+- If `supports_multiple_periods` is `True`, the `reference_path` should point to the base container (e.g., `"periods"`). The evidence is linked to the submission as a whole, indicating it supports multiple values within that container (like a single bill covering multiple months represented in the `periods` array).
 
-Example: Linking evidence to a specific period:
+Example: Linking evidence to a specific period's value:
 ```python
-# ESGMetricEvidence instance for a single period
-evidence.reference_path = "periods.Jan-2024.value"
+# ESGMetricEvidence instance for the first period's value
+evidence.reference_path = "periods[0].value"
 evidence.supports_multiple_periods = False
 ```
 
-Example: Linking evidence covering multiple periods:
+Example: Linking evidence covering multiple periods (represented in an array):
 ```python
-# ESGMetricEvidence instance for a multi-period bill
+# ESGMetricEvidence instance for a multi-period bill affecting the periods array
 evidence.reference_path = "periods"
 evidence.supports_multiple_periods = True
 ```
@@ -1709,7 +1836,7 @@ The `submission_identifier` field can be used to link evidence to a specific ins
 
 ## Data Validation
 
-All submissions are validated against their schema at submission time. This ensures data integrity and consistency.
+All submissions are validated against their associated schema at submission time, ensuring data integrity and consistency.
 
 ## Performance Considerations
 
