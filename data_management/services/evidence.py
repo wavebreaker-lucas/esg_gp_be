@@ -100,54 +100,69 @@ def attach_evidence_to_submissions(submissions, user):
                     continue
             
             # If we reach here, there was no identifier match, try reference path next
-            if is_time_based and evidence.reference_path:
-                # For time-based metrics, match using the reference path
-                # reference_path contains the path to the specific period in the JSON data
-                # e.g., "periods.Q1-2024" or "periods.Jan-2024"
-                
-                # Find matching submission by checking if reference_path exists in JSON data
-                best_match = None
-                for sub in sorted_subs:
-                    # Skip submissions without data
-                    if not sub.data:
+            if evidence.reference_path:
+                # For time-based metrics or any evidence with supports_multiple_periods flag, use path-based matching
+                if evidence.supports_multiple_periods or is_time_based:
+                    # If evidence supports multiple periods, its reference_path contains the base path
+                    # where periods are stored (e.g., 'periods')
+                    
+                    # Find matching submission by checking if reference_path exists in JSON data
+                    best_match = None
+                    for sub in sorted_subs:
+                        # Skip submissions without data
+                        if not sub.data:
+                            continue
+                        
+                        if evidence.supports_multiple_periods:
+                            # For multiple periods evidence, just check if the base path exists
+                            if evidence.reference_path in sub.data:
+                                if sub.layer and evidence.layer and sub.layer.id == evidence.layer.id:
+                                    # Perfect match: base path exists and layer matches
+                                    best_match = sub
+                                    logger.info(f"Found perfect match for multi-period evidence {evidence.id}")
+                                    break
+                                elif not best_match:
+                                    # Path match but layer doesn't match - use as fallback
+                                    best_match = sub
+                                    logger.info(f"Found base path match for multi-period evidence {evidence.id}")
+                        else:
+                            # For regular reference_path matching (specific period or value)
+                            # Check if the reference path exists in the JSON data
+                            parts = evidence.reference_path.split('.')
+                            current = sub.data
+                            path_exists = True
+                            
+                            for part in parts:
+                                if isinstance(current, dict) and part in current:
+                                    current = current[part]
+                                else:
+                                    path_exists = False
+                                    break
+                            
+                            if path_exists:
+                                # Found a submission with matching reference path in data
+                                if sub.layer and evidence.layer and sub.layer.id == evidence.layer.id:
+                                    # Perfect match: reference path exists and layer matches
+                                    best_match = sub
+                                    logger.info(f"Found perfect match (path+layer) for evidence {evidence.id}")
+                                    break
+                                elif not best_match:
+                                    # Path match but layer doesn't match - use as fallback
+                                    best_match = sub
+                                    logger.info(f"Found path match for evidence {evidence.id}")
+                                    # Keep looking for better match with matching layer
+                    
+                    # If no matching path found, skip this evidence
+                    if not best_match:
+                        logger.info(f"No path match found for evidence {evidence.id}, skipping")
                         continue
                     
-                    # Check if the reference path exists in the JSON data
-                    parts = evidence.reference_path.split('.')
-                    current = sub.data
-                    path_exists = True
-                    
-                    for part in parts:
-                        if isinstance(current, dict) and part in current:
-                            current = current[part]
-                        else:
-                            path_exists = False
-                            break
-                    
-                    if path_exists:
-                        # Found a submission with matching reference path in data
-                        if sub.layer and evidence.layer and sub.layer.id == evidence.layer.id:
-                            # Perfect match: reference path exists and layer matches
-                            best_match = sub
-                            logger.info(f"Found perfect match (path+layer) for evidence {evidence.id}")
-                            break
-                        elif not best_match:
-                            # Path match but layer doesn't match - use as fallback
-                            best_match = sub
-                            logger.info(f"Found path match for evidence {evidence.id}")
-                            # Keep looking for better match with matching layer
-                
-                # If no matching path found, skip this evidence
-                if not best_match:
-                    logger.info(f"No path match found for evidence {evidence.id}, skipping")
+                    # Attach evidence to the best matching submission
+                    evidence.submission = best_match
+                    evidence.save()
+                    attached_count += 1
+                    logger.info(f"Attached evidence {evidence.id} to submission {best_match.id} (path match)")
                     continue
-                
-                # Attach evidence to the best matching submission
-                evidence.submission = best_match
-                evidence.save()
-                attached_count += 1
-                logger.info(f"Attached evidence {evidence.id} to submission {best_match.id} (path match)")
-                continue
             
             # If we reach here, there was no identifier or path match
             # For non-time-based metrics or evidence without reference path, match primarily on layer

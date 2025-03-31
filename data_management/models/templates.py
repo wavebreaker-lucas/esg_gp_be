@@ -239,13 +239,7 @@ class ESGMetricEvidence(models.Model):
         help_text="The layer this evidence is from"
     )
     
-    # New field for JSON data path
-    json_path = models.CharField(
-        max_length=255, 
-        null=True, 
-        blank=True,
-        help_text="JSON path this evidence supports in the submission's data structure"
-    )
+    # json_path field has been removed and consolidated with reference_path + supports_multiple_periods
     
     # Field to link to specific submissions
     submission_identifier = models.CharField(
@@ -273,7 +267,13 @@ class ESGMetricEvidence(models.Model):
     
     # New field for original JSON path reference used in OCR
     reference_path = models.CharField(max_length=255, null=True, blank=True,
-                                    help_text="JSON path this evidence relates to (e.g., 'periods.Jan-2024')")
+                                    help_text="JSON path this evidence relates to in the submission's data structure (e.g., 'periods.Jan-2024')")
+
+    # Add explicit flag for evidence supporting multiple periods rather than using path suffix
+    supports_multiple_periods = models.BooleanField(
+        default=False,
+        help_text="Indicates this evidence supports multiple periods or values across different paths"
+    )
 
     def __str__(self):
         if self.submission:

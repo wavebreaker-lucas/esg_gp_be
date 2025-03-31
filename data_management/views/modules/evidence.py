@@ -400,13 +400,12 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                 period_key = evidence_period.strftime("%m/%Y")
                 target_path = f"periods.{period_key}.value"
                 
-        # Attach evidence to submission and store the json_path
+        # Attach evidence to submission and store the reference path
         evidence.submission = submission
         
-        # Always store the path in json_path field - this is the key improvement for Option 2
-        if target_path:
-            evidence.json_path = target_path
-            
+        # Always store the path in reference_path field
+        evidence.reference_path = target_path
+        
         evidence.save()
         
         # Apply OCR data if requested and available
@@ -542,7 +541,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         return Response({
             'message': 'Evidence attached to submission successfully',
             'submission_id': submission.id,
-            'json_path': evidence.json_path
+            'reference_path': evidence.reference_path
         })
 
     @action(detail=True, methods=['post'])
@@ -562,8 +561,8 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             return Response({'error': 'reference_path is required'}, status=400)
         
         # Validate the reference path format
-        if not self._is_valid_json_path(reference_path):
-            return Response({'error': 'Invalid JSON path format. Use dot notation with alphanumeric segments.'}, status=400)
+        if not self._is_valid_path(reference_path):
+            return Response({'error': 'Invalid path format. Path should only contain alphanumeric characters, dots, hyphens, and underscores'}, status=400)
         
         # If metric is available, validate against schema
         if evidence.intended_metric and evidence.intended_metric.data_schema:
@@ -577,23 +576,24 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         
         # Set both the reference_path and json_path fields
         evidence.reference_path = reference_path
-        evidence.json_path = reference_path  # Set json_path too for consistency
+        
         evidence.save()
         
         return Response({
             'message': f'Target path set to {reference_path}',
-            'evidence_id': evidence.id,
-            'json_path': evidence.json_path
+            'reference_path': evidence.reference_path,
+            'evidence_id': evidence.id
         })
         
-    def _is_valid_json_path(self, path):
+    def _is_valid_path(self, path):
         """
-        Validate that a string is a valid JSON path using dot notation.
+        Validate that a reference path only contains allowed characters.
+        Helps prevent injection attacks or invalid JSON paths.
         """
         import re
-        # Pattern for valid path: segments can be alphanumeric with underscores, separated by dots
-        pattern = r'^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)*$'
-        return re.match(pattern, path) is not None
+        # Path should contain only alphanumeric chars, dots, hyphens, and underscores
+        # Plus allow brackets for array indices [0] etc.
+        return bool(re.match(r'^[a-zA-Z0-9_.\-\[\]]+$', path))
         
     def _validate_path_against_schema(self, path, schema):
         """
@@ -776,9 +776,9 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         if not evidence.submission_id:
             evidence.submission = submission
             
-            # Set json_path to indicate this evidence is for multiple periods
-            # This helps identify which evidence supports which parts of the JSON structure
-            evidence.json_path = f"{base_path}.multiple"
+            # Use the new flag instead of json_path suffix pattern
+            evidence.reference_path = base_path  # Store base path in reference_path
+            evidence.supports_multiple_periods = True  # Set the flag instead of using .multiple suffix
             
             evidence.save()
         
