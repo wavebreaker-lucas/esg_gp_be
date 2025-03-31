@@ -193,13 +193,7 @@ class ESGMetricSubmission(models.Model):
         default='',
         help_text="Optional identifier to distinguish multiple submissions for the same metric/layer"
     )
-    data_source = models.CharField(
-        max_length=255, 
-        blank=True, 
-        default='',
-        help_text="Source of the data (e.g., 'Invoice', 'Meter Reading', 'Estimate')"
-    )
-
+    
     class Meta:
         # Remove unique_together constraint to allow multiple submissions
         # unique_together = ['assignment', 'metric', 'layer']
@@ -223,6 +217,18 @@ class ESGMetricSubmission(models.Model):
 
 class ESGMetricEvidence(models.Model):
     """Supporting documentation for ESG metric submissions"""
+    # Source type choices
+    SOURCE_TYPE_CHOICES = [
+        ('UTILITY_BILL', 'Utility Bill'),
+        ('METER_READING', 'Meter Reading'),
+        ('INVOICE', 'Invoice'),
+        ('ESTIMATE', 'Estimate'),
+        ('AUDIT_REPORT', 'Audit Report'),
+        ('THIRD_PARTY', 'Third-party Verification'),
+        ('INTERNAL', 'Internal Assessment'),
+        ('OTHER', 'Other')
+    ]
+    
     submission = models.ForeignKey(ESGMetricSubmission, on_delete=models.CASCADE, related_name='evidence', null=True, blank=True,
                                  help_text="Can be null for standalone evidence files before attaching to a submission")
     file = models.FileField(upload_to='esg_evidence/%Y/%m/')
@@ -231,6 +237,15 @@ class ESGMetricEvidence(models.Model):
     uploaded_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     description = models.TextField(blank=True)
+    
+    # New field for source type
+    source_type = models.CharField(
+        max_length=30,
+        choices=SOURCE_TYPE_CHOICES,
+        default='OTHER',
+        help_text="Type of source document this evidence represents"
+    )
+    
     layer = models.ForeignKey(LayerProfile, 
         on_delete=models.SET_NULL, 
         null=True, 
