@@ -420,7 +420,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                 schema_valid = True
                 error_message = None
                 
-                if submission.metric and submission.metric.data_schema:
+                if submission.metric and submission.metric.schema_registry and hasattr(submission.metric.schema_registry, 'schema'):
                     try:
                         # Import jsonschema validation if needed
                         import jsonschema
@@ -447,7 +447,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                         data_pointer[parts[-1]] = evidence.extracted_value
                         
                         # Validate against schema
-                        jsonschema.validate(instance=temp_data, schema=submission.metric.data_schema)
+                        jsonschema.validate(instance=temp_data, schema=submission.metric.schema_registry.schema)
                     except (jsonschema.exceptions.ValidationError, Exception) as e:
                         schema_valid = False
                         error_message = str(e)
@@ -565,8 +565,8 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Invalid path format. Path should only contain alphanumeric characters, dots, hyphens, and underscores'}, status=400)
         
         # If metric is available, validate against schema
-        if evidence.intended_metric and evidence.intended_metric.data_schema:
-            schema_valid, error = self._validate_path_against_schema(reference_path, evidence.intended_metric.data_schema)
+        if evidence.intended_metric and evidence.intended_metric.schema_registry and hasattr(evidence.intended_metric.schema_registry, 'schema'):
+            schema_valid, error = self._validate_path_against_schema(reference_path, evidence.intended_metric.schema_registry.schema)
             if not schema_valid:
                 return Response({
                     'error': 'Path does not match the metric schema',
@@ -786,10 +786,10 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         schema_valid = True
         error_message = None
         
-        if submission.metric and submission.metric.data_schema:
+        if submission.metric and submission.metric.schema_registry and hasattr(submission.metric.schema_registry, 'schema'):
             try:
                 import jsonschema
-                jsonschema.validate(instance=submission.data, schema=submission.metric.data_schema)
+                jsonschema.validate(instance=submission.data, schema=submission.metric.schema_registry.schema)
             except (jsonschema.exceptions.ValidationError, Exception) as e:
                 schema_valid = False
                 error_message = str(e)

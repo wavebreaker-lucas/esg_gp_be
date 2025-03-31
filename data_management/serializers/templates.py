@@ -31,7 +31,7 @@ class ESGMetricSerializer(serializers.ModelSerializer):
             'requires_evidence', 'order', 'validation_rules', 'location', 'is_required',
             'requires_time_reporting', 'reporting_frequency', 'form_id',
             # JSON schema fields
-            'data_schema', 'schema_registry', 'schema_registry_id', 'schema_registry_details',
+            'schema_registry', 'schema_registry_id', 'schema_registry_details',
             'form_component', 'primary_path', 'ocr_analyzer_id'
         ]
         read_only_fields = ['id']

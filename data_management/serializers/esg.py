@@ -210,8 +210,6 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         schema = None
         if metric.schema_registry and hasattr(metric.schema_registry, 'schema'):
             schema = metric.schema_registry.schema
-        elif metric.data_schema:
-            schema = metric.data_schema
             
         if schema:
             try:

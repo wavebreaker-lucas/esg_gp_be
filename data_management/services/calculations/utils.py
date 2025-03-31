@@ -35,6 +35,7 @@ def get_calculation_metadata(schema_type):
                     'requires_calculation': schema.get('requires_calculation', False),
                     'calculation_type': schema.get('calculation_type')
                 }
+        return {'calculated_fields': []}
     
     if not schema_type or not isinstance(schema_type, str):
         return {'calculated_fields': []}

@@ -67,15 +67,11 @@ Each metric in the system has an associated JSON schema that defines:
 - Validation rules for each field
 - Required fields and constraints
 
-The schema can be defined in two ways:
-1. Directly on the metric through the `data_schema` field
-2. Through reference to a standard schema in the `MetricSchemaRegistry`
+The schema is defined through reference to a standard schema in the `MetricSchemaRegistry`.
 
-### Schema Types
+### Schema Registry
 
-Metrics can reference a schema type through:
-- Direct reference to a `schema_registry` (foreign key)
-- String reference through the `schema_type` field (e.g., 'electricity_hk', 'electricity_prc') - *Note: Ensure `schema_type` is actively used in logic if relying on it.*
+Metrics reference their schema definition by linking to a `MetricSchemaRegistry` entry via the `schema_registry` foreign key field. This registry serves as the single source of truth for all metric schemas.
 
 ### Frontend Components
 
@@ -235,18 +231,16 @@ All submissions are validated against their schema at submission time, ensuring 
 
 ### Validation Process
 
-1. When a submission is created or updated, the system checks for a valid JSON schema:
-   - First, it looks for a schema in the metric's `schema_registry`
-   - If not found, it checks the metric's `data_schema` field
+1. When a submission is created or updated, the system checks for a valid JSON schema by looking up the metric's associated `schema_registry` entry.
    
-2. If a schema is found, the data is validated against it using the jsonschema library
+2. If a schema is found in the registry, the submission's `data` field is validated against it using the jsonschema library:
    - Type validation (numbers, strings, objects)
    - Required field validation
    - Enum validation (values must be from a predefined set)
    - Range validation (min/max values)
    - Pattern validation (regex matching)
 
-3. If validation fails, the API returns detailed error messages indicating which parts of the submission failed validation
+3. If validation fails, the API returns detailed error messages indicating which parts of the submission failed validation.
 
 ## Example JSON Schemas and Data
 
@@ -612,14 +606,15 @@ The system supports OCR-based data extraction from evidence files, which can pop
 
 ## Migration from Legacy System
 
-The platform has migrated from a legacy approach with separate `value` and `text_value` fields to a unified JSON approach. All legacy fields have been removed to enforce a clean data model.
+The platform has migrated from a legacy approach with separate `value` and `text_value` fields (and previously `data_schema` on the metric) to a unified JSON approach using the `MetricSchemaRegistry`. All legacy fields have been removed to enforce a clean data model.
 
-Benefits of the JSON schema approach over the legacy system:
-1. **Flexibility**: Can accommodate any data structure, from simple values to complex nested objects
-2. **Validation**: Built-in schema validation ensures data integrity
-3. **Evolution**: Schemas can evolve over time while maintaining backward compatibility
-4. **Metadata**: Supports rich metadata embedded directly with the values
-5. **Multiple Values**: A single submission can contain multiple related values
+Benefits of the JSON schema approach using the registry:
+1. **Flexibility**: Can accommodate any data structure, from simple values to complex nested objects.
+2. **Validation**: Built-in schema validation ensures data integrity.
+3. **Evolution**: Schemas can evolve over time with versioning while maintaining backward compatibility.
+4. **Metadata**: Supports rich metadata embedded directly within the schema definition.
+5. **Reusability**: Multiple metrics can reference the same schema, ensuring consistency.
+6. **Centralization**: All schemas are managed in one central registry.
 
 **Response Example:**
 ```json
@@ -1724,4 +1719,4 @@ All submissions are validated against their schema at submission time. This ensu
 
 ## Migration from Legacy System
 
-The platform has migrated from a legacy approach with separate `value` and `text_value` fields to a unified JSON approach. All legacy fields have been removed to enforce a clean data model.
+The platform has migrated from a legacy approach with separate `value` and `text_value` fields (and previously `data_schema` on the metric) to a unified JSON approach using the `MetricSchemaRegistry`. All legacy fields have been removed to enforce a clean data model.
