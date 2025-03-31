@@ -76,18 +76,31 @@ class UserTemplateAssignmentView(views.APIView):
                     for metric in selection.form.metrics.all():
                         # Only include metrics that match the form's regions or are for ALL locations
                         if metric.location == 'ALL' or metric.location in selection.regions:
-                            form_data['metrics'].append({
+                            metric_data = {
                                 'id': metric.id,
                                 'name': metric.name,
-                                'unit_type': metric.unit_type,
-                                'custom_unit': metric.custom_unit,
                                 'requires_evidence': metric.requires_evidence,
                                 'location': metric.location,
                                 'is_required': metric.is_required,
                                 'order': metric.order,
                                 'requires_time_reporting': metric.requires_time_reporting,
-                                'reporting_frequency': metric.reporting_frequency
-                            })
+                                'reporting_frequency': metric.reporting_frequency,
+                                # Add schema-related fields
+                                'form_component': metric.form_component,
+                                'primary_path': metric.primary_path,
+                                'schema_registry_id': metric.schema_registry_id if metric.schema_registry else None,
+                            }
+                            
+                            # Include schema details if available
+                            if metric.schema_registry:
+                                metric_data['schema_registry'] = {
+                                    'id': metric.schema_registry.id,
+                                    'name': metric.schema_registry.name,
+                                    'version': metric.schema_registry.version,
+                                    'schema': metric.schema_registry.schema
+                                }
+                                
+                            form_data['metrics'].append(metric_data)
                     
                     # Sort metrics by order
                     form_data['metrics'].sort(key=lambda x: x['order'])
