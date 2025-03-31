@@ -7,7 +7,7 @@ ELECTRICITY_HK_SCHEMA = {
     "type": "electricity_hk",
     "name": "Hong Kong Electricity Consumption (CLP/HKE)",
     "description": "For tracking electricity consumption in Hong Kong split by provider (CLP, HKE)",
-    "schema_type": "periodic_measurement",
+    "data_structure_type": "periodic_measurement",
     "requires_calculation": True,
     "calculation_type": "sum_by_provider",
     "calculated_fields": [

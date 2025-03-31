@@ -7,7 +7,7 @@ WASTEWATER_PRC_SCHEMA = {
     "type": "wastewater_prc",
     "name": "PRC Wastewater Consumption",
     "description": "For tracking wastewater consumption in the PRC",
-    "schema_type": "periodic_measurement",
+    "data_structure_type": "periodic_measurement",
     "requires_calculation": True,
     "calculation_type": "sum_by_period",
     "calculated_fields": [

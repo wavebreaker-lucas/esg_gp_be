@@ -7,7 +7,7 @@ WASTEWATER_HK_SCHEMA = {
     "type": "wastewater_hk",
     "name": "Hong Kong Wastewater Consumption",
     "description": "For tracking wastewater consumption in Hong Kong",
-    "schema_type": "periodic_measurement",
+    "data_structure_type": "periodic_measurement",
     "requires_calculation": True,
     "calculation_type": "sum_by_period",
     "calculated_fields": [

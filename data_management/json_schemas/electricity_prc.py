@@ -7,7 +7,7 @@ ELECTRICITY_PRC_SCHEMA = {
     "type": "electricity_prc",
     "name": "PRC Electricity Consumption",
     "description": "For tracking electricity consumption in the PRC",
-    "schema_type": "periodic_measurement",
+    "data_structure_type": "periodic_measurement",
     "requires_calculation": True,
     "calculation_type": "sum_by_period",
     "calculated_fields": [

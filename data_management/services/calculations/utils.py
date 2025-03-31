@@ -31,7 +31,7 @@ def get_calculation_metadata(schema_type):
                 schema = schema_type.schema_registry.schema
                 return {
                     'calculated_fields': schema.get('calculated_fields', []),
-                    'schema_type': schema.get('schema_type'),
+                    'data_structure_type': schema.get('data_structure_type', schema.get('schema_type')),
                     'requires_calculation': schema.get('requires_calculation', False),
                     'calculation_type': schema.get('calculation_type')
                 }
@@ -45,7 +45,7 @@ def get_calculation_metadata(schema_type):
     schema = SCHEMA_TEMPLATES[schema_type]
     return {
         'calculated_fields': schema.get("calculated_fields", []),
-        'schema_type': schema.get('schema_type'),
+        'data_structure_type': schema.get('data_structure_type', schema.get('schema_type')),
         'requires_calculation': schema.get('requires_calculation', False),
         'calculation_type': schema.get('calculation_type')
     }

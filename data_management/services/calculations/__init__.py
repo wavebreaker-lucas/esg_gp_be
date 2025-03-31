@@ -45,10 +45,6 @@ def get_schema_type_from_metric(metric):
         elif hasattr(metric.schema_registry, 'schema') and 'type' in metric.schema_registry.schema:
             return metric.schema_registry.schema['type']
             
-    # Try to get from schema_type attribute
-    if hasattr(metric, 'schema_type') and metric.schema_type:
-        return metric.schema_type
-        
     return None
 
 def validate_and_update_totals(data, schema_type=None):

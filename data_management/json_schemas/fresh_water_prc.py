@@ -7,7 +7,7 @@ FRESH_WATER_PRC_SCHEMA = {
     "type": "fresh_water_prc",
     "name": "PRC Fresh Water Consumption",
     "description": "For tracking fresh water consumption in the PRC",
-    "schema_type": "periodic_measurement",
+    "data_structure_type": "periodic_measurement",
     "requires_calculation": True,
     "calculation_type": "sum_by_period",
     "calculated_fields": [
