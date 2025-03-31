@@ -527,7 +527,7 @@ GET /api/metric-submissions/by_assignment/?assignment_id=5&form_id=2&is_verified
 ```
 
 **Example Response (Paginated List using `ESGMetricSubmissionSerializer`):**
-```json
+   ```json
 {
   "count": 120, // Note: Field name might be 'count' or 'total_count'
   "next": "...",
@@ -566,9 +566,9 @@ GET /api/metric-submissions/by_assignment/?assignment_id=5&form_id=2&is_verified
       ]
     }
     // ... more submissions
-  ]
-}
-```
+       ]
+   }
+   ```
 
 ### Batch Submissions
 
