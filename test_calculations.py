@@ -15,35 +15,69 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def test_electricity_hk():
-    """Test Hong Kong electricity calculation."""
-    logger.info("=== Testing Hong Kong electricity calculation ===")
+def print_divider():
+    print("=" * 50)
+
+def test_electricity_hk_clp():
+    print_divider()
+    print("Testing Hong Kong CLP Electricity Consumption")
     
-    # Sample data with CLP and HKE values
     sample_data = {
         "periods": {
-            "Jan-2025": {
-                "CLP": {"value": 100, "unit": "kWh"},
-                "HKE": {"value": 150, "unit": "kWh"}
+            "Jan-2024": {
+                "value": 100,
+                "unit": "kWh"
             },
-            "Feb-2025": {
-                "CLP": {"value": 120, "unit": "kWh"},
-                "HKE": {"value": 160, "unit": "kWh"}
+            "Feb-2024": {
+                "value": 120,
+                "unit": "kWh"
+            },
+            "Mar-2024": {
+                "value": 150,
+                "unit": "kWh"
             }
-        },
-        "total_consumption": {
-            "CLP": {"value": 0, "unit": "kWh"},
-            "HKE": {"value": 0, "unit": "kWh"}
         }
     }
     
-    # Process data
-    result = calculations.validate_and_update_totals(sample_data, "electricity_hk")
+    # Process the data
+    result = calculations.validate_and_update_totals(sample_data, "electricity_hk_clp")
     
-    # Print results
-    print(f"CLP Total: {result['total_consumption']['CLP']['value']} {result['total_consumption']['CLP']['unit']}")
-    print(f"HKE Total: {result['total_consumption']['HKE']['value']} {result['total_consumption']['HKE']['unit']}")
+    # Print the result
+    print("Input:")
+    print(json.dumps(sample_data, indent=2))
+    print("\nOutput:")
+    print(json.dumps(result, indent=2))
+    return result
+
+def test_electricity_hk_hke():
+    print_divider()
+    print("Testing Hong Kong HKE Electricity Consumption")
     
+    sample_data = {
+        "periods": {
+            "Jan-2024": {
+                "value": 200,
+                "unit": "kWh"
+            },
+            "Feb-2024": {
+                "value": 220,
+                "unit": "kWh"
+            },
+            "Mar-2024": {
+                "value": 250,
+                "unit": "kWh"
+            }
+        }
+    }
+    
+    # Process the data
+    result = calculations.validate_and_update_totals(sample_data, "electricity_hk_hke")
+    
+    # Print the result
+    print("Input:")
+    print(json.dumps(sample_data, indent=2))
+    print("\nOutput:")
+    print(json.dumps(result, indent=2))
     return result
 
 def test_electricity_prc():
@@ -204,7 +238,8 @@ def test_work_injuries_prc():
 
 def run_all_tests():
     """Run all calculation tests."""
-    test_electricity_hk()
+    test_electricity_hk_clp()
+    test_electricity_hk_hke()
     print("\n")
     
     test_electricity_prc()
