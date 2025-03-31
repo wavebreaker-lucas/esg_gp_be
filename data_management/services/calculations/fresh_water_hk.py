@@ -26,10 +26,13 @@ class FreshWaterHKHandler(PeriodicalConsumptionHandler):
         if not super().validate(data):
             return False
             
-        # Check if at least one period has value/unit structure
-        periods = data.get('periods', {})
-        for period_key, period_data in periods.items():
-            if isinstance(period_data, dict) and 'value' in period_data:
+        # Check if periods is an array and has at least one entry with a value
+        periods = data.get('periods', [])
+        if not isinstance(periods, list):
+            return False
+            
+        for period in periods:
+            if isinstance(period, dict) and 'value' in period and period['value'] is not None:
                 return True
                 
         return False
@@ -44,16 +47,17 @@ class FreshWaterHKHandler(PeriodicalConsumptionHandler):
         Returns:
             dict: The data with updated totals
         """
-        periods = data.get('periods', {})
+        periods = data.get('periods', [])
         
         total = {'value': 0, 'unit': None}
         
-        for period_key, period_data in periods.items():
-            if isinstance(period_data, dict) and 'value' in period_data and period_data['value'] is not None:
-                total['value'] += float(period_data['value'])
+        for period in periods:
+            # Sum values from each period in the array
+            if isinstance(period, dict) and 'value' in period and period['value'] is not None:
+                total['value'] += float(period['value'])
                 # Capture unit from the first valid entry
-                if total['unit'] is None and 'unit' in period_data:
-                    total['unit'] = period_data['unit']
+                if total['unit'] is None and 'unit' in period:
+                    total['unit'] = period['unit']
         
         # Set or update total consumption
         return self.set_total(data, total)

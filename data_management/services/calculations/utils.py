@@ -53,7 +53,8 @@ def get_calculation_metadata(schema_type):
 
 def resolve_calculation_path(data, path_expr):
     """
-    Resolve a path expression like 'periods.*.CLP.value' against data.
+    Resolve a path expression like 'periods[*].value' against data.
+    Supports both array notation [*] and object notation .* for backwards compatibility.
     
     Args:
         data (dict): The data to resolve against
@@ -62,7 +63,9 @@ def resolve_calculation_path(data, path_expr):
     Returns:
         list: All values matching the path expression
     """
-    parts = path_expr.split('.')
+    # Replace array notation with dot notation for processing
+    normalized_path = path_expr.replace('[*]', '.*')
+    parts = normalized_path.split('.')
     values = []
     
     def _collect_values(current_data, remaining_parts):
@@ -74,12 +77,16 @@ def resolve_calculation_path(data, path_expr):
         part = remaining_parts[0]
         
         if part == '*':
-            # Wildcard - iterate through all keys at this level
+            # Wildcard - iterate through all keys at this level if dict
+            # or through all elements if list
             if isinstance(current_data, dict):
                 for key, value in current_data.items():
                     _collect_values(value, remaining_parts[1:])
-        elif part in current_data:
-            # Regular path component
+            elif isinstance(current_data, list):
+                for item in current_data:
+                    _collect_values(item, remaining_parts[1:])
+        elif part in current_data if isinstance(current_data, dict) else False:
+            # Regular path component for dict
             _collect_values(current_data[part], remaining_parts[1:])
     
     _collect_values(data, parts)
