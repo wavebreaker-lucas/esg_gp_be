@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from accounts.models import CustomUser, LayerProfile
-from ..models import (
+from ..models.templates import (
     ESGFormCategory, ESGForm, ESGMetric,
     Template, TemplateFormSelection, TemplateAssignment,
     ESGMetricSubmission, ESGMetricEvidence, MetricValueField, MetricValue,
