@@ -4,9 +4,9 @@ from .views import (
     ESGFormViewSet, ESGFormCategoryViewSet, TemplateViewSet, 
     ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, ESGMetricViewSet, 
     UserTemplateAssignmentView, TemplateAssignmentView,
-    MetricValueFieldViewSet, BatchEvidenceView  # Now imported directly from .views
+    MetricValueFieldViewSet, BatchEvidenceView,
+    AvailableLayersView, SumSubmissionsByLayerView  # Now imported directly from .views
 )
-from .views.submission_utils import AvailableLayersView, SumSubmissionsByLayerView
 
 # Create a router for ViewSets
 router = DefaultRouter()

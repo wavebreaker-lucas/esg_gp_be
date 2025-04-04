@@ -10,7 +10,7 @@ from datetime import datetime
 
 from accounts.models import LayerProfile
 from accounts.services import get_accessible_layers, has_layer_access
-from ..models import ESGMetric, TemplateAssignment, ESGMetricSubmission
+from ...models import ESGMetric, TemplateAssignment, ESGMetricSubmission
 
 
 class AvailableLayersView(APIView):

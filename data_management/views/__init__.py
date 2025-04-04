@@ -11,6 +11,7 @@ from .form_definition.forms import ESGFormViewSet
 # Import from submissions package
 from .submissions.submissions import ESGMetricSubmissionViewSet
 from .submissions.evidence import ESGMetricEvidenceViewSet, BatchEvidenceView
+from .submissions.utils import AvailableLayersView, SumSubmissionsByLayerView
 
 # Import from templates package
 from .templates import TemplateViewSet, TemplateAssignmentView, UserTemplateAssignmentView
@@ -30,6 +31,8 @@ __all__ = [
     'TemplateAssignmentView',
     'UserTemplateAssignmentView',
     'BatchEvidenceView',
+    'AvailableLayersView',
+    'SumSubmissionsByLayerView',
     'get_required_submission_count',
     'attach_evidence_to_submissions',
 ] 
