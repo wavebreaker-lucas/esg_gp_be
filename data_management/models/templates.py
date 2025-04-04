@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from accounts.models import CustomUser, LayerProfile
+from django.utils import timezone # Import timezone
 
 class ESGFormCategory(models.Model):
     """Categories for ESG disclosure forms (Environmental, Social, Governance)"""
@@ -96,6 +97,10 @@ class ESGMetric(models.Model):
     is_multi_value = models.BooleanField(
         default=False,
         help_text="Whether this metric requires multiple related values"
+    )
+    aggregates_inputs = models.BooleanField(
+        default=False,
+        help_text="Does this metric's final value come from aggregating multiple raw inputs?"
     )
 
     class Meta:
@@ -210,44 +215,99 @@ class TemplateAssignment(models.Model):
     def __str__(self):
         return f"{self.template.name} - {self.layer.company_name}"
 
+class ReportedMetricValue(models.Model):
+    """Stores the final, aggregated/official value for a metric submission period."""
+    assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='reported_values')
+    metric = models.ForeignKey(ESGMetric, on_delete=models.CASCADE, related_name='reported_values')
+    layer = models.ForeignKey(LayerProfile, on_delete=models.CASCADE, related_name='reported_values') # Enforce layer for uniqueness
+    reporting_period = models.DateField(help_text="The specific period this aggregated value represents (e.g., month-end, quarter-end)")
+
+    # Value fields
+    value = models.FloatField(null=True, blank=True)
+    text_value = models.TextField(null=True, blank=True)
+
+    # Calculation metadata
+    calculated_at = models.DateTimeField(auto_now_add=True, help_text="When this value was first calculated/created")
+    last_updated_at = models.DateTimeField(auto_now=True, help_text="When this value was last updated")
+    # calculation_method = models.CharField(max_length=50, blank=True, help_text="e.g., SUM, AVERAGE, LATEST") # Consider adding later
+
+    # Verification fields for the FINAL value
+    is_verified = models.BooleanField(default=False)
+    verified_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_reported_values')
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verification_notes = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = ['assignment', 'metric', 'reporting_period', 'layer']
+        indexes = [
+            models.Index(fields=['assignment', 'metric', 'reporting_period', 'layer'], name='unique_reported_value_idx'), # Added name for clarity
+            models.Index(fields=['reporting_period']),
+            models.Index(fields=['is_verified']),
+        ]
+        ordering = ['assignment', 'metric', 'reporting_period']
+        verbose_name = "Reported Metric Value"
+        verbose_name_plural = "Reported Metric Values"
+
+    def __str__(self):
+        return f"{self.metric.name} ({self.reporting_period}) - {self.layer.company_name} [Final]"
+
 class ESGMetricSubmission(models.Model):
-    """User-submitted values for ESG metrics within a template assignment"""
+    """Raw input data point for an ESG metric within a template assignment."""
     assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='submissions')
     metric = models.ForeignKey(ESGMetric, on_delete=models.CASCADE)
     value = models.FloatField(null=True, blank=True)
-    text_value = models.TextField(null=True, blank=True, help_text="For non-numeric metrics")
-    reporting_period = models.DateField(null=True, blank=True, help_text="For time-based metrics (e.g., monthly data)")
+    text_value = models.TextField(null=True, blank=True, help_text="For non-numeric metrics or raw text input")
+    reporting_period = models.DateField(null=True, blank=True, help_text="For time-based metrics (e.g., monthly data), indicates the period this input applies to")
     submitted_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='metric_submissions')
     submitted_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    notes = models.TextField(blank=True)
-    is_verified = models.BooleanField(default=False)
+    notes = models.TextField(blank=True, help_text="Notes specific to this raw input")
+
+    # Verification fields now apply to the RAW INPUT
+    is_verified = models.BooleanField(default=False, help_text="Verification status of this specific input")
     verified_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_submissions')
     verified_at = models.DateTimeField(null=True, blank=True)
-    verification_notes = models.TextField(blank=True)
+    verification_notes = models.TextField(blank=True, help_text="Verification notes for this specific input")
+
     layer = models.ForeignKey(LayerProfile, 
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True,
         related_name='submissions',
-        help_text="The layer this submission's data represents"
+        help_text="The layer this input data represents (if different from assignment layer)"
     )
+    # --- New Field for Approach B ---
+    reported_value = models.ForeignKey(
+        ReportedMetricValue,
+        on_delete=models.SET_NULL, # Keep input even if final value deleted
+        null=True,
+        blank=True,
+        related_name='source_submissions',
+        help_text="The final reported value this input contributed to"
+    )
+    # ------------------------------
 
     class Meta:
-        unique_together = ['assignment', 'metric', 'reporting_period']
+        # REMOVED: unique_together = ['assignment', 'metric', 'reporting_period']
         indexes = [
-            models.Index(fields=['assignment', 'metric']),
+            models.Index(fields=['assignment', 'metric']), # Still useful for querying inputs
             models.Index(fields=['reporting_period']),
             models.Index(fields=['submitted_by']),
-            models.Index(fields=['is_verified']),
+            models.Index(fields=['is_verified']), # Index for input verification status
+            models.Index(fields=['reported_value']) # Index FK to final value
         ]
+        ordering = ['assignment', 'metric', 'reporting_period', '-submitted_at'] # Added submit time
+        verbose_name = "Metric Submission Input"
+        verbose_name_plural = "Metric Submission Inputs"
 
     def __str__(self):
         period_str = f" ({self.reporting_period})" if self.reporting_period else ""
-        return f"{self.metric.name}{period_str} - {self.assignment.layer.company_name}"
+        # Updated to indicate it's an input
+        return f"{self.metric.name}{period_str} - {self.assignment.layer.company_name} (Input ID: {self.pk})"
         
+    # add_value helper method remains relevant for multi-value INPUTS
     def add_value(self, field_key, value):
-        """Add a value for a multi-value field"""
+        """Add a value for a multi-value field *to this input record*"""
         if not self.metric.is_multi_value:
             raise ValueError("This metric is not configured for multiple values")
             
@@ -264,9 +324,9 @@ class ESGMetricSubmission(models.Model):
             numeric_value = None
             text_value = str(value)
             
-        # Create or update
+        # Create or update the MetricValue linked to this ESGMetricSubmission input
         return MetricValue.objects.update_or_create(
-            submission=self,
+            submission=self, # Links to this specific input record
             field=field,
             defaults={
                 'numeric_value': numeric_value,
@@ -275,7 +335,7 @@ class ESGMetricSubmission(models.Model):
         )[0]
 
 class MetricValue(models.Model):
-    """Individual values for multi-value metrics"""
+    """Individual values for multi-value metrics, linked to a specific submission input"""
     submission = models.ForeignKey(ESGMetricSubmission, on_delete=models.CASCADE, related_name='multi_values')
     field = models.ForeignKey(MetricValueField, on_delete=models.CASCADE)
     numeric_value = models.FloatField(null=True, blank=True)
@@ -286,12 +346,12 @@ class MetricValue(models.Model):
         
     def __str__(self):
         value = self.numeric_value if self.numeric_value is not None else self.text_value
-        return f"{self.field.display_name}: {value}"
+        return f"{self.field.display_name}: {value} (for Input ID: {self.submission.pk})"
 
 class ESGMetricEvidence(models.Model):
-    """Supporting documentation for ESG metric submissions"""
+    """Supporting documentation for ESG metric submission inputs"""
     submission = models.ForeignKey(ESGMetricSubmission, on_delete=models.CASCADE, related_name='evidence', null=True, blank=True,
-                                 help_text="Can be null for standalone evidence files before attaching to a submission")
+                                 help_text="The specific submission input this evidence supports")
     file = models.FileField(upload_to='esg_evidence/%Y/%m/')
     filename = models.CharField(max_length=255)
     file_type = models.CharField(max_length=50)
@@ -309,9 +369,9 @@ class ESGMetricEvidence(models.Model):
     # New field for explicit metric relationship
     intended_metric = models.ForeignKey(ESGMetric, on_delete=models.SET_NULL, null=True, blank=True, 
                                         related_name='intended_evidence',
-                                        help_text="The metric this evidence is intended for, before being attached to a submission")
+                                        help_text="The metric this evidence is intended for, before being attached to a submission input")
     
-    # OCR-related fields
+    # OCR-related fields remain the same, relate to the evidence file itself
     enable_ocr_processing = models.BooleanField(default=True, help_text="Whether OCR processing is available for this evidence file")
     is_processed_by_ocr = models.BooleanField(default=False, help_text="Whether OCR processing has been attempted")
     extracted_value = models.FloatField(null=True, blank=True, help_text="Value extracted by OCR")
@@ -324,5 +384,5 @@ class ESGMetricEvidence(models.Model):
 
     def __str__(self):
         if self.submission:
-            return f"Evidence for {self.submission.metric.name}"
+            return f"Evidence for Input ID: {self.submission.pk}"
         return f"Standalone evidence: {self.filename}" 
