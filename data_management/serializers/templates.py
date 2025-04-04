@@ -3,7 +3,8 @@ from accounts.models import CustomUser, LayerProfile
 from ..models import (
     ESGFormCategory, ESGForm, ESGMetric,
     Template, TemplateFormSelection, TemplateAssignment,
-    ESGMetricSubmission, ESGMetricEvidence, MetricValueField, MetricValue
+    ESGMetricSubmission, ESGMetricEvidence, MetricValueField, MetricValue,
+    ReportedMetricValue
 )
 
 class ESGMetricSerializer(serializers.ModelSerializer):
@@ -19,7 +20,8 @@ class ESGMetricSerializer(serializers.ModelSerializer):
         model = ESGMetric
         fields = ['id', 'name', 'description', 'unit_type', 'custom_unit', 
                  'requires_evidence', 'order', 'validation_rules', 'location', 'is_required',
-                 'requires_time_reporting', 'reporting_frequency', 'form_id']
+                 'requires_time_reporting', 'reporting_frequency', 'is_multi_value', 'aggregates_inputs',
+                 'form_id']
         read_only_fields = ['id']
 
 class ESGFormCategorySerializer(serializers.ModelSerializer):
@@ -202,7 +204,7 @@ class MetricValueSerializer(serializers.ModelSerializer):
         return obj.field.field_key
 
 class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
-    """Serializer for ESG metric submissions"""
+    """Serializer for ESG metric submission inputs (raw data)."""
     evidence = ESGMetricEvidenceSerializer(many=True, read_only=True)
     metric_name = serializers.SerializerMethodField()
     metric_unit = serializers.SerializerMethodField()
@@ -217,20 +219,24 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     layer_name = serializers.SerializerMethodField()
     is_multi_value = serializers.SerializerMethodField()
     multi_values = MetricValueSerializer(many=True, read_only=True)
+    reported_value_id = serializers.ReadOnlyField(source='reported_value.id')
     
     class Meta:
         model = ESGMetricSubmission
         fields = [
             'id', 'assignment', 'metric', 'metric_name', 'metric_unit',
             'value', 'text_value', 'reporting_period', 'submitted_by', 'submitted_by_name',
-            'submitted_at', 'updated_at', 'notes', 'is_verified',
-            'verified_by', 'verified_by_name', 'verified_at', 
-            'verification_notes', 'evidence', 'layer_id', 'layer_name',
-            'is_multi_value', 'multi_values'
+            'submitted_at', 'updated_at', 'notes', 
+            'is_verified', 'verified_by', 'verified_by_name', 'verified_at', 'verification_notes', 
+            'evidence', 'layer_id', 'layer_name',
+            'is_multi_value', 'multi_values',
+            'reported_value_id'
         ]
         read_only_fields = [
+            'id',
             'submitted_by', 'submitted_at', 'updated_at', 
-            'is_verified', 'verified_by', 'verified_at', 'layer_name'
+            'layer_name', 
+            'reported_value_id'
         ]
     
     def get_metric_name(self, obj):
@@ -260,38 +266,25 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         return obj.metric.is_multi_value
     
     def validate(self, data):
-        """Validate that either value or text_value is provided based on metric type"""
+        """Basic validation for the input data."""
         metric = data.get('metric')
         value = data.get('value')
         text_value = data.get('text_value')
         
-        # Check if numeric metrics have a numeric value
+        # Check if numeric metrics have a numeric value (if provided)
+        # Allow None for updates where only notes/etc are changed
         numeric_units = ['kWh', 'MWh', 'm3', 'tonnes', 'tCO2e', 'percentage']
-        if metric.unit_type in numeric_units and value is None:
-            raise serializers.ValidationError(f"A numeric value is required for {metric.name}")
+        if metric and metric.unit_type in numeric_units and 'value' in data and data['value'] is None:
+             # Only raise if 'value' was explicitly passed as None for a numeric metric
+            if self.partial and 'value' not in self.initial_data:
+                 pass # Allow partial update without value
+            else:
+                 raise serializers.ValidationError(f"A numeric value is required for {metric.name}, cannot be null.")
         
-        # Check if at least one value type is provided
-        if value is None and not text_value:
-            raise serializers.ValidationError("Either a numeric value or text value must be provided")
-        
-        # Check for duplicate submissions with the same reporting period
-        assignment = data.get('assignment')
-        reporting_period = data.get('reporting_period')
-        
-        # If this is an update, exclude the current instance
-        instance = self.instance
-        if instance:
-            try:
-                existing = ESGMetricSubmission.objects.exclude(pk=instance.pk).get(
-                    assignment=assignment,
-                    metric=metric,
-                    reporting_period=reporting_period
-                )
-                raise serializers.ValidationError(
-                    f"A submission for this metric with reporting period {reporting_period} already exists"
-                )
-            except ESGMetricSubmission.DoesNotExist:
-                pass
+        # Check if at least one value type is provided on create
+        # Allow updates to modify only other fields like notes
+        if not self.instance and value is None and not text_value:
+            raise serializers.ValidationError("Either a numeric value or text value must be provided for a new submission input.")
         
         return data
 
@@ -402,3 +395,46 @@ class ESGMetricSubmissionVerifySerializer(serializers.Serializer):
             raise serializers.ValidationError("Only Baker Tilly admins can verify submissions")
             
         return data
+
+# --- New Serializer for Approach B ---
+class ReportedMetricValueSerializer(serializers.ModelSerializer):
+    """Serializer for the final, aggregated/reported metric values."""
+    metric_name = serializers.CharField(source='metric.name', read_only=True)
+    metric_unit = serializers.SerializerMethodField(read_only=True)
+    layer_name = serializers.CharField(source='layer.company_name', read_only=True)
+    verified_by_name = serializers.CharField(source='verified_by.email', read_only=True, allow_null=True)
+    source_submission_ids = serializers.PrimaryKeyRelatedField(
+        source='source_submissions', 
+        many=True, 
+        read_only=True
+    )
+    source_submission_count = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ReportedMetricValue
+        fields = [
+            'id', 'assignment', 'metric', 'metric_name', 'metric_unit',
+            'layer', 'layer_name', 'reporting_period',
+            'value', 'text_value',
+            'calculated_at', 'last_updated_at',
+            'is_verified', 'verified_by', 'verified_by_name', 'verified_at', 'verification_notes',
+            'source_submission_ids', 'source_submission_count'
+        ]
+        read_only_fields = [
+            'id', 'assignment', 'metric', 'layer', 'reporting_period',
+            'value', 'text_value',
+            'calculated_at', 'last_updated_at',
+            'metric_name', 'metric_unit', 'layer_name', 'verified_by_name',
+            'source_submission_ids', 'source_submission_count'
+            # Verification fields might be updatable via a specific action
+        ]
+
+    def get_metric_unit(self, obj):
+        if obj.metric.unit_type == 'custom':
+            return obj.metric.custom_unit
+        return obj.metric.unit_type
+
+    def get_source_submission_count(self, obj):
+        # Optimize this if performance becomes an issue
+        return obj.source_submissions.count()
+# ----------------------------------

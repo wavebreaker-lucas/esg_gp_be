@@ -6,14 +6,16 @@ from rest_framework import viewsets, views, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db import transaction
+from django.db import transaction, models
 from django.utils import timezone
+import logging
 
 from accounts.models import CustomUser, AppUser, LayerProfile
 from accounts.services import get_accessible_layers, has_layer_access
 from ...models import (
     ESGForm, ESGMetric, 
-    Template, TemplateAssignment, TemplateFormSelection
+    Template, TemplateAssignment, TemplateFormSelection,
+    ReportedMetricValue
 )
 from ...models.templates import (
     ESGMetricSubmission, ESGMetricEvidence,
@@ -25,11 +27,13 @@ from ...serializers.templates import (
     ESGMetricSubmissionVerifySerializer
 )
 from ..utils import get_required_submission_count, attach_evidence_to_submissions
+from ...services.aggregation import calculate_report_value
 
+logger = logging.getLogger(__name__)
 
 class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for managing ESG metric submissions.
+    ViewSet for managing ESG metric submission INPUTS (raw data).
     """
     serializer_class = ESGMetricSubmissionSerializer
     permission_classes = [IsAuthenticated]
@@ -57,135 +61,198 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         return self.serializer_class
 
     def perform_create(self, serializer):
+        """Handle creation of a single submission input."""
         submission = serializer.save(submitted_by=self.request.user)
         
-        # If no layer was specified, try to set a default layer
-        if not submission.layer:
+        # --- Trigger Aggregation on Create --- 
+        # Check if the metric aggregates and if context is complete
+        if submission.metric.aggregates_inputs and submission.layer and submission.reporting_period:
             try:
-                # Try to get a default layer from settings (or use a fallback mechanism)
-                from django.conf import settings
-                default_layer_id = getattr(settings, 'DEFAULT_LAYER_ID', None)
-                
-                if default_layer_id:
-                    default_layer = LayerProfile.objects.get(id=default_layer_id)
-                else:
-                    # Fallback: Get the first available group layer
-                    default_layer = LayerProfile.objects.filter(layer_type='GROUP').first()
-                
-                if default_layer:
-                    submission.layer = default_layer
-                    submission.save()
+                calculate_report_value(
+                    submission.assignment, 
+                    submission.metric, 
+                    submission.reporting_period, 
+                    submission.layer
+                )
             except Exception as e:
-                # Just log the error, don't fail the submission creation
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Could not set default layer for submission: {e}")
-                
-        # Check if form is complete after new submission
-        self._check_form_completion(submission)
-        return submission
+                 logger.error(f"Aggregation failed for single create context ({submission.assignment}, {submission.metric}, {submission.reporting_period}, {submission.layer}): {e}", exc_info=True)
+        elif submission.metric.aggregates_inputs:
+            logger.warning(f"Cannot trigger aggregation for created submission ID {submission.id}: Missing layer or reporting_period.")
+        # -------------------------------------
 
-    def _check_form_completion(self, submission_or_assignment):
-        """Check if a form is complete after a submission is added or updated"""
-        # Get the template assignment
-        if hasattr(submission_or_assignment, 'assignment'):
-            # If we were passed a submission
-            assignment = submission_or_assignment.assignment
-            submitter = submission_or_assignment.submitted_by
-        else:
-            # If we were passed an assignment directly
-            assignment = submission_or_assignment
-            submitter = None  # We don't know who to attribute the completion to
-        
-        # Get all metrics for the forms in this template
-        metrics = ESGMetric.objects.filter(
-            form__in=assignment.template.selected_forms.all()
-        )
-        
-        # Get all submissions for this assignment
-        submissions = ESGMetricSubmission.objects.filter(
-            assignment=assignment
-        )
-        
-        # Check if all required metrics have submissions
-        all_required_metrics_submitted = True
-        for metric in metrics:
-            if metric.is_required:
-                # For time-based metrics, check if we have enough entries
-                if metric.requires_time_reporting:
-                    # Count submissions for this metric
-                    submissions_count = submissions.filter(metric=metric).count()
-                    
-                    # Calculate required count based on frequency
-                    required_count = get_required_submission_count(metric, assignment)
-                    
-                    if submissions_count < required_count:
-                        all_required_metrics_submitted = False
-                        break
-                else:
-                    # For regular metrics, we need at least one submission
-                    has_submission = submissions.filter(metric=metric).exists()
-                    if not has_submission:
-                        all_required_metrics_submitted = False
-                        break
-        
-        # Update assignment status if all required metrics are submitted
-        if all_required_metrics_submitted and assignment.status in ['PENDING', 'IN_PROGRESS']:
-            assignment.status = 'SUBMITTED'
-            assignment.completed_at = timezone.now()
-            assignment.save()
-            
-            # Update any form selection completions
-            for form_selection in assignment.template.templateformselection_set.all():
-                form_metrics = metrics.filter(form=form_selection.form)
-                form_metrics_submitted = True
-                
-                for metric in form_metrics:
-                    if metric.is_required:
-                        if metric.requires_time_reporting:
-                            # For time-based metrics, check submission count
-                            submissions_count = submissions.filter(metric=metric).count()
-                            required_count = get_required_submission_count(metric, assignment)
-                            
-                            if submissions_count < required_count:
-                                form_metrics_submitted = False
-                                break
-                        else:
-                            # For regular metrics, check if any submission exists
-                            if not submissions.filter(metric=metric).exists():
-                                form_metrics_submitted = False
-                                break
-                
-                if form_metrics_submitted and not form_selection.is_completed:
-                    form_selection.is_completed = True
-                    form_selection.completed_at = timezone.now()
-                    # If we have a submitter, use that, otherwise try to find a recent submitter
-                    if submitter:
-                        form_selection.completed_by = submitter
-                    else:
-                        # Try to get the most recent submitter for a metric in this form
-                        recent_submission = submissions.filter(
-                            metric__form=form_selection.form
-                        ).order_by('-submitted_at').first()
-                        if recent_submission:
-                            form_selection.completed_by = recent_submission.submitted_by
-                    form_selection.save()
+        # Check form completion - using the new logic based on ReportedMetricValue
+        self._check_form_completion(submission.assignment) # Pass assignment for context
+        return submission
+    
+    def perform_update(self, serializer):
+        """Handle update of a single submission input and trigger re-aggregation."""
+        # Get pre-save state to know the old context if it changed
+        instance = serializer.instance
+        old_context = None
+        if instance.metric.aggregates_inputs and instance.layer and instance.reporting_period:
+            old_context = (instance.assignment, instance.metric, instance.reporting_period, instance.layer)
+
+        submission = serializer.save() # Save changes first
+
+        # --- Trigger Aggregation on Update --- 
+        new_context = None
+        if submission.metric.aggregates_inputs and submission.layer and submission.reporting_period:
+            new_context = (submission.assignment, submission.metric, submission.reporting_period, submission.layer)
+
+        contexts_to_recalculate = set()
+        if new_context:
+            contexts_to_recalculate.add(new_context)
+        # If the context itself changed (e.g., reporting_period was edited), recalculate the old context too
+        if old_context and old_context != new_context:
+             contexts_to_recalculate.add(old_context)
+
+        for context_tuple in contexts_to_recalculate:
+            try:
+                calculate_report_value(*context_tuple)
+            except Exception as e:
+                 logger.error(f"Aggregation failed for update context {context_tuple}: {e}", exc_info=True)
+        # -------------------------------------
+
+        # Check form completion - using the new logic based on ReportedMetricValue
+        self._check_form_completion(submission.assignment)
 
     def perform_destroy(self, instance):
-        # Store assignment before deleting
-        assignment = instance.assignment
-        
+        """Handle deletion of a single submission input and trigger re-aggregation."""
+        # Store context before deleting
+        context_to_recalculate = None
+        if instance.metric.aggregates_inputs and instance.layer and instance.reporting_period:
+            context_to_recalculate = (
+                instance.assignment, 
+                instance.metric, 
+                instance.reporting_period, 
+                instance.layer
+            )
+        assignment_to_check = instance.assignment
+
         # Call parent method to delete
         super().perform_destroy(instance)
+
+        # --- Trigger Aggregation on Delete --- 
+        if context_to_recalculate:
+            try:
+                calculate_report_value(*context_to_recalculate)
+            except Exception as e:
+                 logger.error(f"Aggregation failed for delete context {context_to_recalculate}: {e}", exc_info=True)
+        # -------------------------------------
+
+        # Re-check form completion status for the assignment
+        self._check_form_completion(assignment_to_check)
+
+    def _check_form_completion(self, assignment):
+        """
+        Check if an assignment is complete based on ReportedMetricValue existence.
+        This method now takes the assignment directly.
+        """
+        logger.debug(f"Checking completion status for assignment {assignment.id}")
+
+        # Get all required metrics for the forms in this template assignment
+        required_metrics = ESGMetric.objects.filter(
+            form__in=assignment.template.selected_forms.all(),
+            is_required=True
+        )
+
+        if not required_metrics.exists():
+            logger.debug(f"No required metrics found for assignment {assignment.id}. Marking complete.")
+            # Consider if an assignment with no required metrics should be SUBMITTED or handled differently
+            if assignment.status in ['PENDING', 'IN_PROGRESS']:
+                assignment.status = 'SUBMITTED' # Or maybe a different status? 'N/A'?
+                assignment.completed_at = timezone.now()
+                assignment.save()
+            return # Nothing more to check
+
+        all_required_metrics_reported = True
+        completion_timestamp = timezone.now()
+
+        # Fetch all existing reported values for this assignment to minimize queries
+        # Assumes layer context for reported value matches assignment layer - might need adjustment if layers differ
+        existing_reported_values = ReportedMetricValue.objects.filter(
+            assignment=assignment,
+            layer=assignment.layer # Check against the assignment's layer
+        ).values_list('metric_id', 'reporting_period')
         
-        # Re-check form completion status
-        self._check_form_completion(assignment)
+        reported_value_lookup = {(metric_id, period) for metric_id, period in existing_reported_values}
+
+        for metric in required_metrics:
+            if metric.requires_time_reporting:
+                expected_periods = get_required_submission_count(metric, assignment, return_dates=True)
+                if not expected_periods: # Function returned empty list
+                     logger.warning(f"Could not determine expected periods for time-based metric {metric.id} on assignment {assignment.id}")
+                     all_required_metrics_reported = False
+                     break # Cannot determine completeness
+
+                for period_date in expected_periods:
+                    # Check if a ReportedMetricValue exists for this specific metric, period, and layer
+                    if (metric.id, period_date) not in reported_value_lookup:
+                        logger.debug(f"Missing ReportedMetricValue for metric {metric.id} ({metric.name}), period {period_date}, layer {assignment.layer.id}")
+                        all_required_metrics_reported = False
+                        break # Missing a required period for this metric
+            else:
+                 # For non-time-based metrics, expect one ReportedMetricValue (period might be None or end date?)
+                 # Let's assume period should match assignment end date for simplicity for now.
+                 # TODO: Define policy for reporting_period on non-time-based ReportedMetricValue
+                 expected_period_for_non_time_based = assignment.reporting_period_end
+                 if (metric.id, expected_period_for_non_time_based) not in reported_value_lookup:
+                    logger.debug(f"Missing ReportedMetricValue for non-time-based metric {metric.id} ({metric.name}), expected period {expected_period_for_non_time_based}, layer {assignment.layer.id}")
+                    all_required_metrics_reported = False
+            
+            if not all_required_metrics_reported:
+                break # Stop checking metrics if one fails
+        
+        # Update assignment status if all required final values are reported
+        if all_required_metrics_reported and assignment.status in ['PENDING', 'IN_PROGRESS']:
+            logger.info(f"Marking assignment {assignment.id} as SUBMITTED.")
+            assignment.status = 'SUBMITTED'
+            assignment.completed_at = completion_timestamp
+            assignment.save()
+
+            # Update form selection completion status (based on reported values)
+            # TODO: Revisit logic for attributing completion user if needed
+            # For now, just mark forms complete if all their required metrics have reported values.
+            for form_selection in assignment.template.templateformselection_set.filter(is_completed=False):
+                form = form_selection.form
+                form_metrics = required_metrics.filter(form=form)
+                form_metrics_complete = True
+                for metric in form_metrics:
+                    if metric.requires_time_reporting:
+                        expected_periods = get_required_submission_count(metric, assignment, return_dates=True)
+                        for period_date in expected_periods:
+                            if (metric.id, period_date) not in reported_value_lookup:
+                                form_metrics_complete = False
+                                break
+                    else:
+                        expected_period_for_non_time_based = assignment.reporting_period_end
+                        if (metric.id, expected_period_for_non_time_based) not in reported_value_lookup:
+                            form_metrics_complete = False
+                    if not form_metrics_complete:
+                        break
+                
+                if form_metrics_complete:
+                    logger.info(f"Marking form selection {form_selection.id} (Form: {form.name}) as completed for assignment {assignment.id}.")
+                    form_selection.is_completed = True
+                    form_selection.completed_at = completion_timestamp
+                    # form_selection.completed_by = ? # Need a way to determine this if required
+                    form_selection.save()
+        
+        elif not all_required_metrics_reported and assignment.status == 'SUBMITTED':
+             # If inputs were deleted causing incompleteness, revert status
+             logger.info(f"Reverting assignment {assignment.id} status to IN_PROGRESS due to missing reported values.")
+             assignment.status = 'IN_PROGRESS'
+             assignment.completed_at = None
+             assignment.save()
+             # Also revert associated form selections
+             assignment.template.templateformselection_set.update(is_completed=False, completed_at=None, completed_by=None)
 
     @action(detail=False, methods=['post'])
     @transaction.atomic
     def batch_submit(self, request):
         """
-        Submit multiple metric values at once.
+        Submit multiple metric INPUTS (raw data) at once.
+        Aggregates values for relevant metrics into ReportedMetricValue.
         
         POST parameters:
         - assignment_id: The ID of the template assignment
@@ -244,9 +311,9 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 # Fallback to assignment's layer if any error occurs
                 default_layer = assignment.layer
         
-        # Create or update submissions
+        # Create submission inputs
         created_submissions = []
-        updated_submissions = []
+        # updated_submissions = [] # No longer tracking updates here
         
         for sub_data in submissions_data:
             metric_id = sub_data.get('metric_id')
@@ -277,6 +344,10 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     'error': f'Metric with ID {metric_id} not found'
                 }, status=400)
             
+            # --- Approach B Change: Always create a new input submission ---
+            # REMOVED: The try/except block that looked for existing submissions to update
+            # -------------------------------------------------------------
+
             # Create new submission input record
             submission = ESGMetricSubmission.objects.create(
                 assignment=assignment,
@@ -319,15 +390,13 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                         )
                     except MetricValueField.DoesNotExist:
                         # Log but don't fail if field doesn't exist
-                        import logging
-                        logger = logging.getLogger(__name__)
+                        # import logging # Already imported at top
                         logger.warning(f"Field '{field_key}' not found for metric {metric.id}")
 
         # --- Approach B Change: Trigger Aggregation --- 
         affected_contexts = set()
         for sub in created_submissions: # Only process newly created ones
-            # Ensure layer is not None before adding to context
-            # If layer is None here, it might indicate an issue earlier
+            # Ensure layer is not None and period is not None before adding to context
             if sub.metric.aggregates_inputs and sub.layer and sub.reporting_period:
                 affected_contexts.add((
                     sub.assignment,
@@ -337,21 +406,19 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 ))
             elif sub.metric.aggregates_inputs and (not sub.layer or not sub.reporting_period):
                 # Log a warning if essential context is missing for an aggregating metric
-                import logging
-                logger = logging.getLogger(__name__)
+                # import logging # Already imported at top
                 logger.warning(f"Cannot trigger aggregation for submission ID {sub.id}: Missing layer or reporting_period.")
 
 
         # Trigger calculation for each affected context
         if affected_contexts:
-            from ...services.aggregation import calculate_report_value # Import aggregation service
+            # from ...services.aggregation import calculate_report_value # Already imported at top
             for context_tuple in affected_contexts:
                 try:
                     calculate_report_value(*context_tuple)
                 except Exception as e:
                     # Log error but don't fail the whole batch? Decide error handling.
-                    import logging
-                    logger = logging.getLogger(__name__)
+                    # import logging # Already imported at top
                     logger.error(f"Aggregation failed for context {context_tuple}: {e}", exc_info=True)
         # ----------------------------------------------
 
@@ -360,11 +427,12 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             assignment.status = 'IN_PROGRESS'
             assignment.save()
 
-        # Check if form is now complete - THIS WILL NEED REFACTORING IN PHASE 3
-        if created_submissions: # Pass the first created submission for context
-            self._check_form_completion(created_submissions[0])
-        # elif updated_submissions: # No longer updating submissions in this loop
-        #     self._check_form_completion(updated_submissions[0])
+        # Check if form is now complete - Using the new logic based on ReportedMetricValue
+        if created_submissions:
+             # Pass assignment directly now
+            self._check_form_completion(assignment)
+        # elif updated_submissions: # No longer applicable
+        #     pass 
 
         # Automatically attach standalone evidence files if requested (remains the same)
         evidence_count = 0
@@ -377,12 +445,12 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             # Updated message to reflect only creations
             'message': f'Created {len(created_submissions)} submission inputs.',
             'evidence_attached': evidence_count,
-            'assignment_status': assignment.status
+            'assignment_status': assignment.status # Return current status
         })
 
     @action(detail=False, methods=['get'])
     def by_assignment(self, request):
-        """Get all submissions for a specific assignment"""
+        """Get all submission INPUTS for a specific assignment"""
         assignment_id = request.query_params.get('assignment_id')
         if not assignment_id:
             return Response({'error': 'assignment_id is required'}, status=400)
@@ -448,7 +516,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             sort_by = f'-{sort_by}'
         
         # Optimize query with select_related
-        submissions = submissions.select_related('metric', 'layer', 'submitted_by').order_by(sort_by)
+        submissions = submissions.select_related('metric', 'layer', 'submitted_by', 'reported_value').order_by(sort_by)
         
         # Pagination
         page_size = int(request.query_params.get('page_size', 50))
@@ -473,26 +541,29 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def verify(self, request, pk=None):
-        """Verify a submission (for Baker Tilly admins)"""
-        submission = self.get_object()
+        """Verify a specific submission INPUT (for Baker Tilly admins)."""
+        submission = self.get_object() # Gets the ESGMetricSubmission instance
         
         # Only Baker Tilly admins can verify submissions
         if not (request.user.is_staff or request.user.is_superuser or request.user.is_baker_tilly_admin):
             return Response({'error': 'Only Baker Tilly admins can verify submissions'}, status=403)
         
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=request.data) # Uses ESGMetricSubmissionVerifySerializer
         serializer.is_valid(raise_exception=True)
         
-        # Update verification status
+        # Update verification status on the ESGMetricSubmission record
         submission.is_verified = True
         submission.verified_by = request.user
         submission.verified_at = timezone.now()
         submission.verification_notes = serializer.validated_data.get('verification_notes', '')
         submission.save()
         
+        # Note: Verification of the INPUT does not automatically verify the ReportedMetricValue
+        # A separate mechanism would be needed to verify the final aggregated value if required.
+        
         return Response({
             'status': 'success',
-            'message': 'Submission verified successfully'
+            'message': 'Submission input verified successfully'
         })
 
     @action(detail=False, methods=['post'])
@@ -500,6 +571,8 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
     def submit_template(self, request):
         """
         Submit a complete template and mark it as submitted.
+        DECISION: Should submission check ReportedMetricValue verification status?
+        For now, just checks existence, similar to _check_form_completion.
         
         POST parameters:
         - assignment_id: The ID of the template assignment
@@ -521,91 +594,92 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 LayerProfile.objects.filter(id=assignment.layer.id, app_users__user=request.user).exists()):
             return Response({'error': 'You do not have permission to submit this template'}, status=403)
         
-        # Get all metrics for the forms in this template
-        metrics = ESGMetric.objects.filter(
-            form__in=assignment.template.selected_forms.all()
+        # --- Check Completion based on ReportedMetricValue --- 
+        required_metrics = ESGMetric.objects.filter(
+            form__in=assignment.template.selected_forms.all(),
+            is_required=True
         )
-        
-        # Get all submissions for this assignment
-        submissions = ESGMetricSubmission.objects.filter(
-            assignment=assignment
-        )
-        
-        # Check if all required metrics have submissions
-        missing_metrics = []
-        incomplete_time_based = []
-        
-        for metric in metrics:
-            if metric.is_required:
-                if metric.requires_time_reporting:
-                    # For time-based metrics, check submission count
-                    submissions_count = submissions.filter(metric=metric).count()
-                    required_count = get_required_submission_count(metric, assignment)
-                    
-                    if submissions_count < required_count:
-                        incomplete_time_based.append({
+
+        if not required_metrics.exists():
+            # No required metrics, consider it complete
+            assignment.status = 'SUBMITTED'
+            assignment.completed_at = timezone.now()
+            assignment.save()
+            # Mark all form selections complete
+            assignment.template.templateformselection_set.update(
+                is_completed=True, completed_at=timezone.now(), completed_by=request.user
+            )
+            return Response({
+                'status': 'success',
+                'message': 'Template submitted successfully (no required metrics)',
+                'assignment_status': assignment.status
+            }) 
+
+        missing_final_values = []
+        # Fetch all existing reported values for this assignment
+        existing_reported_values = ReportedMetricValue.objects.filter(
+            assignment=assignment,
+            layer=assignment.layer
+        ).values_list('metric_id', 'reporting_period')
+        reported_value_lookup = {(metric_id, period) for metric_id, period in existing_reported_values}
+
+        for metric in required_metrics:
+            if metric.requires_time_reporting:
+                expected_periods = get_required_submission_count(metric, assignment, return_dates=True)
+                for period_date in expected_periods:
+                    if (metric.id, period_date) not in reported_value_lookup:
+                        missing_final_values.append({
                             'id': metric.id,
                             'name': metric.name,
                             'form': metric.form.name,
-                            'reporting_frequency': metric.reporting_frequency,
-                            'submitted_count': submissions_count,
-                            'required_count': required_count
+                            'missing_period': period_date.isoformat()
                         })
-                else:
-                    # For regular metrics, we need at least one submission
-                    has_submission = submissions.filter(metric=metric).exists()
-                    if not has_submission:
-                        missing_metrics.append({
-                            'id': metric.id,
-                            'name': metric.name,
-                            'form': metric.form.name
-                        })
-        
-        errors = {}
-        if missing_metrics:
-            errors["missing_metrics"] = missing_metrics
+            else:
+                expected_period_for_non_time_based = assignment.reporting_period_end
+                if (metric.id, expected_period_for_non_time_based) not in reported_value_lookup:
+                    missing_final_values.append({
+                        'id': metric.id,
+                        'name': metric.name,
+                        'form': metric.form.name,
+                        'missing_period': 'Overall' # Or expected_period_for_non_time_based.isoformat()
+                    })
             
-        if incomplete_time_based:
-            errors["incomplete_time_based_metrics"] = incomplete_time_based
-            
-        if errors:
+        if missing_final_values:
             return Response({
                 'status': 'incomplete',
-                'message': 'Template is incomplete.',
-                **errors
+                'message': 'Template is incomplete. Final reported values are missing.',
+                'missing_final_values': missing_final_values
             }, status=400)
         
-        # Update assignment status
+        # --- Mark as Submitted --- 
         assignment.status = 'SUBMITTED'
         assignment.completed_at = timezone.now()
         assignment.save()
         
-        # Update form selections
+        # Update form selections (redundant if _check_form_completion is reliable, but safe to do here)
         for form_selection in assignment.template.templateformselection_set.all():
-            form_metrics = metrics.filter(form=form_selection.form)
-            form_metrics_submitted = True
+            # Reuse check logic, but maybe simplify?
+             form_metrics = required_metrics.filter(form=form_selection.form)
+             form_metrics_complete = True
+             for metric in form_metrics:
+                 if metric.requires_time_reporting:
+                     expected_periods = get_required_submission_count(metric, assignment, return_dates=True)
+                     for period_date in expected_periods:
+                         if (metric.id, period_date) not in reported_value_lookup:
+                             form_metrics_complete = False
+                             break
+                 else:
+                     expected_period_for_non_time_based = assignment.reporting_period_end
+                     if (metric.id, expected_period_for_non_time_based) not in reported_value_lookup:
+                         form_metrics_complete = False
+                 if not form_metrics_complete:
+                     break
             
-            for metric in form_metrics:
-                if metric.is_required:
-                    if metric.requires_time_reporting:
-                        # For time-based metrics, check submission count
-                        submissions_count = submissions.filter(metric=metric).count()
-                        required_count = get_required_submission_count(metric, assignment)
-                        
-                        if submissions_count < required_count:
-                            form_metrics_submitted = False
-                            break
-                    else:
-                        # For regular metrics, check if any submission exists
-                        if not submissions.filter(metric=metric).exists():
-                            form_metrics_submitted = False
-                            break
-            
-            if form_metrics_submitted:
-                form_selection.is_completed = True
-                form_selection.completed_at = timezone.now()
-                form_selection.completed_by = request.user
-                form_selection.save()
+             if form_metrics_complete:
+                 form_selection.is_completed = True
+                 form_selection.completed_at = timezone.now()
+                 form_selection.completed_by = request.user
+                 form_selection.save()
         
         return Response({
             'status': 'success',

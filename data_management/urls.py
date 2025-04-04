@@ -5,7 +5,9 @@ from .views import (
     ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, ESGMetricViewSet, 
     UserTemplateAssignmentView, TemplateAssignmentView,
     MetricValueFieldViewSet, BatchEvidenceView,
-    AvailableLayersView, SumSubmissionsByLayerView  # Now imported directly from .views
+    AvailableLayersView, SumSubmissionsByLayerView, # Now imported directly from .views
+    # Import the new ViewSet
+    ReportedMetricValueViewSet
 )
 
 # Create a router for ViewSets
@@ -19,6 +21,8 @@ router.register(r'metric-submissions', ESGMetricSubmissionViewSet, basename='met
 router.register(r'metric-evidence', ESGMetricEvidenceViewSet, basename='metric-evidence')
 router.register(r'esg-metrics', ESGMetricViewSet, basename='esg-metric')
 router.register(r'metric-value-fields', MetricValueFieldViewSet, basename='metric-value-field')
+# Register the new ViewSet
+router.register(r'reported-metric-values', ReportedMetricValueViewSet, basename='reported-metric-value')
 
 # Export the router's URLs
 urlpatterns = router.urls
