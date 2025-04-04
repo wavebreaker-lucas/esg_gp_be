@@ -3,10 +3,14 @@ Service functions for calculating aggregated metric values.
 """
 
 import logging
-from django.db.models import Sum, Avg, Count, Max, Min
+from django.db.models import Sum, Avg, Count, Max, Min, F
 from django.utils import timezone
 
-from ..models import ESGMetricSubmission, ReportedMetricValue, ESGMetric, TemplateAssignment, LayerProfile
+from accounts.models import LayerProfile
+from ..models.templates import (
+    ESGMetricSubmission, ReportedMetricValue, ESGMetric, TemplateAssignment,
+    MetricValue, MetricValueField, ReportedMetricFieldValue
+)
 
 logger = logging.getLogger(__name__)
 

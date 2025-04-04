@@ -216,47 +216,80 @@ class TemplateAssignment(models.Model):
         return f"{self.template.name} - {self.layer.company_name}"
 
 class ReportedMetricValue(models.Model):
-    """Stores the final, aggregated/official value for a metric submission period."""
-    assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='reported_values')
-    metric = models.ForeignKey(ESGMetric, on_delete=models.CASCADE, related_name='reported_values')
-    layer = models.ForeignKey(LayerProfile, on_delete=models.CASCADE, related_name='reported_values') # Enforce layer for uniqueness
+    """Parent record storing aggregation results for a specific input metric context."""
+    assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='aggregated_records')
+    metric = models.ForeignKey(ESGMetric, on_delete=models.CASCADE, related_name='aggregated_records')
+    layer = models.ForeignKey(LayerProfile, on_delete=models.CASCADE, related_name='aggregated_records')
     reporting_period = models.DateField(help_text="The specific period this aggregated value represents (e.g., month-end, quarter-end)")
 
-    # Value fields
-    value = models.FloatField(null=True, blank=True)
-    text_value = models.TextField(null=True, blank=True)
+    # Aggregated value fields (primarily for single-value metrics)
+    aggregated_numeric_value = models.FloatField(null=True, blank=True, help_text="Aggregated value if the input metric is single-value numeric")
+    aggregated_text_value = models.TextField(null=True, blank=True, help_text="Aggregated value if the input metric is single-value text")
 
     # Calculation metadata
-    calculated_at = models.DateTimeField(auto_now_add=True, help_text="When this value was first calculated/created")
-    last_updated_at = models.DateTimeField(auto_now=True, help_text="When this value was last updated")
-    # calculation_method = models.CharField(max_length=50, blank=True, help_text="e.g., SUM, AVERAGE, LATEST") # Consider adding later
+    calculated_at = models.DateTimeField(auto_now_add=True, help_text="When this record was first created")
+    last_updated_at = models.DateTimeField(auto_now=True, help_text="When this record or its fields were last updated by aggregation")
 
-    # Verification fields for the FINAL value
-    is_verified = models.BooleanField(default=False)
-    verified_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_reported_values')
-    verified_at = models.DateTimeField(null=True, blank=True)
-    verification_notes = models.TextField(blank=True)
+    # Aggregation metadata
+    source_submission_count = models.PositiveIntegerField(default=0, help_text="Number of source submissions contributing to this aggregation")
+    first_submission_at = models.DateTimeField(null=True, blank=True, help_text="Timestamp of the first submission included")
+    last_submission_at = models.DateTimeField(null=True, blank=True, help_text="Timestamp of the last submission included")
 
     class Meta:
         unique_together = ['assignment', 'metric', 'reporting_period', 'layer']
         indexes = [
-            models.Index(fields=['assignment', 'metric', 'reporting_period', 'layer'], name='unique_reported_value_idx'), # Added name for clarity
+            models.Index(fields=['assignment', 'metric', 'reporting_period', 'layer'], name='unique_agg_record_idx'),
             models.Index(fields=['reporting_period']),
-            models.Index(fields=['is_verified']),
         ]
         ordering = ['assignment', 'metric', 'reporting_period']
-        verbose_name = "Reported Metric Value"
-        verbose_name_plural = "Reported Metric Values"
+        verbose_name = "Aggregated Metric Record"
+        verbose_name_plural = "Aggregated Metric Records"
 
     def __str__(self):
-        return f"{self.metric.name} ({self.reporting_period}) - {self.layer.company_name} [Final]"
+        return f"Aggregation for {self.metric.name} ({self.reporting_period}) - {self.layer.company_name}"
+
+class ReportedMetricFieldValue(models.Model):
+    """Stores the aggregated value for a specific field within a multi-value metric."""
+    reported_value = models.ForeignKey(
+        ReportedMetricValue,
+        on_delete=models.CASCADE,
+        related_name='aggregated_fields',
+        help_text="Parent aggregation record"
+    )
+    field = models.ForeignKey(
+        MetricValueField,
+        on_delete=models.CASCADE,
+        related_name='aggregated_field_values',
+        help_text="The specific field definition from the input metric"
+    )
+
+    # Aggregated value
+    aggregated_numeric_value = models.FloatField(null=True, blank=True)
+    aggregated_text_value = models.TextField(null=True, blank=True)
+
+    # Aggregation metadata for this field
+    aggregation_method = models.CharField(max_length=20, default='SUM', help_text="Method used (e.g., SUM, AVERAGE, LAST)")
+    source_submission_count = models.PositiveIntegerField(default=0, help_text="Number of source submissions contributing to this field's aggregation")
+    last_updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['reported_value', 'field']
+        indexes = [
+            models.Index(fields=['reported_value', 'field']),
+        ]
+        verbose_name = "Aggregated Metric Field Value"
+        verbose_name_plural = "Aggregated Metric Field Values"
+
+    def __str__(self):
+        value_str = self.aggregated_numeric_value if self.aggregated_numeric_value is not None else self.aggregated_text_value
+        return f"{self.field.display_name}: {value_str} ({self.aggregation_method}) for Aggregation ID: {self.reported_value_id}"
 
 class ESGMetricSubmission(models.Model):
     """Raw input data point for an ESG metric within a template assignment."""
     assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='submissions')
     metric = models.ForeignKey(ESGMetric, on_delete=models.CASCADE)
-    value = models.FloatField(null=True, blank=True)
-    text_value = models.TextField(null=True, blank=True, help_text="For non-numeric metrics or raw text input")
+    value = models.FloatField(null=True, blank=True, help_text="Raw value for single-value numeric metrics")
+    text_value = models.TextField(null=True, blank=True, help_text="Raw value for single-value text metrics")
     reporting_period = models.DateField(null=True, blank=True, help_text="For time-based metrics (e.g., monthly data), indicates the period this input applies to")
     submitted_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='metric_submissions')
     submitted_at = models.DateTimeField(auto_now_add=True)
@@ -269,43 +302,29 @@ class ESGMetricSubmission(models.Model):
     verified_at = models.DateTimeField(null=True, blank=True)
     verification_notes = models.TextField(blank=True, help_text="Verification notes for this specific input")
 
-    layer = models.ForeignKey(LayerProfile, 
-        on_delete=models.SET_NULL, 
-        null=True, 
+    layer = models.ForeignKey(LayerProfile,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
         related_name='submissions',
         help_text="The layer this input data represents (if different from assignment layer)"
     )
-    # --- New Field for Approach B ---
-    reported_value = models.ForeignKey(
-        ReportedMetricValue,
-        on_delete=models.SET_NULL, # Keep input even if final value deleted
-        null=True,
-        blank=True,
-        related_name='source_submissions',
-        help_text="The final reported value this input contributed to"
-    )
-    # ------------------------------
 
     class Meta:
-        # REMOVED: unique_together = ['assignment', 'metric', 'reporting_period']
         indexes = [
-            models.Index(fields=['assignment', 'metric']), # Still useful for querying inputs
+            models.Index(fields=['assignment', 'metric']),
             models.Index(fields=['reporting_period']),
             models.Index(fields=['submitted_by']),
-            models.Index(fields=['is_verified']), # Index for input verification status
-            models.Index(fields=['reported_value']) # Index FK to final value
+            models.Index(fields=['is_verified']),
         ]
-        ordering = ['assignment', 'metric', 'reporting_period', '-submitted_at'] # Added submit time
+        ordering = ['assignment', 'metric', 'reporting_period', '-submitted_at']
         verbose_name = "Metric Submission Input"
         verbose_name_plural = "Metric Submission Inputs"
 
     def __str__(self):
         period_str = f" ({self.reporting_period})" if self.reporting_period else ""
-        # Updated to indicate it's an input
         return f"{self.metric.name}{period_str} - {self.assignment.layer.company_name} (Input ID: {self.pk})"
-        
-    # add_value helper method remains relevant for multi-value INPUTS
+
     def add_value(self, field_key, value):
         """Add a value for a multi-value field *to this input record*"""
         if not self.metric.is_multi_value:
@@ -326,7 +345,7 @@ class ESGMetricSubmission(models.Model):
             
         # Create or update the MetricValue linked to this ESGMetricSubmission input
         return MetricValue.objects.update_or_create(
-            submission=self, # Links to this specific input record
+            submission=self,
             field=field,
             defaults={
                 'numeric_value': numeric_value,

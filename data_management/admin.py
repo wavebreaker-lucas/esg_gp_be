@@ -5,7 +5,7 @@ from .models.templates import (
     Template, TemplateFormSelection, TemplateAssignment,
     ESGMetricSubmission, ESGMetricEvidence,
     MetricValueField, MetricValue,
-    ReportedMetricValue
+    ReportedMetricValue, ReportedMetricFieldValue
 )
 
 class BoundaryItemAdmin(admin.ModelAdmin):
@@ -58,6 +58,7 @@ class MetricValueInline(admin.TabularInline):
     model = MetricValue
     extra = 0
     fields = ['field', 'numeric_value', 'text_value']
+    readonly_fields = ['field']
     raw_id_fields = ['field']
 
 @admin.register(ESGMetric)
@@ -96,28 +97,15 @@ class TemplateAssignmentAdmin(admin.ModelAdmin):
 
 @admin.register(ESGMetricSubmission)
 class ESGMetricSubmissionAdmin(admin.ModelAdmin):
-    list_display = ['metric', 'assignment', 'value', 'text_value', 'reporting_period', 'submitted_by', 'is_verified', 'get_reported_value_link']
+    list_display = ['metric', 'assignment', 'value', 'text_value', 'reporting_period', 'submitted_by', 'is_verified']
     list_filter = ['is_verified', 'metric__form', 'reporting_period', 'metric__is_multi_value']
     search_fields = ['metric__name', 'assignment__template__name', 'assignment__layer__company_name']
     date_hierarchy = 'submitted_at'
     raw_id_fields = ['metric', 'assignment', 'submitted_by', 'verified_by']
-    readonly_fields = ['reported_value']
-    list_select_related = ('metric', 'assignment', 'layer', 'submitted_by', 'reported_value')
+    readonly_fields = []
+    list_select_related = ('metric', 'assignment', 'layer', 'submitted_by', 'verified_by')
     
     inlines = [MetricValueInline]
-    
-    def get_queryset(self, request):
-        return super().get_queryset(request).prefetch_related('multi_values', 'reported_value')
-
-    def get_reported_value_link(self, obj):
-        from django.urls import reverse
-        from django.utils.html import format_html
-        if obj.reported_value:
-            link = reverse("admin:data_management_reportedmetricvalue_change", args=[obj.reported_value.id])
-            return format_html('<a href="{}">{}</a>', link, obj.reported_value.id)
-        return "N/A"
-    get_reported_value_link.short_description = 'Reported Value ID'
-    get_reported_value_link.admin_order_field = 'reported_value'
 
 @admin.register(MetricValueField)
 class MetricValueFieldAdmin(admin.ModelAdmin):
@@ -159,14 +147,37 @@ class ESGMetricEvidenceAdmin(admin.ModelAdmin):
     is_standalone.boolean = True
     is_standalone.short_description = "Standalone"
 
+class ReportedMetricFieldValueInline(admin.TabularInline):
+    model = ReportedMetricFieldValue
+    extra = 0
+    fields = ['field', 'aggregated_numeric_value', 'aggregated_text_value', 'aggregation_method', 'source_submission_count', 'last_updated_at']
+    readonly_fields = ['field', 'aggregated_numeric_value', 'aggregated_text_value', 'aggregation_method', 'source_submission_count', 'last_updated_at']
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
 @admin.register(ReportedMetricValue)
 class ReportedMetricValueAdmin(admin.ModelAdmin):
-    list_display = ('metric', 'assignment', 'layer', 'reporting_period', 'value', 'text_value', 'is_verified', 'last_updated_at')
-    list_filter = ('metric__form', 'metric', 'assignment__template', 'assignment__reporting_year', 'reporting_period', 'is_verified', 'layer')
-    search_fields = ('metric__name', 'assignment__template__name', 'layer__company_name', 'text_value')
+    list_display = (
+        'metric', 'assignment', 'layer', 'reporting_period', 
+        'aggregated_numeric_value', 'aggregated_text_value',
+        'source_submission_count', 'last_updated_at'
+    )
+    list_filter = (
+        'metric__form', 'metric', 'assignment__template', 
+        'assignment__reporting_year', 'reporting_period', 'layer'
+    )
+    search_fields = (
+        'metric__name', 'assignment__template__name', 'layer__company_name', 
+        'aggregated_numeric_value', 'aggregated_text_value'
+    )
     readonly_fields = (
         'assignment', 'metric', 'layer', 'reporting_period', 
-        'value', 'text_value', 'calculated_at', 'last_updated_at', 
-        'verified_by', 'verified_at'
+        'aggregated_numeric_value', 'aggregated_text_value',
+        'calculated_at', 'last_updated_at',
+        'source_submission_count', 'first_submission_at', 'last_submission_at'
     )
-    list_select_related = ('metric', 'assignment', 'layer', 'verified_by')
+    list_select_related = ('metric', 'assignment', 'layer')
+
+    inlines = [ReportedMetricFieldValueInline]

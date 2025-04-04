@@ -1,6 +1,7 @@
 from .submissions import ESGMetricSubmissionViewSet
 from .evidence import ESGMetricEvidenceViewSet, BatchEvidenceView
 from .utils import AvailableLayersView, SumSubmissionsByLayerView
+from .reported_values import ReportedMetricValueViewSet
 
 __all__ = [
     'ESGMetricSubmissionViewSet',
@@ -8,4 +9,5 @@ __all__ = [
     'BatchEvidenceView',
     'AvailableLayersView',
     'SumSubmissionsByLayerView',
+    'ReportedMetricValueViewSet',
 ]
