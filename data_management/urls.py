@@ -7,7 +7,8 @@ from .views import (
 )
 # Import BatchEvidenceView from its new location
 from .views.modules.evidence import BatchEvidenceView
-from .views.esg import MetricValueFieldViewSet
+# Corrected import: MetricValueFieldViewSet is now in metrics.py
+from .views.metrics import MetricValueFieldViewSet
 from .views.submission_utils import AvailableLayersView, SumSubmissionsByLayerView
 
 # Create a router for ViewSets

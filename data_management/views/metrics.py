@@ -8,6 +8,8 @@ from rest_framework.permissions import IsAuthenticated
 from accounts.permissions import BakerTillyAdmin
 from ..models import ESGMetric, ESGForm
 from ..serializers.templates import ESGMetricSerializer
+from ..models.templates import MetricValueField
+from ..serializers.esg import MetricValueFieldSerializer
 
 
 class ESGMetricViewSet(viewsets.ModelViewSet):
@@ -52,4 +54,30 @@ class ESGMetricViewSet(viewsets.ModelViewSet):
             form = ESGForm.objects.get(id=form_id)
             serializer.save(form=form)
         except ESGForm.DoesNotExist:
-            raise serializers.ValidationError({"form_id": f"Form with ID {form_id} not found."}) 
+            raise serializers.ValidationError({"form_id": f"Form with ID {form_id} not found."})
+
+
+class MetricValueFieldViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for managing MetricValueField definitions.
+    Primarily for Baker Tilly admins to configure multi-value metrics.
+    """
+    queryset = MetricValueField.objects.all()
+    serializer_class = MetricValueFieldSerializer
+    permission_classes = [IsAuthenticated, BakerTillyAdmin] # Only admins can manage these
+
+    def get_queryset(self):
+        """Allow filtering by metric_id."""
+        queryset = super().get_queryset()
+        metric_id = self.request.query_params.get('metric_id')
+        if metric_id:
+            queryset = queryset.filter(metric_id=metric_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        """Ensure the parent metric is marked as multi-value."""
+        metric = serializer.validated_data.get('metric')
+        if metric and not metric.is_multi_value:
+            metric.is_multi_value = True
+            metric.save()
+        serializer.save() 
