@@ -27,7 +27,7 @@ The system now includes comprehensive layer-based data segregation, allowing ESG
 The system provides an API endpoint to retrieve all layers that a user has access to:
 
 ```
-GET /api/metric-submissions/available_layers/
+GET /api/submissions/available-layers/
 ```
 
 **Features:**
@@ -88,7 +88,7 @@ GET /api/metric-submissions/available_layers/
 The system supports aggregating metrics across different layers via the `sum_by_layer` endpoint:
 
 ```
-GET /api/metric-submissions/sum_by_layer/?assignment_id=1&metric_ids=5,6,7&layer_ids=3,4,5
+GET /api/submissions/sum-by-layer/?assignment_id=1&metric_ids=5,6,7&layer_ids=3,4,5
 ```
 
 **Parameters:**
@@ -624,8 +624,8 @@ This allows for flexible data collection patterns while maintaining data integri
 - `POST /api/metric-submissions/batch_submit/`: Submit multiple metric values at once. Use the `multi_values` dictionary for multi-value metrics.
 - `POST /api/metric-submissions/submit_template/`: Mark a template as submitted when all forms are completed
 - `POST /api/metric-submissions/{id}/verify/`: Verify a metric submission (Baker Tilly admin only)
-- `GET /api/metric-submissions/available_layers/`: Get layers accessible to the user
-- `GET /api/metric-submissions/sum_by_layer/`: Aggregate metrics by layer
+- `GET /api/submissions/available-layers/`: Get layers accessible to the user
+- `GET /api/submissions/sum-by-layer/`: Aggregate metrics by layer
 
 #### ESG Metric Evidence Endpoints
 - `GET /api/metric-evidence/`: List all accessible evidence files

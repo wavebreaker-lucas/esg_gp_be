@@ -6,6 +6,7 @@ from .views import (
     UserTemplateAssignmentView, TemplateAssignmentView, BatchEvidenceView
 )
 from .views.esg import MetricValueFieldViewSet
+from .views.submission_utils import AvailableLayersView, SumSubmissionsByLayerView
 
 # Create a router for ViewSets
 router = DefaultRouter()
@@ -28,4 +29,6 @@ urlpatterns += [
     path('user-templates/<int:assignment_id>/', UserTemplateAssignmentView.as_view(), name='user-template-detail'),
     path('layer/<int:layer_id>/templates/', TemplateAssignmentView.as_view(), name='layer-templates'),
     path('metric-evidence/batch/', BatchEvidenceView.as_view(), name='batch-evidence'),
+    path('submissions/available-layers/', AvailableLayersView.as_view(), name='submission-available-layers'),
+    path('submissions/sum-by-layer/', SumSubmissionsByLayerView.as_view(), name='submission-sum-by-layer'),
 ] 
