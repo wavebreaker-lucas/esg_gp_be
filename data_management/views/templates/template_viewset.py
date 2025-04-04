@@ -9,16 +9,16 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import BakerTillyAdmin
 from accounts.models import CustomUser, AppUser, LayerProfile
-from ..models import (
+from ...models import (
     ESGFormCategory, ESGForm, ESGMetric,
     Template, TemplateFormSelection, TemplateAssignment
 )
-from ..models.templates import ESGMetricSubmission, ESGMetricEvidence
-from ..serializers.templates import (
+from ...models.templates import ESGMetricSubmission, ESGMetricEvidence
+from ...serializers.templates import (
     ESGFormCategorySerializer, ESGFormSerializer, ESGMetricSerializer,
     TemplateSerializer, TemplateAssignmentSerializer
 )
-from .utils import get_required_submission_count
+from ..utils import get_required_submission_count
 
 
 class TemplateViewSet(viewsets.ModelViewSet):

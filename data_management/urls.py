@@ -3,12 +3,11 @@ from django.urls import path
 from .views import (
     ESGFormViewSet, ESGFormCategoryViewSet, TemplateViewSet, 
     ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, ESGMetricViewSet, 
-    UserTemplateAssignmentView, TemplateAssignmentView
+    UserTemplateAssignmentView, TemplateAssignmentView,
+    MetricValueFieldViewSet  # Now imported directly from .views
 )
 # Import BatchEvidenceView from its new location
 from .views.modules.evidence import BatchEvidenceView
-# Corrected import: MetricValueFieldViewSet is now in metrics.py
-from .views.metrics import MetricValueFieldViewSet
 from .views.submission_utils import AvailableLayersView, SumSubmissionsByLayerView
 
 # Create a router for ViewSets

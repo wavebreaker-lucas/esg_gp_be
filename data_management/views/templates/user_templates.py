@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
 from accounts.models import AppUser, LayerProfile
-from ..models import TemplateAssignment
+from ...models import TemplateAssignment
 
 
 class UserTemplateAssignmentView(views.APIView):
@@ -127,7 +127,7 @@ class UserTemplateAssignmentView(views.APIView):
             # Add layer relationship info to each assignment
             assignments_data = []
             for assignment in assignments:
-                from ..serializers.templates import TemplateAssignmentSerializer
+                from ...serializers.templates import TemplateAssignmentSerializer
                 assignment_data = TemplateAssignmentSerializer(assignment).data
                 
                 # Add relationship info (direct or inherited)

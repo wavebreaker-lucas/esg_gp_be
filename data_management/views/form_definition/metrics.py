@@ -6,10 +6,10 @@ from rest_framework import viewsets, serializers
 from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import BakerTillyAdmin
-from ..models import ESGMetric, ESGForm
-from ..serializers.templates import ESGMetricSerializer
-from ..models.templates import MetricValueField
-from ..serializers.esg import MetricValueFieldSerializer
+from ...models import ESGMetric, ESGForm
+from ...serializers.templates import ESGMetricSerializer
+from ...models.templates import MetricValueField
+from ...serializers.esg import MetricValueFieldSerializer
 
 
 class ESGMetricViewSet(viewsets.ModelViewSet):
