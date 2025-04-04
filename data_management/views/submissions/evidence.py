@@ -7,7 +7,7 @@ from django.db import models
 from django.conf import settings
 
 from ...models.templates import ESGMetricEvidence, ESGMetricSubmission, ESGMetric
-from ...serializers.esg import ESGMetricEvidenceSerializer, ESGMetricSubmissionSerializer
+from ...serializers.templates import ESGMetricEvidenceSerializer, ESGMetricSubmissionSerializer
 from ...services.bill_analyzer import UtilityBillAnalyzer
 from accounts.permissions import BakerTillyAdmin
 from accounts.models import LayerProfile

@@ -18,9 +18,8 @@ from ...models import (
 )
 from ...models.templates import ESGMetricSubmission, ESGMetricEvidence
 from ...serializers.templates import (
-    ESGFormSerializer, ESGMetricSerializer
+    ESGFormSerializer, ESGMetricSerializer, ESGMetricEvidenceSerializer
 )
-from ...serializers.esg import ESGMetricEvidenceSerializer
 from ..utils import get_required_submission_count, attach_evidence_to_submissions
 
 

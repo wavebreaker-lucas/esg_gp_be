@@ -19,7 +19,7 @@ from ...models.templates import (
     ESGMetricSubmission, ESGMetricEvidence,
     MetricValueField, MetricValue
 )
-from ...serializers.esg import (
+from ...serializers.templates import (
     ESGMetricSubmissionSerializer, ESGMetricSubmissionCreateSerializer,
     ESGMetricEvidenceSerializer, ESGMetricBatchSubmissionSerializer,
     ESGMetricSubmissionVerifySerializer
