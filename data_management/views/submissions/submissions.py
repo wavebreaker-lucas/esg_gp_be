@@ -321,6 +321,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             text_value = sub_data.get('text_value')
             reporting_period = sub_data.get('reporting_period')
             notes = sub_data.get('notes', '')
+            source_identifier = sub_data.get('source_identifier') # Get optional source identifier
             
             # Get layer for this submission
             layer = default_layer
@@ -357,7 +358,8 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 reporting_period=reporting_period,
                 notes=notes,
                 submitted_by=request.user,
-                layer=layer # Use the determined layer for this input
+                layer=layer, # Use the determined layer for this input
+                source_identifier=source_identifier # Pass the source identifier
             )
             created_submissions.append(submission)
 
@@ -493,6 +495,11 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 submissions = submissions.filter(layer=layer)
             except LayerProfile.DoesNotExist:
                 return Response({'error': f'Layer with ID {layer_id} not found'}, status=404)
+            
+        # Filter by source identifier
+        source_id = request.query_params.get('source_identifier')
+        if source_id:
+            submissions = submissions.filter(source_identifier=source_id)
             
         is_verified = request.query_params.get('is_verified')
         if is_verified is not None:

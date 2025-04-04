@@ -219,6 +219,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     layer_name = serializers.SerializerMethodField()
     is_multi_value = serializers.SerializerMethodField()
     multi_values = MetricValueSerializer(many=True, read_only=True)
+    source_identifier = serializers.CharField(max_length=100, required=False, allow_null=True, allow_blank=True)
     
     class Meta:
         model = ESGMetricSubmission
@@ -229,6 +230,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             'is_verified', 'verified_by', 'verified_by_name', 'verified_at', 'verification_notes', 
             'evidence', 'layer_id', 'layer_name',
             'is_multi_value', 'multi_values',
+            'source_identifier'
         ]
         read_only_fields = [
             'id',

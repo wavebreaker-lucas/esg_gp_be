@@ -310,12 +310,22 @@ class ESGMetricSubmission(models.Model):
         help_text="The layer this input data represents (if different from assignment layer)"
     )
 
+    # New field for source identification
+    source_identifier = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Optional identifier for the source of this input (e.g., meter ID, specific file)",
+        db_index=True # Add index for potential filtering
+    )
+
     class Meta:
         indexes = [
             models.Index(fields=['assignment', 'metric']),
             models.Index(fields=['reporting_period']),
             models.Index(fields=['submitted_by']),
             models.Index(fields=['is_verified']),
+            models.Index(fields=['source_identifier']), # Index for the new field
         ]
         ordering = ['assignment', 'metric', 'reporting_period', '-submitted_at']
         verbose_name = "Metric Submission Input"
@@ -323,7 +333,8 @@ class ESGMetricSubmission(models.Model):
 
     def __str__(self):
         period_str = f" ({self.reporting_period})" if self.reporting_period else ""
-        return f"{self.metric.name}{period_str} - {self.assignment.layer.company_name} (Input ID: {self.pk})"
+        source_str = f" [{self.source_identifier}]" if self.source_identifier else ""
+        return f"{self.metric.name}{period_str}{source_str} - {self.assignment.layer.company_name} (Input ID: {self.pk})"
 
     def add_value(self, field_key, value):
         """Add a value for a multi-value field *to this input record*"""
