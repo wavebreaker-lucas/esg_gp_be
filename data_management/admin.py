@@ -4,7 +4,8 @@ from .models.templates import (
     ESGFormCategory, ESGForm, ESGMetric,
     Template, TemplateFormSelection, TemplateAssignment,
     ESGMetricSubmission, ESGMetricEvidence,
-    MetricValueField, MetricValue
+    MetricValueField, MetricValue,
+    ReportedMetricValue
 )
 
 class BoundaryItemAdmin(admin.ModelAdmin):
@@ -61,8 +62,8 @@ class MetricValueInline(admin.TabularInline):
 
 @admin.register(ESGMetric)
 class ESGMetricAdmin(admin.ModelAdmin):
-    list_display = ['name', 'form', 'unit_type', 'location', 'is_required', 'is_multi_value', 'order']
-    list_filter = ['form', 'unit_type', 'location', 'is_required', 'is_multi_value']
+    list_display = ['name', 'form', 'unit_type', 'location', 'is_required', 'is_multi_value', 'aggregates_inputs', 'order']
+    list_filter = ['form', 'unit_type', 'location', 'is_required', 'is_multi_value', 'aggregates_inputs']
     search_fields = ['name', 'description']
     ordering = ['form', 'order']
     
@@ -95,17 +96,28 @@ class TemplateAssignmentAdmin(admin.ModelAdmin):
 
 @admin.register(ESGMetricSubmission)
 class ESGMetricSubmissionAdmin(admin.ModelAdmin):
-    list_display = ['metric', 'assignment', 'value', 'text_value', 'reporting_period', 'submitted_by', 'is_verified']
+    list_display = ['metric', 'assignment', 'value', 'text_value', 'reporting_period', 'submitted_by', 'is_verified', 'get_reported_value_link']
     list_filter = ['is_verified', 'metric__form', 'reporting_period', 'metric__is_multi_value']
     search_fields = ['metric__name', 'assignment__template__name', 'assignment__layer__company_name']
     date_hierarchy = 'submitted_at'
     raw_id_fields = ['metric', 'assignment', 'submitted_by', 'verified_by']
+    readonly_fields = ['reported_value']
+    list_select_related = ('metric', 'assignment', 'layer', 'submitted_by', 'reported_value')
     
     inlines = [MetricValueInline]
     
     def get_queryset(self, request):
-        # Prefetch related multi_values to improve admin performance
-        return super().get_queryset(request).prefetch_related('multi_values')
+        return super().get_queryset(request).prefetch_related('multi_values', 'reported_value')
+
+    def get_reported_value_link(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+        if obj.reported_value:
+            link = reverse("admin:data_management_reportedmetricvalue_change", args=[obj.reported_value.id])
+            return format_html('<a href="{}">{}</a>', link, obj.reported_value.id)
+        return "N/A"
+    get_reported_value_link.short_description = 'Reported Value ID'
+    get_reported_value_link.admin_order_field = 'reported_value'
 
 @admin.register(MetricValueField)
 class MetricValueFieldAdmin(admin.ModelAdmin):
@@ -146,3 +158,15 @@ class ESGMetricEvidenceAdmin(admin.ModelAdmin):
         return obj.submission is None
     is_standalone.boolean = True
     is_standalone.short_description = "Standalone"
+
+@admin.register(ReportedMetricValue)
+class ReportedMetricValueAdmin(admin.ModelAdmin):
+    list_display = ('metric', 'assignment', 'layer', 'reporting_period', 'value', 'text_value', 'is_verified', 'last_updated_at')
+    list_filter = ('metric__form', 'metric', 'assignment__template', 'assignment__reporting_year', 'reporting_period', 'is_verified', 'layer')
+    search_fields = ('metric__name', 'assignment__template__name', 'layer__company_name', 'text_value')
+    readonly_fields = (
+        'assignment', 'metric', 'layer', 'reporting_period', 
+        'value', 'text_value', 'calculated_at', 'last_updated_at', 
+        'verified_by', 'verified_at'
+    )
+    list_select_related = ('metric', 'assignment', 'layer', 'verified_by')
