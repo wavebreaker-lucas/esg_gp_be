@@ -252,82 +252,6 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         
         return Response(result)
 
-    @action(detail=False, methods=['get'])
-    def standalone(self, request):
-        """
-        Get all standalone evidence files (not attached to a submission)
-        
-        Parameters:
-            assignment_id: Optional. Filter by assignment ID.
-            metric_id: Optional. Filter by intended metric.
-            unprocessed_only: Optional. If 'true', only return unprocessed files.
-        """
-        # Get standalone evidence - those without a submission
-        evidence = ESGMetricEvidence.objects.filter(submission=None)
-        
-        # Apply filters from query parameters
-        assignment_id = request.query_params.get('assignment_id')
-        if assignment_id:
-            # If filtering by assignment, first get the assignment's metrics
-            from ...models.templates import TemplateAssignment
-            try:
-                assignment = TemplateAssignment.objects.get(id=assignment_id)
-                # Get all metrics in this assignment's forms
-                metrics = ESGMetric.objects.filter(
-                    form__in=assignment.template.selected_forms.all()
-                )
-                # Filter evidence by these metrics or NULL intended_metric
-                evidence = evidence.filter(
-                    models.Q(intended_metric__in=metrics) | 
-                    models.Q(intended_metric=None)
-                )
-            except TemplateAssignment.DoesNotExist:
-                return Response({'error': 'Assignment not found'}, status=404)
-                
-        metric_id = request.query_params.get('metric_id')
-        if metric_id:
-            evidence = evidence.filter(
-                models.Q(intended_metric_id=metric_id) | 
-                models.Q(intended_metric=None)
-            )
-            
-        unprocessed_only = request.query_params.get('unprocessed_only')
-        if unprocessed_only and unprocessed_only.lower() in ['true', '1', 'yes']:
-            evidence = evidence.filter(is_processed_by_ocr=False)
-            
-        # Filter by user permissions
-        user = request.user
-        if not (user.is_staff or user.is_superuser or user.is_baker_tilly_admin):
-            user_layers = LayerProfile.objects.filter(app_users__user=user)
-            evidence = evidence.filter(
-                models.Q(uploaded_by=user) | 
-                models.Q(layer__in=user_layers)
-            )
-            
-        # Sort by newest first
-        evidence = evidence.order_by('-uploaded_at')
-        
-        # Paginate results
-        page_size = int(request.query_params.get('page_size', 50))
-        page = int(request.query_params.get('page', 1))
-        
-        # Calculate offset and limit
-        start = (page - 1) * page_size
-        end = start + page_size
-        
-        total_count = evidence.count()
-        evidence_page = evidence[start:end]
-        
-        serializer = self.get_serializer(evidence_page, many=True)
-        
-        return Response({
-            'total_count': total_count,
-            'page': page,
-            'page_size': page_size,
-            'total_pages': (total_count + page_size - 1) // page_size,
-            'results': serializer.data
-        })
-
     @action(detail=True, methods=['post'])
     def attach_to_submission(self, request, pk=None):
         """
@@ -338,10 +262,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         
         # Check if already attached
         if evidence.submission is not None:
-            return Response({
-                'error': 'This evidence is already attached to a submission',
-                'submission_id': evidence.submission.id
-            }, status=400)
+            return Response({'error': 'This evidence is already attached to a submission'}, status=400)
         
         # Get required submission_id
         submission_id = request.data.get('submission_id')
@@ -405,66 +326,6 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             'submission_id': submission.id,
             'value_updated': False
         })
-
-    @action(detail=False, methods=['get'])
-    def batch(self, request):
-        """
-        Get evidence files for multiple submissions.
-        
-        Parameters:
-            submission_ids: Comma-separated list of submission IDs
-        """
-        submission_ids = request.query_params.get('submission_ids')
-        if not submission_ids:
-            return Response({'error': 'submission_ids is required'}, status=400)
-        
-        # Convert string of IDs to list
-        try:
-            submission_id_list = [int(id.strip()) for id in submission_ids.split(',')]
-        except ValueError:
-            return Response({'error': 'Invalid submission_ids format'}, status=400)
-        
-        # Get submissions first to check permissions
-        submissions = ESGMetricSubmission.objects.filter(id__in=submission_id_list)
-        
-        # Filter based on user permissions
-        user = request.user
-        if not (user.is_staff or user.is_superuser or user.is_baker_tilly_admin):
-            user_layers = LayerProfile.objects.filter(app_users__user=user)
-            submissions = submissions.filter(
-                models.Q(submitted_by=user) | 
-                models.Q(assignment__layer__in=user_layers)
-            )
-        
-        # Get IDs that user has access to
-        accessible_ids = list(submissions.values_list('id', flat=True))
-        
-        # Get evidence files
-        evidence_by_submission = {}
-        submissions_with_data = {}
-        
-        # Get the submission data
-        for submission in submissions.select_related('metric', 'submitted_by', 'verified_by', 'layer'):
-            # Serialize the submission
-            serializer = ESGMetricSubmissionSerializer(submission)
-            submissions_with_data[str(submission.id)] = serializer.data
-            
-            # Get evidence for this submission
-            evidence = ESGMetricEvidence.objects.filter(submission=submission)
-            evidence_serializer = self.get_serializer(evidence, many=True)
-            
-            # Add evidence to submission data
-            submissions_with_data[str(submission.id)]['evidence'] = evidence_serializer.data
-        
-        # Report which IDs were not found or not accessible
-        not_found = [id for id in submission_id_list if id not in accessible_ids]
-        if not_found:
-            return Response({
-                'data': submissions_with_data,
-                'not_found_or_no_access': not_found
-            })
-        
-        return Response(submissions_with_data)
 
     @action(detail=False, methods=['get'])
     def by_metric(self, request):

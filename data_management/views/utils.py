@@ -43,5 +43,5 @@ def attach_evidence_to_submissions(submissions, user):
     Returns:
         int: Number of evidence items attached
     """
-    from ..services import attach_evidence_to_submissions
+    from data_management.services import attach_evidence_to_submissions
     return attach_evidence_to_submissions(submissions, user) 
