@@ -3,8 +3,10 @@ from django.urls import path
 from .views import (
     ESGFormViewSet, ESGFormCategoryViewSet, TemplateViewSet, 
     ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, ESGMetricViewSet, 
-    UserTemplateAssignmentView, TemplateAssignmentView, BatchEvidenceView
+    UserTemplateAssignmentView, TemplateAssignmentView
 )
+# Import BatchEvidenceView from its new location
+from .views.modules.evidence import BatchEvidenceView
 from .views.esg import MetricValueFieldViewSet
 from .views.submission_utils import AvailableLayersView, SumSubmissionsByLayerView
 
