@@ -16,32 +16,36 @@ logger = logging.getLogger(__name__)
 
 class ReportedMetricValueViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    Provides read-only access to the final calculated metric values.
+    Provides read-only access to the final calculated/aggregated metric records.
 
     Filtering is available on:
     - assignment (ID)
-    - metric (ID)
+    - metric (ID) - Note: This is the *input* metric ID.
     - layer (ID)
     - reporting_period (Date)
-    - is_verified (Boolean)
     """
     serializer_class = ReportedMetricValueSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = [
         'assignment', 
-        'metric',
+        'metric', # Filters by the input metric ID
         'layer',
         'reporting_period',
-        'is_verified'
+        # REMOVED: 'is_verified' as verification is not on this model anymore
     ]
 
     def get_queryset(self):
         """Ensure users only see reported values for layers they have access to."""
         user = self.request.user
+        # Select related fields on the parent record
+        # Prefetch related fields for nested serializers (aggregated_fields)
         queryset = ReportedMetricValue.objects.select_related(
-            'metric', 'layer', 'assignment', 'verified_by'
-        ).prefetch_related('source_submissions') # Prefetch for serializer count/ids
+            'metric', 'layer', 'assignment' # Removed 'verified_by'
+        ).prefetch_related(
+            'aggregated_fields', # Prefetch the child fields
+            'aggregated_fields__field' # Also prefetch the field definition within the child
+        )
 
         if user.is_staff or user.is_superuser or user.is_baker_tilly_admin:
             return queryset
@@ -51,7 +55,6 @@ class ReportedMetricValueViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             user_layers = LayerProfile.objects.filter(app_users__user=user)
             # User can see values reported for their layers OR values linked to assignments they manage
-            # Note: This logic might need adjustment based on exact permission requirements
             queryset = queryset.filter(
                 models.Q(layer__in=user_layers) |
                 models.Q(assignment__assigned_to=user)
@@ -64,7 +67,12 @@ class ReportedMetricValueViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
     # Potential Future Actions (add later if needed):
-    # - @action(detail=True, methods=['post'], permission_classes=[IsAdminUser]) # Or custom permission
-    #   def verify(self, request, pk=None): ...
-    # - @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
-    #   def recalculate(self, request, pk=None): ... 
+    # - @action(detail=True, methods=['post']) # Add permissions
+    #   def recalculate(self, request, pk=None):
+    #       instance = self.get_object()
+    #       try:
+    #           calculate_report_value(instance.assignment, instance.metric, instance.reporting_period, instance.layer)
+    #           return Response({"status": "recalculation triggered"})
+    #       except Exception as e:
+    #           logger.error(f"Manual recalculation failed for {instance.id}: {e}")
+    #           return Response({"error": "Recalculation failed"}, status=500) 

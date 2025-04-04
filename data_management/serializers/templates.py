@@ -4,7 +4,7 @@ from ..models import (
     ESGFormCategory, ESGForm, ESGMetric,
     Template, TemplateFormSelection, TemplateAssignment,
     ESGMetricSubmission, ESGMetricEvidence, MetricValueField, MetricValue,
-    ReportedMetricValue
+    ReportedMetricValue, ReportedMetricFieldValue
 )
 
 class ESGMetricSerializer(serializers.ModelSerializer):
@@ -186,7 +186,7 @@ class MetricValueFieldSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 class MetricValueSerializer(serializers.ModelSerializer):
-    """Serializer for individual values within a multi-value metric submission"""
+    """Serializer for individual values within a multi-value metric submission input"""
     field_name = serializers.SerializerMethodField()
     field_key = serializers.SerializerMethodField()
     
@@ -219,7 +219,6 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     layer_name = serializers.SerializerMethodField()
     is_multi_value = serializers.SerializerMethodField()
     multi_values = MetricValueSerializer(many=True, read_only=True)
-    reported_value_id = serializers.ReadOnlyField(source='reported_value.id')
     
     class Meta:
         model = ESGMetricSubmission
@@ -230,13 +229,11 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             'is_verified', 'verified_by', 'verified_by_name', 'verified_at', 'verification_notes', 
             'evidence', 'layer_id', 'layer_name',
             'is_multi_value', 'multi_values',
-            'reported_value_id'
         ]
         read_only_fields = [
             'id',
             'submitted_by', 'submitted_at', 'updated_at', 
             'layer_name', 
-            'reported_value_id'
         ]
     
     def get_metric_name(self, obj):
@@ -396,45 +393,57 @@ class ESGMetricSubmissionVerifySerializer(serializers.Serializer):
             
         return data
 
-# --- New Serializer for Approach B ---
+# --- New Serializers for Phase 3 --- 
+
+class ReportedMetricFieldValueSerializer(serializers.ModelSerializer):
+    """Serializer for the aggregated value of a specific field within a multi-value metric."""
+    field_key = serializers.CharField(source='field.field_key', read_only=True)
+    field_display_name = serializers.CharField(source='field.display_name', read_only=True)
+
+    class Meta:
+        model = ReportedMetricFieldValue
+        fields = [
+            'id', 'field', 'field_key', 'field_display_name',
+            'aggregated_numeric_value', 'aggregated_text_value',
+            'aggregation_method', 'source_submission_count',
+            'last_updated_at'
+        ]
+        read_only_fields = fields # All fields are read-only as they are calculated
+
 class ReportedMetricValueSerializer(serializers.ModelSerializer):
-    """Serializer for the final, aggregated/reported metric values."""
+    """Serializer for the parent Aggregated Metric Record."""
     metric_name = serializers.CharField(source='metric.name', read_only=True)
     metric_unit = serializers.SerializerMethodField(read_only=True)
     layer_name = serializers.CharField(source='layer.company_name', read_only=True)
-    verified_by_name = serializers.CharField(source='verified_by.email', read_only=True, allow_null=True)
-    source_submission_ids = serializers.PrimaryKeyRelatedField(
-        source='source_submissions', 
-        many=True, 
-        read_only=True
-    )
-    source_submission_count = serializers.SerializerMethodField(read_only=True)
+    
+    # Nested serializer for multi-value fields
+    aggregated_fields = ReportedMetricFieldValueSerializer(many=True, read_only=True)
 
     class Meta:
-        model = ReportedMetricValue
+        model = ReportedMetricValue # Point to the correct model
         fields = [
             'id', 'assignment', 'metric', 'metric_name', 'metric_unit',
             'layer', 'layer_name', 'reporting_period',
-            'value', 'text_value',
+            # Single-value results (Option 2a)
+            'aggregated_numeric_value', 'aggregated_text_value',
+            # Calculation & Aggregation Metadata
             'calculated_at', 'last_updated_at',
-            'is_verified', 'verified_by', 'verified_by_name', 'verified_at', 'verification_notes',
-            'source_submission_ids', 'source_submission_count'
+            'source_submission_count', 'first_submission_at', 'last_submission_at',
+            # Nested fields for multi-value results
+            'aggregated_fields'
         ]
-        read_only_fields = [
+        read_only_fields = [ # Most fields are read-only, calculated by the service
             'id', 'assignment', 'metric', 'layer', 'reporting_period',
-            'value', 'text_value',
+            'metric_name', 'metric_unit', 'layer_name',
+            'aggregated_numeric_value', 'aggregated_text_value',
             'calculated_at', 'last_updated_at',
-            'metric_name', 'metric_unit', 'layer_name', 'verified_by_name',
-            'source_submission_ids', 'source_submission_count'
-            # Verification fields might be updatable via a specific action
+            'source_submission_count', 'first_submission_at', 'last_submission_at',
+            'aggregated_fields'
         ]
 
     def get_metric_unit(self, obj):
+        # The metric related is the *input* metric
         if obj.metric.unit_type == 'custom':
             return obj.metric.custom_unit
         return obj.metric.unit_type
-
-    def get_source_submission_count(self, obj):
-        # Optimize this if performance becomes an issue
-        return obj.source_submissions.count()
 # ----------------------------------
