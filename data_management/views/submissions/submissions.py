@@ -277,124 +277,105 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     'error': f'Metric with ID {metric_id} not found'
                 }, status=400)
             
-            # Check if submission already exists for this metric/period/layer
-            try:
-                existing = ESGMetricSubmission.objects.get(
-                    assignment=assignment,
-                    metric=metric,
-                    reporting_period=reporting_period,
-                    layer=layer  # Also check the layer to ensure uniqueness
-                )
-                
-                # Update existing submission
-                existing.value = value
-                existing.text_value = text_value
-                existing.notes = notes
-                existing.save()
-                updated_submissions.append(existing)
-                
-                # Handle multi-value data if this is a multi-value metric
-                if metric.is_multi_value and 'multi_values' in sub_data:
-                    multi_values = sub_data.get('multi_values', {})
-                    
-                    # Process each field value
-                    for field_key, field_value in multi_values.items():
-                        try:
-                            # Get the field definition
-                            field = metric.value_fields.get(field_key=field_key)
-                            
-                            # Determine if value is numeric or text
-                            if isinstance(field_value, (int, float)) or (
-                                    isinstance(field_value, str) and 
-                                    field_value.replace('.', '', 1).isdigit()):
-                                numeric_value = float(field_value)
-                                text_value = None
-                            else:
-                                numeric_value = None
-                                text_value = str(field_value) if field_value is not None else None
-                                
-                            # Update or create the value
-                            MetricValue.objects.update_or_create(
-                                submission=existing,
-                                field=field,
-                                defaults={
-                                    'numeric_value': numeric_value,
-                                    'text_value': text_value
-                                }
-                            )
-                        except MetricValueField.DoesNotExist:
-                            # Log but don't fail if field doesn't exist
-                            import logging
-                            logger = logging.getLogger(__name__)
-                            logger.warning(f"Field '{field_key}' not found for metric {metric.id}")
-                
-            except ESGMetricSubmission.DoesNotExist:
-                # Create new submission
-                submission = ESGMetricSubmission.objects.create(
-                    assignment=assignment,
-                    metric=metric,
-                    value=value,
-                    text_value=text_value,
-                    reporting_period=reporting_period,
-                    notes=notes,
-                    submitted_by=request.user,
-                    layer=layer
-                )
-                created_submissions.append(submission)
-                
-                # Handle multi-value data if this is a multi-value metric
-                if metric.is_multi_value and 'multi_values' in sub_data:
-                    multi_values = sub_data.get('multi_values', {})
-                    
-                    # Process each field value
-                    for field_key, field_value in multi_values.items():
-                        try:
-                            # Get the field definition
-                            field = metric.value_fields.get(field_key=field_key)
-                            
-                            # Determine if value is numeric or text
-                            if isinstance(field_value, (int, float)) or (
-                                    isinstance(field_value, str) and 
-                                    field_value.replace('.', '', 1).isdigit()):
-                                numeric_value = float(field_value)
-                                text_value = None
-                            else:
-                                numeric_value = None
-                                text_value = str(field_value) if field_value is not None else None
-                                
-                            # Create the value
-                            MetricValue.objects.create(
-                                submission=submission,
-                                field=field,
-                                numeric_value=numeric_value,
-                                text_value=text_value
-                            )
-                        except MetricValueField.DoesNotExist:
-                            # Log but don't fail if field doesn't exist
-                            import logging
-                            logger = logging.getLogger(__name__)
-                            logger.warning(f"Field '{field_key}' not found for metric {metric.id}")
-        
+            # Create new submission input record
+            submission = ESGMetricSubmission.objects.create(
+                assignment=assignment,
+                metric=metric,
+                value=value,
+                text_value=text_value,
+                reporting_period=reporting_period,
+                notes=notes,
+                submitted_by=request.user,
+                layer=layer # Use the determined layer for this input
+            )
+            created_submissions.append(submission)
+
+            # Handle multi-value data if this is a multi-value metric
+            if metric.is_multi_value and 'multi_values' in sub_data:
+                multi_values = sub_data.get('multi_values', {})
+
+                # Process each field value
+                for field_key, field_value in multi_values.items():
+                    try:
+                        # Get the field definition
+                        field = metric.value_fields.get(field_key=field_key)
+
+                        # Determine if value is numeric or text
+                        if isinstance(field_value, (int, float)) or (
+                                isinstance(field_value, str) and
+                                field_value.replace('.', '', 1).isdigit()):
+                            numeric_value = float(field_value)
+                            text_value_mv = None # Use different name to avoid conflict
+                        else:
+                            numeric_value = None
+                            text_value_mv = str(field_value) if field_value is not None else None
+
+                        # Create the MetricValue linked to the new submission input
+                        MetricValue.objects.create(
+                            submission=submission, # Link to the newly created submission
+                            field=field,
+                            numeric_value=numeric_value,
+                            text_value=text_value_mv
+                        )
+                    except MetricValueField.DoesNotExist:
+                        # Log but don't fail if field doesn't exist
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.warning(f"Field '{field_key}' not found for metric {metric.id}")
+
+        # --- Approach B Change: Trigger Aggregation --- 
+        affected_contexts = set()
+        for sub in created_submissions: # Only process newly created ones
+            # Ensure layer is not None before adding to context
+            # If layer is None here, it might indicate an issue earlier
+            if sub.metric.aggregates_inputs and sub.layer and sub.reporting_period:
+                affected_contexts.add((
+                    sub.assignment,
+                    sub.metric,
+                    sub.reporting_period,
+                    sub.layer
+                ))
+            elif sub.metric.aggregates_inputs and (not sub.layer or not sub.reporting_period):
+                # Log a warning if essential context is missing for an aggregating metric
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Cannot trigger aggregation for submission ID {sub.id}: Missing layer or reporting_period.")
+
+
+        # Trigger calculation for each affected context
+        if affected_contexts:
+            from ...services.aggregation import calculate_report_value # Import aggregation service
+            for context_tuple in affected_contexts:
+                try:
+                    calculate_report_value(*context_tuple)
+                except Exception as e:
+                    # Log error but don't fail the whole batch? Decide error handling.
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Aggregation failed for context {context_tuple}: {e}", exc_info=True)
+        # ----------------------------------------------
+
         # Update assignment status
         if assignment.status in ['PENDING', 'IN_PROGRESS']:
             assignment.status = 'IN_PROGRESS'
             assignment.save()
-        
-        # Check if form is now complete
-        if created_submissions:
+
+        # Check if form is now complete - THIS WILL NEED REFACTORING IN PHASE 3
+        if created_submissions: # Pass the first created submission for context
             self._check_form_completion(created_submissions[0])
-        elif updated_submissions:
-            self._check_form_completion(updated_submissions[0])
-        
-        # Automatically attach standalone evidence files if requested
+        # elif updated_submissions: # No longer updating submissions in this loop
+        #     self._check_form_completion(updated_submissions[0])
+
+        # Automatically attach standalone evidence files if requested (remains the same)
         evidence_count = 0
         if request.data.get('auto_attach_evidence') in [True, 'true', 'True']:
-            all_submissions = created_submissions + updated_submissions
-            evidence_count = attach_evidence_to_submissions(all_submissions, request.user)
-        
+            # Attach evidence to the newly created submissions
+            evidence_count = attach_evidence_to_submissions(created_submissions, request.user)
+
         return Response({
             'status': 'success',
-            'message': f'Created {len(created_submissions)} and updated {len(updated_submissions)} submissions',
+            # Updated message to reflect only creations
+            'message': f'Created {len(created_submissions)} submission inputs.',
             'evidence_attached': evidence_count,
             'assignment_status': assignment.status
         })
