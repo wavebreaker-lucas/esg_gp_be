@@ -5,6 +5,7 @@ from .views import (
     ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, ESGMetricViewSet, 
     UserTemplateAssignmentView, TemplateAssignmentView, BatchEvidenceView
 )
+from .views.esg import MetricValueFieldViewSet
 
 # Create a router for ViewSets
 router = DefaultRouter()
@@ -16,6 +17,7 @@ router.register(r'templates', TemplateViewSet, basename='template')
 router.register(r'metric-submissions', ESGMetricSubmissionViewSet, basename='metric-submission')
 router.register(r'metric-evidence', ESGMetricEvidenceViewSet, basename='metric-evidence')
 router.register(r'esg-metrics', ESGMetricViewSet, basename='esg-metric')
+router.register(r'metric-value-fields', MetricValueFieldViewSet, basename='metric-value-field')
 
 # Export the router's URLs
 urlpatterns = router.urls

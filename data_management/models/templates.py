@@ -93,6 +93,10 @@ class ESGMetric(models.Model):
         null=True,
         help_text="Custom analyzer ID for OCR processing of this metric's evidence"
     )
+    is_multi_value = models.BooleanField(
+        default=False,
+        help_text="Whether this metric requires multiple related values"
+    )
 
     class Meta:
         ordering = ['form', 'order']
@@ -101,6 +105,44 @@ class ESGMetric(models.Model):
         if self.location != 'ALL':
             return f"{self.form.code} - {self.name} ({self.get_location_display()})"
         return f"{self.form.code} - {self.name}"
+
+    def create_value_field(self, field_key, display_name, **kwargs):
+        """Helper method to create a value field for this metric"""
+        if not self.is_multi_value:
+            self.is_multi_value = True
+            self.save()
+            
+        return MetricValueField.objects.create(
+            metric=self,
+            field_key=field_key,
+            display_name=display_name,
+            **kwargs
+        )
+
+class MetricValueField(models.Model):
+    """Fields for multi-value metrics"""
+    DISPLAY_TYPES = [
+        ('TEXT', 'Text Input'),
+        ('NUMBER', 'Number Input'),
+        ('SELECT', 'Dropdown Selection'),
+    ]
+    
+    metric = models.ForeignKey(ESGMetric, on_delete=models.CASCADE, related_name='value_fields')
+    field_key = models.CharField(max_length=50, help_text="Unique identifier for this field")
+    display_name = models.CharField(max_length=100, help_text="User-friendly name")
+    description = models.TextField(blank=True)
+    column_header = models.CharField(max_length=50, blank=True, help_text="For tabular display (e.g., 'A', 'B')")
+    display_type = models.CharField(max_length=20, choices=DISPLAY_TYPES, default='NUMBER')
+    order = models.PositiveSmallIntegerField(default=0)
+    options = models.JSONField(blank=True, null=True, help_text="Options for dropdown fields")
+    is_required = models.BooleanField(default=True)
+    
+    class Meta:
+        ordering = ['metric', 'order']
+        unique_together = ['metric', 'field_key']
+        
+    def __str__(self):
+        return f"{self.metric.name} - {self.display_name}"
 
 class Template(models.Model):
     """ESG disclosure templates created from forms"""
@@ -203,6 +245,48 @@ class ESGMetricSubmission(models.Model):
     def __str__(self):
         period_str = f" ({self.reporting_period})" if self.reporting_period else ""
         return f"{self.metric.name}{period_str} - {self.assignment.layer.company_name}"
+        
+    def add_value(self, field_key, value):
+        """Add a value for a multi-value field"""
+        if not self.metric.is_multi_value:
+            raise ValueError("This metric is not configured for multiple values")
+            
+        try:
+            field = self.metric.value_fields.get(field_key=field_key)
+        except MetricValueField.DoesNotExist:
+            raise ValueError(f"Field '{field_key}' does not exist for this metric")
+            
+        # Determine if value is numeric or text
+        if isinstance(value, (int, float)) or (isinstance(value, str) and value.replace('.', '', 1).isdigit()):
+            numeric_value = float(value)
+            text_value = None
+        else:
+            numeric_value = None
+            text_value = str(value)
+            
+        # Create or update
+        return MetricValue.objects.update_or_create(
+            submission=self,
+            field=field,
+            defaults={
+                'numeric_value': numeric_value,
+                'text_value': text_value
+            }
+        )[0]
+
+class MetricValue(models.Model):
+    """Individual values for multi-value metrics"""
+    submission = models.ForeignKey(ESGMetricSubmission, on_delete=models.CASCADE, related_name='multi_values')
+    field = models.ForeignKey(MetricValueField, on_delete=models.CASCADE)
+    numeric_value = models.FloatField(null=True, blank=True)
+    text_value = models.TextField(null=True, blank=True)
+    
+    class Meta:
+        unique_together = ['submission', 'field']
+        
+    def __str__(self):
+        value = self.numeric_value if self.numeric_value is not None else self.text_value
+        return f"{self.field.display_name}: {value}"
 
 class ESGMetricEvidence(models.Model):
     """Supporting documentation for ESG metric submissions"""

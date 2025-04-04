@@ -3,10 +3,14 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
 from django.utils import timezone
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import BakerTillyAdmin
 from ..models import ESGData, BoundaryItem, DataEditLog
 from ..serializers import ESGDataSerializer, BoundaryItemSerializer, DataEditLogSerializer
+from ..models.templates import MetricValueField
+from ..serializers.esg import MetricValueFieldSerializer
 
 class ESGDataView(APIView):
     """
@@ -87,4 +91,29 @@ class BoundaryItemView(APIView):
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST) 
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class MetricValueFieldViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for managing MetricValueField definitions.
+    Primarily for Baker Tilly admins to configure multi-value metrics.
+    """
+    queryset = MetricValueField.objects.all()
+    serializer_class = MetricValueFieldSerializer
+    permission_classes = [IsAuthenticated, BakerTillyAdmin] # Only admins can manage these
+
+    def get_queryset(self):
+        """Allow filtering by metric_id."""
+        queryset = super().get_queryset()
+        metric_id = self.request.query_params.get('metric_id')
+        if metric_id:
+            queryset = queryset.filter(metric_id=metric_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        """Ensure the parent metric is marked as multi-value."""
+        metric = serializer.validated_data.get('metric')
+        if metric and not metric.is_multi_value:
+            metric.is_multi_value = True
+            metric.save()
+        serializer.save() 

@@ -3,7 +3,8 @@ from .models.esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
 from .models.templates import (
     ESGFormCategory, ESGForm, ESGMetric,
     Template, TemplateFormSelection, TemplateAssignment,
-    ESGMetricSubmission, ESGMetricEvidence
+    ESGMetricSubmission, ESGMetricEvidence,
+    MetricValueField, MetricValue
 )
 
 class BoundaryItemAdmin(admin.ModelAdmin):
@@ -52,12 +53,25 @@ class ESGFormAdmin(admin.ModelAdmin):
     search_fields = ['code', 'name']
     ordering = ['category', 'order']
 
+class MetricValueInline(admin.TabularInline):
+    model = MetricValue
+    extra = 0
+    fields = ['field', 'numeric_value', 'text_value']
+    raw_id_fields = ['field']
+
 @admin.register(ESGMetric)
 class ESGMetricAdmin(admin.ModelAdmin):
-    list_display = ['name', 'form', 'unit_type', 'location', 'is_required', 'order']
-    list_filter = ['form', 'unit_type', 'location', 'is_required']
+    list_display = ['name', 'form', 'unit_type', 'location', 'is_required', 'is_multi_value', 'order']
+    list_filter = ['form', 'unit_type', 'location', 'is_required', 'is_multi_value']
     search_fields = ['name', 'description']
     ordering = ['form', 'order']
+    
+    class MetricValueFieldInline(admin.TabularInline):
+        model = MetricValueField
+        extra = 1
+        fields = ['field_key', 'display_name', 'column_header', 'display_type', 'order', 'is_required']
+    
+    inlines = [MetricValueFieldInline]
 
 @admin.register(Template)
 class TemplateAdmin(admin.ModelAdmin):
@@ -82,10 +96,35 @@ class TemplateAssignmentAdmin(admin.ModelAdmin):
 @admin.register(ESGMetricSubmission)
 class ESGMetricSubmissionAdmin(admin.ModelAdmin):
     list_display = ['metric', 'assignment', 'value', 'text_value', 'reporting_period', 'submitted_by', 'is_verified']
-    list_filter = ['is_verified', 'metric__form', 'reporting_period']
+    list_filter = ['is_verified', 'metric__form', 'reporting_period', 'metric__is_multi_value']
     search_fields = ['metric__name', 'assignment__template__name', 'assignment__layer__company_name']
     date_hierarchy = 'submitted_at'
     raw_id_fields = ['metric', 'assignment', 'submitted_by', 'verified_by']
+    
+    inlines = [MetricValueInline]
+    
+    def get_queryset(self, request):
+        # Prefetch related multi_values to improve admin performance
+        return super().get_queryset(request).prefetch_related('multi_values')
+
+@admin.register(MetricValueField)
+class MetricValueFieldAdmin(admin.ModelAdmin):
+    list_display = ['display_name', 'field_key', 'metric', 'display_type', 'order', 'is_required']
+    list_filter = ['display_type', 'is_required', 'metric__form']
+    search_fields = ['display_name', 'field_key', 'metric__name']
+    ordering = ['metric', 'order']
+    raw_id_fields = ['metric']
+
+@admin.register(MetricValue)
+class MetricValueAdmin(admin.ModelAdmin):
+    list_display = ['get_field_display', 'submission', 'numeric_value', 'text_value']
+    list_filter = ['field__metric']
+    search_fields = ['field__display_name', 'submission__metric__name']
+    raw_id_fields = ['submission', 'field']
+    
+    def get_field_display(self, obj):
+        return f"{obj.field.display_name} ({obj.field.field_key})"
+    get_field_display.short_description = 'Field'
 
 @admin.register(ESGMetricEvidence)
 class ESGMetricEvidenceAdmin(admin.ModelAdmin):

@@ -1,7 +1,10 @@
 from rest_framework import serializers
 from accounts.models import CustomUser, LayerProfile
 from ..models import BoundaryItem, EmissionFactor, ESGData, DataEditLog
-from ..models.templates import ESGMetricSubmission, ESGMetricEvidence, ESGMetric
+from ..models.templates import (
+    ESGMetricSubmission, ESGMetricEvidence, ESGMetric, 
+    MetricValueField, MetricValue
+)
 
 class BoundaryItemSerializer(serializers.ModelSerializer):
     class Meta:
@@ -83,6 +86,35 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
             return obj.layer.company_name
         return None
 
+class MetricValueFieldSerializer(serializers.ModelSerializer):
+    """Serializer for metric value fields (components of multi-value metrics)"""
+    
+    class Meta:
+        model = MetricValueField
+        fields = [
+            'id', 'metric', 'field_key', 'display_name', 'description',
+            'column_header', 'display_type', 'order', 'options', 'is_required'
+        ]
+        read_only_fields = ['id']
+
+class MetricValueSerializer(serializers.ModelSerializer):
+    """Serializer for individual values within a multi-value metric submission"""
+    field_name = serializers.SerializerMethodField()
+    field_key = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MetricValue
+        fields = [
+            'id', 'field', 'field_name', 'field_key', 'numeric_value', 'text_value'
+        ]
+        read_only_fields = ['id']
+    
+    def get_field_name(self, obj):
+        return obj.field.display_name
+        
+    def get_field_key(self, obj):
+        return obj.field.field_key
+
 class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     """Serializer for ESG metric submissions"""
     evidence = ESGMetricEvidenceSerializer(many=True, read_only=True)
@@ -97,6 +129,8 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     layer_name = serializers.SerializerMethodField()
+    is_multi_value = serializers.SerializerMethodField()
+    multi_values = MetricValueSerializer(many=True, read_only=True)
     
     class Meta:
         model = ESGMetricSubmission
@@ -105,7 +139,8 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             'value', 'text_value', 'reporting_period', 'submitted_by', 'submitted_by_name',
             'submitted_at', 'updated_at', 'notes', 'is_verified',
             'verified_by', 'verified_by_name', 'verified_at', 
-            'verification_notes', 'evidence', 'layer_id', 'layer_name'
+            'verification_notes', 'evidence', 'layer_id', 'layer_name',
+            'is_multi_value', 'multi_values'
         ]
         read_only_fields = [
             'submitted_by', 'submitted_at', 'updated_at', 
@@ -134,6 +169,9 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         if obj.layer:
             return obj.layer.company_name
         return None
+    
+    def get_is_multi_value(self, obj):
+        return obj.metric.is_multi_value
     
     def validate(self, data):
         """Validate that either value or text_value is provided based on metric type"""
@@ -222,13 +260,27 @@ class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
             except ESGMetric.DoesNotExist:
                 raise serializers.ValidationError(f"Metric with ID {submission['metric_id']} not found")
             
-            # Validate value based on metric type
-            numeric_units = ['kWh', 'MWh', 'm3', 'tonnes', 'tCO2e', 'percentage']
-            if metric.unit_type in numeric_units and 'value' not in submission:
-                raise serializers.ValidationError(f"A numeric value is required for {metric.name}")
-            
-            if 'value' not in submission and 'text_value' not in submission:
-                raise serializers.ValidationError(f"Either value or text_value must be provided for {metric.name}")
+            # For multi-value metrics, validate multi_values field is provided
+            if metric.is_multi_value:
+                if 'multi_values' not in submission:
+                    raise serializers.ValidationError(f"multi_values field is required for multi-value metric {metric.name}")
+                
+                multi_values = submission.get('multi_values', {})
+                if not isinstance(multi_values, dict):
+                    raise serializers.ValidationError(f"multi_values must be a dictionary for metric {metric.name}")
+                
+                # Check that all required fields have values
+                for field in metric.value_fields.filter(is_required=True):
+                    if field.field_key not in multi_values:
+                        raise serializers.ValidationError(f"Required field '{field.field_key}' missing from multi_values for metric {metric.name}")
+            else:
+                # Validate regular metrics as before
+                numeric_units = ['kWh', 'MWh', 'm3', 'tonnes', 'tCO2e', 'percentage']
+                if metric.unit_type in numeric_units and 'value' not in submission:
+                    raise serializers.ValidationError(f"A numeric value is required for {metric.name}")
+                
+                if 'value' not in submission and 'text_value' not in submission:
+                    raise serializers.ValidationError(f"Either value or text_value must be provided for {metric.name}")
             
             # Check for duplicate submissions with the same reporting period
             if 'reporting_period' in submission:

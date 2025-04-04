@@ -15,7 +15,10 @@ from ..models import (
     ESGForm, ESGMetric, 
     Template, TemplateAssignment, TemplateFormSelection
 )
-from ..models.templates import ESGMetricSubmission, ESGMetricEvidence
+from ..models.templates import (
+    ESGMetricSubmission, ESGMetricEvidence,
+    MetricValueField, MetricValue
+)
 from ..serializers.esg import (
     ESGMetricSubmissionSerializer, ESGMetricSubmissionCreateSerializer,
     ESGMetricEvidenceSerializer, ESGMetricBatchSubmissionSerializer,
@@ -290,6 +293,41 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 existing.save()
                 updated_submissions.append(existing)
                 
+                # Handle multi-value data if this is a multi-value metric
+                if metric.is_multi_value and 'multi_values' in sub_data:
+                    multi_values = sub_data.get('multi_values', {})
+                    
+                    # Process each field value
+                    for field_key, field_value in multi_values.items():
+                        try:
+                            # Get the field definition
+                            field = metric.value_fields.get(field_key=field_key)
+                            
+                            # Determine if value is numeric or text
+                            if isinstance(field_value, (int, float)) or (
+                                    isinstance(field_value, str) and 
+                                    field_value.replace('.', '', 1).isdigit()):
+                                numeric_value = float(field_value)
+                                text_value = None
+                            else:
+                                numeric_value = None
+                                text_value = str(field_value) if field_value is not None else None
+                                
+                            # Update or create the value
+                            MetricValue.objects.update_or_create(
+                                submission=existing,
+                                field=field,
+                                defaults={
+                                    'numeric_value': numeric_value,
+                                    'text_value': text_value
+                                }
+                            )
+                        except MetricValueField.DoesNotExist:
+                            # Log but don't fail if field doesn't exist
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(f"Field '{field_key}' not found for metric {metric.id}")
+                
             except ESGMetricSubmission.DoesNotExist:
                 # Create new submission
                 submission = ESGMetricSubmission.objects.create(
@@ -303,6 +341,39 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                     layer=layer
                 )
                 created_submissions.append(submission)
+                
+                # Handle multi-value data if this is a multi-value metric
+                if metric.is_multi_value and 'multi_values' in sub_data:
+                    multi_values = sub_data.get('multi_values', {})
+                    
+                    # Process each field value
+                    for field_key, field_value in multi_values.items():
+                        try:
+                            # Get the field definition
+                            field = metric.value_fields.get(field_key=field_key)
+                            
+                            # Determine if value is numeric or text
+                            if isinstance(field_value, (int, float)) or (
+                                    isinstance(field_value, str) and 
+                                    field_value.replace('.', '', 1).isdigit()):
+                                numeric_value = float(field_value)
+                                text_value = None
+                            else:
+                                numeric_value = None
+                                text_value = str(field_value) if field_value is not None else None
+                                
+                            # Create the value
+                            MetricValue.objects.create(
+                                submission=submission,
+                                field=field,
+                                numeric_value=numeric_value,
+                                text_value=text_value
+                            )
+                        except MetricValueField.DoesNotExist:
+                            # Log but don't fail if field doesn't exist
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(f"Field '{field_key}' not found for metric {metric.id}")
         
         # Update assignment status
         if assignment.status in ['PENDING', 'IN_PROGRESS']:

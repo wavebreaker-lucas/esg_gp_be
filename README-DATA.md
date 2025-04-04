@@ -265,8 +265,46 @@ Properties:
 - `is_required`: Whether this metric must be reported
 - `requires_time_reporting`: Whether this metric requires reporting for multiple time periods
 - `reporting_frequency`: Required frequency of reporting (monthly, quarterly, annual)
+- `is_multi_value`: Boolean indicating if this metric requires multiple related values (e.g., components of a calculation). Defaults to `false`.
 
-### 4. Custom Forms and Metrics
+### 4. Multi-Value Metrics
+
+For complex ESG indicators that require multiple related inputs (e.g., energy consumption by source, diversity breakdown), the system supports multi-value metrics:
+
+- **Activation**: Set `is_multi_value=True` on the `ESGMetric` model.
+- **Structure Definition**: Define the individual components using the `MetricValueField` model.
+- **Data Submission**: Store the submitted values using the `MetricValue` model.
+
+#### MetricValueField
+Defines the structure of each component within a multi-value metric.
+
+Properties:
+- `metric`: Foreign key to the parent `ESGMetric` (must have `is_multi_value=True`).
+- `field_key`: Unique identifier for this field within the metric (e.g., "products_sold").
+- `display_name`: User-friendly name (e.g., "Total Products Sold").
+- `description`: Optional description.
+- `column_header`: Optional header for tabular display (e.g., "A", "B").
+- `display_type`: Input type ('TEXT', 'NUMBER', 'SELECT').
+- `order`: Display order of this field.
+- `options`: JSON for dropdown choices if `display_type` is 'SELECT'.
+- `is_required`: Whether this specific field must be filled.
+
+#### MetricValue
+Stores the actual submitted value for a specific field within a multi-value metric submission.
+
+Properties:
+- `submission`: Foreign key to the parent `ESGMetricSubmission`.
+- `field`: Foreign key to the `MetricValueField` definition.
+- `numeric_value`: Stores float values (if the field is numeric).
+- `text_value`: Stores string values (if the field is text or select).
+
+**Example**: A "Product Recall" metric (`is_multi_value=True`) could have two `MetricValueField` entries:
+1. `field_key="products_sold"`, `display_name="Products Sold"`
+2. `field_key="products_recalled"`, `display_name="Products Recalled"`
+
+A submission for this metric would then create two `MetricValue` entries linked to the `ESGMetricSubmission`.
+
+### 5. Custom Forms and Metrics
 The system allows Baker Tilly administrators to create custom forms and metrics for specific client needs:
 
 1. **Custom Categories**: New form categories can be created beyond the standard Environmental, Social, and Governance.
@@ -276,6 +314,7 @@ The system allows Baker Tilly administrators to create custom forms and metrics 
    - Location-specific metrics
    - Time-based reporting frequencies
    - Validation rules to ensure data quality
+   - Configuration as multi-value metrics with custom fields.
 
 Custom forms and metrics can be created alongside standard forms in templates, allowing a mix of standardized and client-specific reporting within the same workflow.
 
@@ -284,6 +323,8 @@ Custom forms and metrics can be created alongside standard forms in templates, a
 - `POST /api/esg-forms/`: Create custom form
 - `POST /api/esg-metrics/`: Create custom metric
 - `POST /api/esg-forms/{id}/add_metric/`: Add metric to existing form
+- `POST /api/metric-value-fields/`: Create a field definition for a multi-value metric (Requires metric ID)
+- `PUT /api/metric-value-fields/{id}/`: Update a multi-value field definition
 
 ## Templates and Assignments
 
@@ -416,7 +457,8 @@ Returns detailed information about a specific template assignment, including all
           "is_required": true,
           "order": 1,
           "requires_time_reporting": false,
-          "reporting_frequency": null
+          "reporting_frequency": null,
+          "is_multi_value": false
         },
         {
           "id": 5,
@@ -429,7 +471,8 @@ Returns detailed information about a specific template assignment, including all
           "is_required": true,
           "order": 2,
           "requires_time_reporting": true,
-          "reporting_frequency": "monthly"
+          "reporting_frequency": "monthly",
+          "is_multi_value": false
         },
         {
           "id": 8,
@@ -442,7 +485,8 @@ Returns detailed information about a specific template assignment, including all
           "is_required": false,
           "order": 3,
           "requires_time_reporting": true,
-          "reporting_frequency": "monthly"
+          "reporting_frequency": "monthly",
+          "is_multi_value": false
         }
       ]
     }
@@ -576,10 +620,12 @@ This allows for flexible data collection patterns while maintaining data integri
 - `GET /api/metric-submissions/{id}/`: Get details of a specific submission
 - `PUT /api/metric-submissions/{id}/`: Update a metric submission
 - `DELETE /api/metric-submissions/{id}/`: Delete a metric submission
-- `GET /api/metric-submissions/by_assignment/?assignment_id={id}`: Get all submissions for a template assignment
-- `POST /api/metric-submissions/batch_submit/`: Submit multiple metric values at once
+- `GET /api/metric-submissions/by_assignment/?assignment_id={id}`: Get all submissions for a template assignment. Includes `multi_values` for multi-value metrics.
+- `POST /api/metric-submissions/batch_submit/`: Submit multiple metric values at once. Use the `multi_values` dictionary for multi-value metrics.
 - `POST /api/metric-submissions/submit_template/`: Mark a template as submitted when all forms are completed
 - `POST /api/metric-submissions/{id}/verify/`: Verify a metric submission (Baker Tilly admin only)
+- `GET /api/metric-submissions/available_layers/`: Get layers accessible to the user
+- `GET /api/metric-submissions/sum_by_layer/`: Aggregate metrics by layer
 
 #### ESG Metric Evidence Endpoints
 - `GET /api/metric-evidence/`: List all accessible evidence files
@@ -619,6 +665,15 @@ This allows for flexible data collection patterns while maintaining data integri
 - `PUT /api/esg-metrics/{id}/`: Update metric (Baker Tilly Admin only)
 - `PATCH /api/esg-metrics/{id}/`: Partially update metric (Baker Tilly Admin only)
 - `DELETE /api/esg-metrics/{id}/`: Delete metric (Baker Tilly Admin only)
+
+#### Metric Value Fields (for Multi-Value Metrics)
+- `GET /api/metric-value-fields/`: List all metric value field definitions
+- `GET /api/metric-value-fields/?metric_id={id}`: List fields for a specific multi-value metric
+- `GET /api/metric-value-fields/{id}/`: Get details of a specific field definition
+- `POST /api/metric-value-fields/`: Create a new field definition (Baker Tilly Admin only)
+- `PUT /api/metric-value-fields/{id}/`: Update a field definition (Baker Tilly Admin only)
+- `PATCH /api/metric-value-fields/{id}/`: Partially update a field definition (Baker Tilly Admin only)
+- `DELETE /api/metric-value-fields/{id}/`: Delete a field definition (Baker Tilly Admin only)
 
 #### Templates (Baker Tilly Admin only)
 - `GET /api/templates/`: List all templates
@@ -663,7 +718,7 @@ The ESG Platform API implements granular permissions based on user roles:
    - Full access to all endpoints and data
    - Can access and modify data for all clients, templates, and submissions
    - Can verify submissions (`POST /api/metric-submissions/{id}/verify/`)
-   - Can create and manage templates and forms
+   - Can create and manage templates, forms, metrics, and multi-value fields.
 
 2. **Regular Users**
    - Access restricted to their assigned layers (companies/organizations)
@@ -1366,12 +1421,6 @@ POST /api/metric-submissions/batch_submit/
             "notes": "Value from March 2024 electricity bill"
         },
         {
-            "metric_id": 5,
-            "value": 115.2,
-            "reporting_period": "2024-02-29",
-            "notes": "Value from February 2024 electricity bill"
-        },
-        {
             "metric_id": 6,
             "value": 85.2,
             "notes": "Value from March 2024 water bill"
@@ -1390,14 +1439,8 @@ POST /api/metric-submissions/batch_submit/
             "reporting_period": "2024-03-31"
         },
         {
-            "metric_id": 5,
-            "submission_id": 2,
-            "status": "success",
-            "reporting_period": "2024-02-29"
-        },
-        {
             "metric_id": 6,
-            "submission_id": 3,
+            "submission_id": 2,
             "status": "success",
             "reporting_period": null
         }
@@ -1658,8 +1701,8 @@ Stores user-submitted values for ESG metrics within a template assignment.
 Properties:
 - `assignment`: Link to TemplateAssignment
 - `metric`: Link to ESGMetric
-- `value`: Numeric value (for quantitative metrics)
-- `text_value`: Text value (for qualitative metrics)
+- `value`: Numeric value (for quantitative, single-value metrics)
+- `text_value`: Text value (for qualitative, single-value metrics)
 - `reporting_period`: Date field for time-based metrics (e.g., monthly data)
 - `submitted_by`: User who submitted the value
 - `submitted_at`: Submission timestamp
@@ -1696,7 +1739,7 @@ GET /api/admin/template-submissions/{assignment_id}/
 
 This endpoint would return a complete view including:
 - Template structure with forms and categories
-- All metric submissions with values
+- All metric submissions with values (including `multi_values` data)
 - Evidence files for each submission
 - Verification status information
 
@@ -1769,7 +1812,7 @@ This approach consolidates what would otherwise require multiple separate API ca
 
 1. **View Assigned Templates**: Users view templates assigned to their company using `/api/user-templates/`
 2. **View Template Details**: Users get detailed information about a specific template using `/api/user-templates/{assignment_id}/`
-3. **Submit Metric Values**: Users submit values for metrics using `/api/metric-submissions/` or `/api/metric-submissions/batch_submit/`
+3. **Submit Metric Values**: Users submit values for metrics using `/api/metric-submissions/` or `/api/metric-submissions/batch_submit/`. For multi-value metrics, they provide data in the `multi_values` dictionary.
 4. **Upload Evidence**: Users upload supporting documentation using `/api/metric-evidence/`
 5. **Complete Forms**: Users mark forms as completed using `/api/esg-forms/{form_id}/complete_form/` when all required metrics are filled
 6. **Check Completion Status**: Users check the completion status of the template using `/api/templates/{template_id}/completion_status/`
@@ -1782,6 +1825,7 @@ This approach consolidates what would otherwise require multiple separate API ca
    - Keep related metrics together using order field
    - Group location-specific metrics sequentially
    - Use clear, consistent naming conventions
+   - For multi-value metrics, define clear `field_key`s and `display_name`s for each `MetricValueField`.
 
 2. **Evidence Requirements**:
    - Set `requires_evidence=True` for critical metrics
@@ -1796,15 +1840,20 @@ This approach consolidates what would otherwise require multiple separate API ca
    - Collect data separately for each location
    - Maintain consistent units across periods
    - Include supporting evidence as required
+   - For multi-value metrics, ensure all required fields are submitted.
 
 ## Admin Interface
 
 Access the admin interface at `/admin/` to manage:
 - ESG Form Categories
 - ESG Forms
-- ESG Metrics
+- ESG Metrics (including defining multi-value fields via inlines)
+- Metric Value Fields
+- Metric Values
 - Templates
 - Template Assignments
+- ESG Metric Submissions (including viewing multi-values via inlines)
+- ESG Metric Evidence
 
 Note: Access requires either superuser status or Baker Tilly admin privileges.
 
