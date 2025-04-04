@@ -2,6 +2,8 @@
 ViewSet for accessing the final, aggregated ReportedMetricValue records.
 """
 
+import logging
+from django.db import models
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -10,6 +12,7 @@ from accounts.models import LayerProfile
 from ...models import ReportedMetricValue, TemplateAssignment
 from ...serializers.templates import ReportedMetricValueSerializer
 
+logger = logging.getLogger(__name__)
 
 class ReportedMetricValueViewSet(viewsets.ReadOnlyModelViewSet):
     """
