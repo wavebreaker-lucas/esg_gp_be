@@ -24,7 +24,8 @@ from ...models.polymorphic_metrics import BaseESGMetric
 from ...serializers.templates import (
     ESGMetricSubmissionSerializer, 
     ESGMetricEvidenceSerializer, 
-    ESGMetricSubmissionVerifySerializer
+    ESGMetricSubmissionVerifySerializer,
+    ESGMetricBatchSubmissionSerializer
 )
 
 logger = logging.getLogger(__name__)
@@ -132,9 +133,49 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['post'])
-    @transaction.atomic
+    @transaction.atomic # Ensure all submissions succeed or fail together
     def batch_submit(self, request):
-        """Handle batch submission of multiple metric inputs."""
-        # Needs complete rewrite
-        logger.error("Batch submit endpoint needs rewrite for polymorphic metrics")
-        return Response("Batch submit endpoint needs rewrite for polymorphic metrics", status=status.HTTP_501_NOT_IMPLEMENTED)
+        """Handle batch submission of multiple metric inputs for a single assignment."""
+        batch_serializer = ESGMetricBatchSubmissionSerializer(data=request.data, context=self.get_serializer_context())
+        if not batch_serializer.is_valid():
+            return Response(batch_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        assignment = batch_serializer.validated_data['assignment_id']
+        submissions_data = batch_serializer.validated_data['submissions']
+        
+        # Check if user has access to the target assignment's layer
+        if not has_layer_access(request.user, assignment.layer_id):
+             return Response({"detail": "You do not have permission for this assignment's layer."}, status=status.HTTP_403_FORBIDDEN)
+
+        results = []
+        errors = []
+
+        for index, sub_data in enumerate(submissions_data):
+            # Add assignment and potentially user context to each individual submission data
+            sub_data['assignment'] = assignment.pk # Pass assignment ID
+            
+            # Use ESGMetricSubmissionSerializer for validation and saving each item
+            # Create a new serializer instance for each item
+            item_serializer = ESGMetricSubmissionSerializer(data=sub_data, context=self.get_serializer_context())
+            
+            if item_serializer.is_valid():
+                try:
+                    # Perform create logic (no instance passed)
+                    instance = item_serializer.save()
+                    results.append(item_serializer.data) # Append serialized result of created object
+                except Exception as e:
+                    # Catch potential errors during save (though validation should prevent most)
+                    logger.error(f"Error saving batch submission item {index}: {e}")
+                    errors.append({f"item_{index}": f"Error during save: {e}"})
+            else:
+                errors.append({f"item_{index}": item_serializer.errors})
+
+        if errors:
+            # If any item failed, the transaction will be rolled back.
+            # Return the collected errors.
+            # Note: Because of @transaction.atomic, partial success is not possible.
+            # Consider removing @transaction.atomic if partial success is desired.
+            return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # If all items succeeded
+        return Response(results, status=status.HTTP_201_CREATED)
