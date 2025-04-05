@@ -6,181 +6,203 @@ import logging
 from django.db.models import Sum, Avg, Count, Max, Min, F, Q, DateTimeField, ExpressionWrapper # Import aggregation functions
 from django.utils import timezone
 from django.db import transaction
+import datetime # Need date/time handling
 
 from accounts.models import LayerProfile
 from ..models.templates import (
     ESGMetricSubmission, ReportedMetricValue, ESGMetric, TemplateAssignment,
     MetricValue, MetricValueField, ReportedMetricFieldValue
 )
+from ..models.polymorphic_metrics import (
+    BaseESGMetric, BasicMetric, TimeSeriesMetric, TabularMetric, 
+    MaterialTrackingMatrixMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric
+)
+from ..models.submission_data import (
+    BasicMetricData, TimeSeriesDataPoint, TabularMetricRow, 
+    MaterialMatrixDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint
+)
 
 logger = logging.getLogger(__name__)
 
-def calculate_report_value(assignment: TemplateAssignment, input_metric: ESGMetric, reporting_period: timezone.datetime.date, layer: LayerProfile):
+def _calculate_aggregation_period(metric, reporting_period_end):
+    """Calculates the likely start date for fetching submissions for aggregation."""
+    # Simplistic placeholder - assumes aggregation targets the single period end date
+    # Or for monthly, assumes aggregation covers the whole month ending reporting_period_end
+    if hasattr(metric, 'frequency') and metric.frequency == 'monthly':
+        # Start of the month for the given end period
+        return reporting_period_end.replace(day=1)
+    elif hasattr(metric, 'frequency') and metric.frequency == 'annual':
+        # Start of the year for the given end period
+        return reporting_period_end.replace(month=1, day=1)
+    # Default: Assume aggregation is just for the single end date (e.g., non-time-series)
+    return reporting_period_end 
+
+@transaction.atomic # Keep transactions for safety
+def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric, reporting_period: datetime.date, layer: LayerProfile):
     """
-    Calculates and saves the aggregated value(s) for a given input metric context
-    into the new ReportedMetricValue and ReportedMetricFieldValue structure.
+    Calculates and saves the aggregated value for a given metric context
+    into ReportedMetricValue, reading from the new submission data models.
 
     Args:
         assignment: The TemplateAssignment instance.
-        input_metric: The ESGMetric instance that defines the INPUTS.
-        reporting_period: The specific date representing the reporting period.
+        metric: The BaseESGMetric instance.
+        reporting_period: The specific date representing the END of the reporting period
+                          for which the aggregation is being calculated.
         layer: The LayerProfile instance the value pertains to.
 
     Returns:
-        The created or updated parent ReportedMetricValue instance, or None if no inputs exist.
+        The created or updated ReportedMetricValue instance, or None.
     """
+    logger.debug(f"Calculating report value for Metric ID {metric.pk} ({metric.name}), Assignment {assignment.pk}, Period {reporting_period}, Layer {layer.pk}")
 
-    # Check if this input metric requires aggregation
-    if not input_metric.aggregates_inputs:
-        logger.debug(f"Skipping aggregation for input metric {input_metric.id} as aggregates_inputs is False.")
+    # Check if aggregation is needed (this flag is still on BaseESGMetric)
+    if not metric.aggregates_inputs:
+        logger.debug(f"Skipping aggregation for metric {metric.id} as aggregates_inputs is False.")
         # Ensure no Aggregated Metric Record exists if aggregation is turned off
         deleted_count, _ = ReportedMetricValue.objects.filter(
             assignment=assignment,
-            metric=input_metric, # Link using input metric
+            metric=metric, # Link using input metric
             reporting_period=reporting_period,
             layer=layer
         ).delete()
         if deleted_count > 0:
-            logger.info(f"Deleted Aggregated Metric Record for {input_metric.name} ({reporting_period}) - {layer.company_name} as aggregates_inputs is now False.")
+            logger.info(f"Deleted Aggregated Metric Record for {metric.name} ({reporting_period}) - {layer.company_name} as aggregates_inputs is now False.")
         return None
 
-    # --- Find all relevant raw input submissions --- 
+    # --- Get Specific Metric Instance ---
+    try:
+        specific_metric = metric.get_real_instance()
+    except Exception as e:
+        logger.error(f"Could not get specific instance for metric {metric.pk}: {e}")
+        return None # Cannot proceed without specific type
+
+    # --- Determine aggregation period ---    
+    # TODO: Refine start date calculation based on metric frequency/assignment range
+    aggregation_start_date = _calculate_aggregation_period(specific_metric, reporting_period)
+    aggregation_end_date = reporting_period # End date is the target period
+
+    # --- Fetch Relevant Submission Headers --- 
+    # Find submission headers whose OWN reporting period falls within the aggregation window
     source_submissions = ESGMetricSubmission.objects.filter(
         assignment=assignment,
-        metric=input_metric, # Filter by the INPUT metric
-        reporting_period=reporting_period,
-        layer=layer
-    ).order_by('submitted_at', 'pk') # Order for determining first/last/text
+        metric=metric, # Use base metric here
+        layer=layer,
+        reporting_period__gte=aggregation_start_date,
+        reporting_period__lte=aggregation_end_date
+    ).order_by('submitted_at', 'pk')
 
-    source_submission_count = source_submissions.count()
-    first_submission = source_submissions.first()
-    last_submission = source_submissions.last()
+    source_submission_pks = list(source_submissions.values_list('pk', flat=True))
+    source_submission_count = len(source_submission_pks)
+    
+    # Get first/last submission timestamps *from the filtered set*
+    first_submission_at = source_submissions.first().submitted_at if source_submission_count > 0 else None
+    last_submission_at = source_submissions.last().submitted_at if source_submission_count > 0 else None
 
     if source_submission_count == 0:
-        # If no inputs exist, ensure no parent or child aggregate records exist.
+        logger.debug(f"No source submissions found for Metric {metric.pk} in period {aggregation_start_date} - {aggregation_end_date} for layer {layer.pk}.")
+        # If no inputs exist, ensure no parent aggregate record exists.
         deleted_count, _ = ReportedMetricValue.objects.filter(
             assignment=assignment,
-            metric=input_metric,
+            metric=metric,
             reporting_period=reporting_period,
             layer=layer
-        ).delete() # Cascading delete should handle children
+        ).delete()
         if deleted_count > 0:
-            logger.info(f"Deleted Aggregated Metric Record for {input_metric.name} ({reporting_period}) - {layer.company_name} due to no source inputs.")
+            logger.info(f"Deleted Aggregated Metric Record for {metric.name} ({reporting_period}) - {layer.company_name} due to no source inputs.")
         return None
 
-    # --- Get or Create Parent Aggregation Record --- 
+    # --- Aggregate Based on Metric Type --- 
+    aggregated_numeric = None
+    aggregated_text = None
+    agg_method = None # We'll set this based on logic
+
+    if isinstance(specific_metric, BasicMetric):
+        # Fetch BasicMetricData linked to the source submissions
+        data_points = BasicMetricData.objects.filter(submission_id__in=source_submission_pks)
+        if specific_metric.unit_type == 'text':
+            # Get text from the *last* submission's data 
+            last_sub_pk = source_submissions.last().pk if source_submission_count > 0 else None
+            last_data = data_points.filter(submission_id=last_sub_pk).first()
+            aggregated_text = last_data.value_text if last_data else None
+            agg_method = 'LAST'
+        else: # Numeric types
+            # TODO: Add aggregation method choice (SUM, AVG?) on BasicMetric? Default to SUM.
+            result = data_points.aggregate(total=Sum('value_numeric'))
+            aggregated_numeric = result.get('total')
+            agg_method = 'SUM'
+
+    elif isinstance(specific_metric, TimeSeriesMetric):
+        # Fetch TimeSeriesDataPoint linked to the source submissions
+        data_points = TimeSeriesDataPoint.objects.filter(submission_id__in=source_submission_pks)
+        # Use the aggregation_method defined on the TimeSeriesMetric model
+        agg_method = specific_metric.aggregation_method
+        if agg_method == 'SUM':
+             result = data_points.aggregate(total=Sum('value'))
+             aggregated_numeric = result.get('total')
+        elif agg_method == 'AVG':
+             result = data_points.aggregate(avg=Avg('value'))
+             aggregated_numeric = result.get('avg')
+        elif agg_method == 'LAST':
+             # Find the data point linked to the last submission header
+             last_sub_pk = source_submissions.last().pk if source_submission_count > 0 else None
+             last_data = data_points.filter(submission_id=last_sub_pk).first()
+             aggregated_numeric = last_data.value if last_data else None
+        # TODO: Handle text-based time series?
+        
+    # --- TODO: Implement aggregation logic for other types ---
+    elif isinstance(specific_metric, TabularMetric):
+        data_rows = TabularMetricRow.objects.filter(submission_id__in=source_submission_pks)
+        logger.info(f"Aggregation logic for TabularMetric (ID: {metric.pk}) TBD. Found {data_rows.count()} rows.")
+        agg_method = 'COUNT' # Example: Store row count
+        aggregated_numeric = data_rows.count() 
+        
+    elif isinstance(specific_metric, MaterialTrackingMatrixMetric):
+        data_points = MaterialMatrixDataPoint.objects.filter(submission_id__in=source_submission_pks)
+        # Example: Sum all values regardless of material type?
+        result = data_points.aggregate(total=Sum('value'))
+        aggregated_numeric = result.get('total')
+        agg_method = 'SUM_ALL'
+        logger.info(f"Aggregation logic for MaterialTrackingMatrixMetric (ID: {metric.pk}) TBD. Found {data_points.count()} points, summed to {aggregated_numeric}.")
+        
+    elif isinstance(specific_metric, MultiFieldTimeSeriesMetric):
+        data_points = MultiFieldTimeSeriesDataPoint.objects.filter(submission_id__in=source_submission_pks)
+        # Example: Count the number of periods submitted?
+        aggregated_numeric = data_points.values('period').distinct().count()
+        agg_method = 'COUNT_PERIODS'
+        logger.info(f"Aggregation logic for MultiFieldTimeSeriesMetric (ID: {metric.pk}) TBD. Found {aggregated_numeric} distinct periods.")
+        
+    elif isinstance(specific_metric, MultiFieldMetric):
+        # This likely doesn't aggregate to a single value easily.
+        data_exists = MultiFieldDataPoint.objects.filter(submission_id__in=source_submission_pks).exists()
+        aggregated_text = "Data Submitted" if data_exists else "No Data"
+        agg_method = 'METADATA_ONLY'
+        logger.info(f"Aggregation logic for MultiFieldMetric (ID: {metric.pk}) TBD. Data exists: {data_exists}.")
+        
+    else:
+        logger.warning(f"Aggregation not implemented for metric type: {type(specific_metric).__name__} (ID: {metric.pk})")
+        agg_method = 'UNKNOWN'
+        # Do not create a ReportedMetricValue if type is unknown
+        return None 
+
+    # --- Update or Create Parent Aggregation Record --- 
     parent_defaults = {
         'source_submission_count': source_submission_count,
-        'first_submission_at': first_submission.submitted_at if first_submission else None,
-        'last_submission_at': last_submission.submitted_at if last_submission else None,
-        'last_updated_at': timezone.now() # Explicitly set update time
+        'first_submission_at': first_submission_at,
+        'last_submission_at': last_submission_at,
+        'aggregated_numeric_value': aggregated_numeric,
+        'aggregated_text_value': aggregated_text,
+        # Maybe store agg_method used?
+        'last_updated_at': timezone.now()
     }
 
-    # Use atomic transaction for updating/creating parent and children
-    with transaction.atomic():
-        parent_agg_record, created = ReportedMetricValue.objects.update_or_create(
-            assignment=assignment,
-            metric=input_metric, # Linked to the INPUT metric
-            reporting_period=reporting_period,
-            layer=layer,
-            defaults=parent_defaults
-        )
-        action_parent = "Created" if created else "Updated"
-        logger.debug(f"{action_parent} parent Aggregated Metric Record for {input_metric.name} ({reporting_period}) - {layer.company_name} (ID: {parent_agg_record.id})")
+    parent_agg_record, created = ReportedMetricValue.objects.update_or_create(
+        assignment=assignment,
+        metric=metric, # Link to the base metric
+        reporting_period=reporting_period, # The target aggregation period
+        layer=layer,
+        defaults=parent_defaults
+    )
+    action = "Created" if created else "Updated"
+    logger.info(f"{action} ReportedMetricValue (ID: {parent_agg_record.id}) for Metric {metric.pk} - Period {reporting_period} - Layer {layer.pk}. Method: {agg_method}. Result: Num={aggregated_numeric}, Text='{aggregated_text}'")
 
-        # --- Handle Aggregation Based on Metric Type --- 
-        if not input_metric.is_multi_value:
-            # --- Single-Value Metric Aggregation --- 
-            # Decide aggregation method (SUM for numeric, LAST for text default)
-            # TODO: Make aggregation method configurable on ESGMetric?
-            
-            numeric_units = ['kWh', 'MWh', 'm3', 'tonnes', 'tCO2e', 'percentage', 'count', 'person', 'hours', 'days']
-            aggregated_numeric = None
-            aggregated_text = None
-            agg_method = 'SUM' # Default
-
-            if input_metric.unit_type in numeric_units:
-                # Perform SUM aggregation on source_submissions.value
-                result = source_submissions.aggregate(total=Sum('value'))
-                aggregated_numeric = result.get('total')
-                agg_method = 'SUM'
-            else: # Assume text or custom
-                # Take the text_value from the last submission
-                if last_submission:
-                    aggregated_text = last_submission.text_value
-                agg_method = 'LAST'
-
-            # Update the parent record directly (Option 2a)
-            parent_agg_record.aggregated_numeric_value = aggregated_numeric
-            parent_agg_record.aggregated_text_value = aggregated_text
-            parent_agg_record.save(update_fields=['aggregated_numeric_value', 'aggregated_text_value', 'last_updated_at'])
-            logger.debug(f"Stored single-value result ({agg_method}) on parent record {parent_agg_record.id}.")
-
-            # Clean up any orphaned child field values if metric was switched from multi-value
-            parent_agg_record.aggregated_fields.all().delete()
-
-        else:
-            # --- Multi-Value Metric Aggregation --- 
-            # Clear single-value fields on parent if metric was switched
-            parent_agg_record.aggregated_numeric_value = None
-            parent_agg_record.aggregated_text_value = None
-            parent_agg_record.save(update_fields=['aggregated_numeric_value', 'aggregated_text_value'])
-
-            # Get the field definitions for this multi-value metric
-            value_fields = input_metric.value_fields.all()
-            if not value_fields.exists():
-                logger.warning(f"Multi-value metric {input_metric.id} has no MetricValueFields defined. Cannot aggregate.")
-                # Clean up existing children? 
-                parent_agg_record.aggregated_fields.all().delete()
-                return parent_agg_record # Return parent, but nothing was aggregated
-
-            processed_field_pks = set()
-            # Iterate through each defined field and aggregate its values
-            for field_def in value_fields:
-                processed_field_pks.add(field_def.pk)
-                # Fetch the corresponding MetricValue records from the source submissions
-                field_inputs = MetricValue.objects.filter(
-                    submission__in=source_submissions,
-                    field=field_def
-                )
-                field_submission_count = field_inputs.count()
-                
-                # Decide aggregation method for this field
-                # TODO: Make method configurable per MetricValueField?
-                aggregated_numeric = None
-                aggregated_text = None
-                agg_method = 'SUM' # Default
-                
-                if field_def.display_type == 'NUMBER':
-                    result = field_inputs.aggregate(total=Sum('numeric_value'))
-                    aggregated_numeric = result.get('total')
-                    agg_method = 'SUM'
-                else: # Assume TEXT or SELECT
-                    # Find the MetricValue from the last overall submission that has a value for this field
-                    last_field_input = field_inputs.filter(submission=last_submission).first()
-                    if last_field_input:
-                         aggregated_text = last_field_input.text_value
-                    agg_method = 'LAST' # Default for text/select
-
-                # Update or Create the ReportedMetricFieldValue record
-                field_defaults = {
-                    'aggregated_numeric_value': aggregated_numeric,
-                    'aggregated_text_value': aggregated_text,
-                    'aggregation_method': agg_method,
-                    'source_submission_count': field_submission_count,
-                    'last_updated_at': timezone.now()
-                }
-                
-                field_agg_record, field_created = ReportedMetricFieldValue.objects.update_or_create(
-                    reported_value=parent_agg_record,
-                    field=field_def,
-                    defaults=field_defaults
-                )
-                action_field = "Created" if field_created else "Updated"
-                logger.debug(f"{action_field} ReportedMetricFieldValue for field {field_def.field_key} on parent {parent_agg_record.id}.")
-            
-            # Clean up child records for fields that no longer exist on the metric
-            parent_agg_record.aggregated_fields.exclude(field__pk__in=processed_field_pks).delete()
-
-    # Return the parent aggregation record
     return parent_agg_record 
