@@ -2,9 +2,18 @@ from .templates import (
     Template, TemplateAssignment,
     ESGFormCategory, ESGForm, ESGMetric,
     TemplateFormSelection, ESGMetricSubmission, ESGMetricEvidence,
-    MetricValueField, MetricValue, ReportedMetricValue
+    MetricValueField, MetricValue, ReportedMetricValue, ReportedMetricFieldValue
 )
 from .esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
+
+# New polymorphic models
+from .polymorphic_metrics import (
+    BaseESGMetric, 
+    BasicMetric, 
+    TabularMetric, 
+    MaterialTrackingMatrixMetric,
+    TimeSeriesMetric
+)
 
 __all__ = [
     'Template',
@@ -18,8 +27,16 @@ __all__ = [
     'ESGMetricSubmission',
     'ESGMetricEvidence',
     'ReportedMetricValue',
+    'ReportedMetricFieldValue',
     'BoundaryItem',
     'EmissionFactor',
     'ESGData',
     'DataEditLog',
+
+    # New polymorphic models
+    'BaseESGMetric', 
+    'BasicMetric', 
+    'TabularMetric', 
+    'MaterialTrackingMatrixMetric',
+    'TimeSeriesMetric',
 ] 
