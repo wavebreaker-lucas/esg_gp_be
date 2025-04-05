@@ -109,7 +109,6 @@ class ReportedMetricValue(models.Model):
     """Parent record storing aggregation results for a specific input metric context and aggregation level."""
     LEVEL_CHOICES = [
         ('M', 'Monthly'),
-        ('Q', 'Quarterly'),
         ('A', 'Annual'),
         # Add others if needed ('D' daily, 'W' weekly?)
     ]
