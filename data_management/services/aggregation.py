@@ -94,10 +94,6 @@ def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric
     # Calculate start date based on level
     if level == 'A': # Annual
         target_start_date = reporting_period.replace(month=1, day=1)
-    elif level == 'Q': # Quarterly
-        quarter = (target_month - 1) // 3 + 1
-        start_month = (quarter - 1) * 3 + 1
-        target_start_date = reporting_period.replace(month=start_month, day=1)
     elif level == 'M': # Monthly
         target_start_date = reporting_period.replace(day=1)
     # TODO: Add Daily, Weekly if needed
