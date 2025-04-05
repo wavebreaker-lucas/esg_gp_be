@@ -161,7 +161,8 @@ class TemplateViewSet(viewsets.ModelViewSet):
                         assignment=assignment,
                         metric_id=metric.id,
                         layer=assignment.layer, 
-                        reporting_period__in=expected_periods_dates
+                        reporting_period__in=expected_periods_dates,
+                        level='A' # Check ANNUAL level
                     ).count()
                     form_reported_points += found_periods_count
                     

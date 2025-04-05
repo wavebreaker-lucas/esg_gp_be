@@ -25,9 +25,9 @@ from ..models.submission_data import (
 logger = logging.getLogger(__name__)
 
 @transaction.atomic # Keep transactions for safety
-def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric, reporting_period: datetime.date, layer: LayerProfile):
+def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric, reporting_period: datetime.date, layer: LayerProfile, level: str):
     """
-    Calculates and saves the aggregated value for a given metric context
+    Calculates and saves the aggregated value for a given metric context and level
     into ReportedMetricValue, reading from the new submission data models.
 
     Args:
@@ -36,20 +36,27 @@ def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric
         reporting_period: The specific date representing the END of the reporting period
                           for which the aggregation is being calculated.
         layer: The LayerProfile instance the value pertains to.
+        level: The aggregation level ('M', 'Q', 'A').
 
     Returns:
         The created or updated ReportedMetricValue instance, or None.
     """
-    logger.debug(f"Calculating report value for Metric ID {metric.pk} ({metric.name}), Assignment {assignment.pk}, Period {reporting_period}, Layer {layer.pk}")
+    # Validate level input
+    valid_levels = [choice[0] for choice in ReportedMetricValue.LEVEL_CHOICES]
+    if level not in valid_levels:
+        logger.error(f"Invalid aggregation level '{level}' passed to calculate_report_value.")
+        return None
+        
+    logger.debug(f"Calculating report value for Metric ID {metric.pk} ({metric.name}), Assignment {assignment.pk}, Period {reporting_period}, Level {level}, Layer {layer.pk}")
 
     # Check if aggregation is needed
     if not metric.aggregates_inputs:
         logger.debug(f"Skipping aggregation for metric {metric.id} as aggregates_inputs is False.")
         deleted_count, _ = ReportedMetricValue.objects.filter(
-            assignment=assignment, metric=metric, reporting_period=reporting_period, layer=layer
+            assignment=assignment, metric=metric, reporting_period=reporting_period, layer=layer, level=level
         ).delete()
         if deleted_count > 0:
-            logger.info(f"Deleted Aggregated Metric Record for {metric.name} ({reporting_period}) - {layer.company_name} as aggregates_inputs is now False.")
+            logger.info(f"Deleted Aggregated Metric Record for {metric.name} ({reporting_period}, Level: {level}) - {layer.company_name} as aggregates_inputs is now False.")
         return None
 
     # --- Get Specific Metric Instance ---
@@ -77,135 +84,142 @@ def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric
     aggregated_numeric = None
     aggregated_text = None
     agg_method = None
-    final_source_submission_count = 0 # Track count contributing to *this specific period*
+    final_source_submission_count = 0
 
-    # Define target period start/end based on reporting_period (aggregation target)
-    # This needs robust logic, esp. for frequencies != monthly/annual
+    # --- Determine Target Start/End Dates Based on reporting_period AND level --- 
+    target_end_date = reporting_period 
     target_year = reporting_period.year
     target_month = reporting_period.month
-    target_start_date = reporting_period.replace(day=1) # Default: start of month
-    target_end_date = reporting_period # End date is always the target
     
-    # Adjust start date for annual aggregation
-    # TODO: Handle quarterly, weekly etc. based on metric frequency/level requested
-    if hasattr(specific_metric, 'frequency') and specific_metric.frequency == 'annual':
-         target_start_date = reporting_period.replace(month=1, day=1)
-    # For non-time-series, the concept of a start/end date might not apply in the same way
+    # Calculate start date based on level
+    if level == 'A': # Annual
+        target_start_date = reporting_period.replace(month=1, day=1)
+    elif level == 'Q': # Quarterly
+        quarter = (target_month - 1) // 3 + 1
+        start_month = (quarter - 1) * 3 + 1
+        target_start_date = reporting_period.replace(month=start_month, day=1)
+    elif level == 'M': # Monthly
+        target_start_date = reporting_period.replace(day=1)
+    # TODO: Add Daily, Weekly if needed
+    else: # Should be caught by initial level validation
+        logger.error(f"Unhandled level '{level}' during date calculation.")
+        return None 
+    
+    logger.debug(f"Aggregation window for Level '{level}', End: {target_end_date}: {target_start_date} to {target_end_date}")
+    
+    # For non-time-series, the concept of a start/end date for filtering inputs might not apply
+    is_time_based_aggregation = isinstance(specific_metric, (TimeSeriesMetric, MaterialTrackingMatrixMetric, MultiFieldTimeSeriesMetric))
 
     if isinstance(specific_metric, BasicMetric):
-        # Basic metrics usually don't have inherent periods in their data
-        # Aggregate ALL data points linked to the submissions found
+        # Basic metrics - aggregate ALL linked data points regardless of the target period?
+        # Assumption: The target period (level+reporting_period) defines WHEN the aggregate is stored,
+        # not WHICH basic inputs to include. 
         all_data_points = BasicMetricData.objects.filter(submission_id__in=source_submission_pks)
-        final_source_submission_count = all_data_points.count() # Count how many data points exist
+        final_source_submission_count = all_data_points.count()
         
         if final_source_submission_count > 0:
             if specific_metric.unit_type == 'text':
-                # Get text from the data linked to the *last overall submission header*
+                # Still use last overall submission header
                 last_sub_pk = source_submissions.last().pk if source_submission_count > 0 else None
                 last_data = all_data_points.filter(submission_id=last_sub_pk).first()
                 aggregated_text = last_data.value_text if last_data else None
                 agg_method = 'LAST'
             else: # Numeric types
-                # TODO: Aggregation method SUM/AVG? Default SUM.
+                # TODO: Allow configuration of SUM/AVG on BasicMetric?
                 result = all_data_points.aggregate(total=Sum('value_numeric'))
                 aggregated_numeric = result.get('total')
                 agg_method = 'SUM'
-        # Else: No data points found, values remain None
 
-    elif isinstance(specific_metric, TimeSeriesMetric):
-        all_data_points = TimeSeriesDataPoint.objects.filter(submission_id__in=source_submission_pks)
-        
-        # Filter by the data point's own period matching the target aggregation window
-        points_in_period = all_data_points.filter(
-            period__gte=target_start_date,
-            period__lte=target_end_date
-        )
-        final_source_submission_count = points_in_period.count()
+    elif is_time_based_aggregation:
+        # Fetch all potentially relevant data points first
+        if isinstance(specific_metric, TimeSeriesMetric):
+            all_data_points = TimeSeriesDataPoint.objects.filter(submission_id__in=source_submission_pks)
+            value_field_name = 'value'
+        elif isinstance(specific_metric, MaterialTrackingMatrixMetric):
+            all_data_points = MaterialMatrixDataPoint.objects.filter(submission_id__in=source_submission_pks)
+            value_field_name = 'value' # Assuming we sum the value field
+        elif isinstance(specific_metric, MultiFieldTimeSeriesMetric):
+            all_data_points = MultiFieldTimeSeriesDataPoint.objects.filter(submission_id__in=source_submission_pks)
+            # Aggregation needs more complex logic based on field_definitions & total_row_aggregation
+            value_field_name = None # Cannot simply aggregate a single field
+        else: 
+            all_data_points = None
+            value_field_name = None
+            
+        if all_data_points is not None:
+            # Filter by the data point's own period matching the target aggregation window
+            points_in_period = all_data_points.filter(
+                period__gte=target_start_date,
+                period__lte=target_end_date
+            )
+            final_source_submission_count = points_in_period.values('submission_id').distinct().count()
 
-        if final_source_submission_count > 0:
-            agg_method = specific_metric.aggregation_method
-            if agg_method == 'SUM':
-                 result = points_in_period.aggregate(total=Sum('value'))
-                 aggregated_numeric = result.get('total')
-            elif agg_method == 'AVG':
-                 result = points_in_period.aggregate(avg=Avg('value'))
-                 aggregated_numeric = result.get('avg')
-            elif agg_method == 'LAST':
-                 # Find the last data point *within the target period* 
-                 # Need submission time from header AND period match
-                 relevant_submission_pks = ESGMetricSubmission.objects.filter(
-                     pk__in=source_submission_pks,
-                     esgmetricsubmission_timeseriesdatapoint_set__period__gte=target_start_date,
-                     esgmetricsubmission_timeseriesdatapoint_set__period__lte=target_end_date
-                 ).order_by('-submitted_at').values_list('pk', flat=True)
-                 
-                 if relevant_submission_pks:
-                     last_sub_pk_in_period = relevant_submission_pks.first()
-                     last_data = points_in_period.filter(submission_id=last_sub_pk_in_period).first()
-                     aggregated_numeric = last_data.value if last_data else None
-                 else: # Should not happen if final_source_submission_count > 0
-                     aggregated_numeric = None 
-            # TODO: Handle text-based time series?
+            if final_source_submission_count > 0:
+                # Apply specific aggregation based on type
+                if isinstance(specific_metric, TimeSeriesMetric):
+                    agg_method = specific_metric.aggregation_method
+                    if agg_method == 'SUM':
+                        result = points_in_period.aggregate(total=Sum(value_field_name))
+                        aggregated_numeric = result.get('total')
+                    elif agg_method == 'AVG':
+                        result = points_in_period.aggregate(avg=Avg(value_field_name))
+                        aggregated_numeric = result.get('avg')
+                    elif agg_method == 'LAST':
+                        # Find last submission *header* within the period that has a data point in the period
+                        relevant_submission_pks = source_submissions.filter(
+                            esgmetricsubmission_timeseriesdatapoint_set__period__gte=target_start_date,
+                            esgmetricsubmission_timeseriesdatapoint_set__period__lte=target_end_date
+                        ).values_list('pk', flat=True)
+                        if relevant_submission_pks:
+                            # Get the data point linked to the latest submission among those
+                            last_data = points_in_period.filter(submission_id__in=relevant_submission_pks).order_by('-submission__submitted_at').first()
+                            aggregated_numeric = last_data.value if last_data else None
+                        else:
+                             aggregated_numeric = None 
+                    # TODO: Handle text-based time series?
 
-    # --- TODO: Implement *filtered* aggregation logic for other types ---
+                elif isinstance(specific_metric, MaterialTrackingMatrixMetric):
+                    # Example: Sum all values in period regardless of material type?
+                    result = points_in_period.aggregate(total=Sum(value_field_name))
+                    aggregated_numeric = result.get('total')
+                    agg_method = 'SUM_ALL_IN_PERIOD'
+                
+                elif isinstance(specific_metric, MultiFieldTimeSeriesMetric):
+                    # Example: Count the number of distinct periods submitted within the target window?
+                    aggregated_numeric = points_in_period.values('period').distinct().count()
+                    agg_method = 'COUNT_PERIODS'
+                    # TODO: Implement actual field aggregation based on total_row_aggregation
+
+    # --- Other metric types --- 
     elif isinstance(specific_metric, TabularMetric):
         all_data_rows = TabularMetricRow.objects.filter(submission_id__in=source_submission_pks)
-        # How does period apply? Maybe filter submission headers by period tag?
-        # Let's filter headers for now, assuming tag is reliable for this type.
+        # How does period apply? Assume we count rows from submissions tagged within period?
         subs_in_period = source_submissions.filter(reporting_period__gte=target_start_date, reporting_period__lte=target_end_date)
         subs_in_period_pks = list(subs_in_period.values_list('pk', flat=True))
         data_rows_in_period = all_data_rows.filter(submission_id__in=subs_in_period_pks)
-        final_source_submission_count = subs_in_period.count() # Count submissions in period
-        aggregated_numeric = data_rows_in_period.count() # Count rows submitted in period
+        final_source_submission_count = subs_in_period.count()
+        aggregated_numeric = data_rows_in_period.count()
         agg_method = 'COUNT_ROWS_IN_PERIOD'
-        logger.info(f"Aggregation for TabularMetric ID {metric.pk}: Counted {aggregated_numeric} rows from {final_source_submission_count} submissions in period.")
-
-    elif isinstance(specific_metric, MaterialTrackingMatrixMetric):
-        all_data_points = MaterialMatrixDataPoint.objects.filter(submission_id__in=source_submission_pks)
-        # Filter by the data point's own period
-        points_in_period = all_data_points.filter(
-            period__gte=target_start_date,
-            period__lte=target_end_date
-        )
-        final_source_submission_count = points_in_period.values('submission_id').distinct().count() # Count distinct submissions with data in period
-        # Example: Sum all values in period regardless of material type?
-        result = points_in_period.aggregate(total=Sum('value'))
-        aggregated_numeric = result.get('total')
-        agg_method = 'SUM_ALL_IN_PERIOD'
-        logger.info(f"Aggregation for MaterialMatrix ID {metric.pk}: Summed {aggregated_numeric} from {points_in_period.count()} points ({final_source_submission_count} submissions) in period.")
-
-    elif isinstance(specific_metric, MultiFieldTimeSeriesMetric):
-        all_data_points = MultiFieldTimeSeriesDataPoint.objects.filter(submission_id__in=source_submission_pks)
-        # Filter by the data point's own period
-        points_in_period = all_data_points.filter(
-            period__gte=target_start_date,
-            period__lte=target_end_date
-        )
-        final_source_submission_count = points_in_period.values('submission_id').distinct().count()
-        # Example: Count the number of distinct periods submitted within the target window?
-        aggregated_numeric = points_in_period.values('period').distinct().count()
-        agg_method = 'COUNT_PERIODS'
-        logger.info(f"Aggregation for MultiFieldTS ID {metric.pk}: Counted {aggregated_numeric} distinct periods from {final_source_submission_count} submissions in window.")
+        logger.info(f"Aggregation for TabularMetric ID {metric.pk}: Counted {aggregated_numeric} rows from {final_source_submission_count} submissions tagged in period.")
 
     elif isinstance(specific_metric, MultiFieldMetric):
-        # Doesn't have its own period. Check if *any* submission exists in broad list.
+        # Check if *any* submission exists in broad list.
         data_point_exists = MultiFieldDataPoint.objects.filter(submission_id__in=source_submission_pks).exists()
         aggregated_text = "Data Submitted" if data_point_exists else "No Data"
         agg_method = 'METADATA_ONLY'
-        final_source_submission_count = 1 if data_point_exists else 0 # Simplification
+        final_source_submission_count = 1 if data_point_exists else 0
         logger.info(f"Aggregation for MultiField ID {metric.pk}: Data exists: {data_point_exists}.")
 
     else:
         logger.warning(f"Aggregation not implemented for metric type: {type(specific_metric).__name__} (ID: {metric.pk})")
         agg_method = 'UNKNOWN'
-        return None # Do not create RPV if type is unknown
+        return None
 
     # --- Update or Create Parent Aggregation Record --- 
-    # Only create/update if there were relevant submissions/data for the period
     if final_source_submission_count > 0 or aggregated_text is not None:
         parent_defaults = {
-            'source_submission_count': final_source_submission_count, # Now reflects count relevant to *this* period
-            'first_submission_at': first_submission_at, # This still reflects overall first/last
+            'source_submission_count': final_source_submission_count,
+            'first_submission_at': first_submission_at,
             'last_submission_at': last_submission_at,
             'aggregated_numeric_value': aggregated_numeric,
             'aggregated_text_value': aggregated_text,
@@ -214,25 +228,25 @@ def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric
 
         parent_agg_record, created = ReportedMetricValue.objects.update_or_create(
             assignment=assignment,
-            metric=metric, # Link to the base metric
-            reporting_period=reporting_period, # The target aggregation period END DATE
+            metric=metric,
+            reporting_period=reporting_period,
             layer=layer,
-            # If using levels: level=level_parameter, # Pass level parameter here
+            level=level, # Pass the level parameter here
             defaults=parent_defaults
         )
         action = "Created" if created else "Updated"
-        logger.info(f"{action} ReportedMetricValue (ID: {parent_agg_record.id}) for Metric {metric.pk} - Period {reporting_period} - Layer {layer.pk}. Method: {agg_method}. Result: Num={aggregated_numeric}, Text='{aggregated_text}'")
+        logger.info(f"{action} ReportedMetricValue (ID: {parent_agg_record.id}) for Metric {metric.pk} - Period {reporting_period} - Level {level}. Method: {agg_method}. Result: Num={aggregated_numeric}, Text='{aggregated_text}'")
         return parent_agg_record
     else:
-        # No relevant data found for this specific reporting_period, delete any existing RPV
-        logger.info(f"No relevant source data found for Metric {metric.pk} for period ending {reporting_period}. Deleting existing record if any.")
+        # No relevant data found for this specific reporting_period/level, delete existing RPV
+        logger.info(f"No relevant source data found for Metric {metric.pk} for period ending {reporting_period}, level {level}. Deleting existing record if any.")
         deleted_count, _ = ReportedMetricValue.objects.filter(
             assignment=assignment,
             metric=metric,
             reporting_period=reporting_period,
-            layer=layer
-            # If using levels: level=level_parameter
+            layer=layer,
+            level=level # Filter by level for deletion
         ).delete()
         if deleted_count > 0:
-             logger.info(f"Deleted existing ReportedMetricValue for {metric.name} ({reporting_period}) as no relevant data was found.")
+             logger.info(f"Deleted existing ReportedMetricValue for {metric.name} ({reporting_period}, Level: {level}) as no relevant data was found.")
         return None 

@@ -132,24 +132,25 @@ class ESGFormViewSet(viewsets.ModelViewSet):
             
             total_required_points += expected_periods_count
 
-            # Check how many ReportedMetricValue exist for the expected periods
-            # Ensure we query using the base metric ID
+            # Ensure we query using the base metric ID and filter by Annual level
             found_periods_count = ReportedMetricValue.objects.filter(
                 assignment=assignment,
                 metric_id=metric.id, # Query by base metric ID 
                 layer=assignment.layer, 
-                reporting_period__in=expected_periods_dates
+                reporting_period__in=expected_periods_dates,
+                level='A' # Check for ANNUAL aggregated value
             ).count()
             
             reported_points_count += found_periods_count
 
             if found_periods_count < expected_periods_count:
-                # Find which specific periods are missing 
+                # Find which specific periods are missing the Annual aggregate
                 found_periods = set(ReportedMetricValue.objects.filter(
                     assignment=assignment,
                     metric_id=metric.id, 
                     layer=assignment.layer, 
-                    reporting_period__in=expected_periods_dates
+                    reporting_period__in=expected_periods_dates,
+                    level='A' # Check ANNUAL level
                 ).values_list('reporting_period', flat=True))
                 
                 missing_periods = [d.isoformat() for d in expected_periods_dates if d not in found_periods]
@@ -265,7 +266,8 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                     assignment=assignment,
                     metric_id=metric.id,
                     layer=assignment.layer, 
-                    reporting_period__in=expected_periods_dates
+                    reporting_period__in=expected_periods_dates,
+                    level='A' # Check ANNUAL level
                 ).count()
                 reported_points_count += found_periods_count
                 
