@@ -69,20 +69,20 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
     #     return ESGMetricSubmissionSerializer
 
     def perform_create(self, serializer):
-        # Needs rewrite for polymorphic data handling & aggregation trigger
-        # super().perform_create(serializer) # Basic save might fail depending on serializer
-        logger.warning("perform_create needs update for polymorphic metrics")
-        # For now, just save básico to allow migration
-        serializer.save(submitted_by=self.request.user)
+        # The serializer now handles setting submitted_by and saving related data.
+        # We just need to call save().
+        # Any aggregation triggers would likely happen via signals after save.
+        serializer.save()
     
     def perform_update(self, serializer):
-        # Needs rewrite for polymorphic data handling & aggregation trigger
-        logger.warning("perform_update needs update for polymorphic metrics")
+        # The serializer now handles updating the header and related data.
+        # Any aggregation triggers would likely happen via signals after save.
         serializer.save()
 
     def perform_destroy(self, instance):
-        # Needs rewrite for polymorphic data handling & aggregation trigger
-        logger.warning("perform_destroy needs update for polymorphic metrics")
+        # Default destroy is likely fine, but consider aggregation implications.
+        # If deleting a submission requires recalculating aggregates, add logic here or use signals.
+        logger.warning("perform_destroy: Consider if aggregation recalculation is needed.")
         super().perform_destroy(instance)
     
     # def _check_form_completion(self, assignment):
