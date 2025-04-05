@@ -14,7 +14,8 @@ from accounts.models import CustomUser, AppUser, LayerProfile
 from accounts.services import get_accessible_layers, has_layer_access
 from ...models import (
     ESGForm,
-    Template, TemplateFormSelection, TemplateAssignment
+    Template, TemplateFormSelection, TemplateAssignment,
+    ReportedMetricValue
 )
 from ...models.polymorphic_metrics import BaseESGMetric
 from ...serializers.templates import (
@@ -410,3 +411,19 @@ class ESGFormViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, BakerTillyAdmin])
     def add_metric(self, request, pk=None):
         """Add a new polymorphic metric to this form."""
+        form = self.get_object() # Get the target form
+        
+        # Prepare data for the serializer
+        metric_data = request.data.copy()
+        metric_data['form'] = form.pk # Ensure the form FK is set
+
+        # Use the polymorphic serializer to create the metric
+        # The request data MUST include 'metric_subtype' (or whatever resource_type_field_name is set to)
+        # to determine which specific metric model/serializer to use.
+        serializer = ESGMetricPolymorphicSerializer(data=metric_data, context={'request': request})
+        
+        if serializer.is_valid():
+            serializer.save() # This creates the correct subclass instance
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
