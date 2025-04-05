@@ -17,6 +17,16 @@ from .polymorphic_metrics import (
     MultiFieldMetric
 )
 
+# Import submission data models
+from .submission_data import (
+    BasicMetricData,
+    TabularMetricRow,
+    MaterialMatrixDataPoint,
+    TimeSeriesDataPoint,
+    MultiFieldTimeSeriesDataPoint,
+    MultiFieldDataPoint
+)
+
 __all__ = [
     'ESGFormCategory',
     'ESGForm',
@@ -39,4 +49,12 @@ __all__ = [
     'TimeSeriesMetric',
     'MultiFieldTimeSeriesMetric',
     'MultiFieldMetric',
+
+    # Submission data models
+    'BasicMetricData',
+    'TabularMetricRow',
+    'MaterialMatrixDataPoint',
+    'TimeSeriesDataPoint',
+    'MultiFieldTimeSeriesDataPoint',
+    'MultiFieldDataPoint',
 ] 

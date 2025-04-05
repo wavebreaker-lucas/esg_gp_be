@@ -21,6 +21,10 @@ class Migration(migrations.Migration):
             name='metric',
             field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='aggregated_records', to='data_management.baseesgmetric'),
         ),
+        migrations.AlterUniqueTogether(
+            name='metricvaluefield',
+            unique_together=None,
+        ),
         migrations.RemoveField(
             model_name='metricvaluefield',
             name='metric',
@@ -42,21 +46,9 @@ class Migration(migrations.Migration):
             model_name='metricvalue',
             name='submission',
         ),
-        migrations.AlterUniqueTogether(
-            name='metricvaluefield',
-            unique_together=None,
-        ),
         migrations.RemoveField(
             model_name='reportedmetricfieldvalue',
             name='field',
-        ),
-        migrations.AlterUniqueTogether(
-            name='reportedmetricfieldvalue',
-            unique_together=None,
-        ),
-        migrations.RemoveField(
-            model_name='reportedmetricfieldvalue',
-            name='reported_value',
         ),
         migrations.AlterField(
             model_name='esgmetricsubmission',

@@ -144,15 +144,16 @@ class ReportedMetricValue(models.Model):
         return f"Aggregation for {self.metric.name} ({self.reporting_period}) - {self.layer.company_name}"
 
 class ESGMetricSubmission(models.Model):
-    """Raw input data point for an ESG metric within a template assignment."""
+    """Header record for a raw input data point for an ESG metric within a template assignment.
+    The actual submitted data is stored in related models (e.g., BasicMetricData, TabularMetricRow)."""
     assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='submissions')
     metric = models.ForeignKey(
         'data_management.BaseESGMetric', # Changed to string reference
         on_delete=models.CASCADE
     )
-    # value & text_value might be deprecated in favor of specific submission types later
-    value = models.FloatField(null=True, blank=True, help_text="Raw value for single-value numeric metrics (legacy/basic)")
-    text_value = models.TextField(null=True, blank=True, help_text="Raw value for single-value text metrics (legacy/basic)")
+    # value & text_value are removed - data stored in related models
+    # value = models.FloatField(null=True, blank=True, help_text="Raw value for single-value numeric metrics (legacy/basic)")
+    # text_value = models.TextField(null=True, blank=True, help_text="Raw value for single-value text metrics (legacy/basic)")
     reporting_period = models.DateField(null=True, blank=True, help_text="For time-based metrics (e.g., monthly data), indicates the period this input applies to")
     submitted_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='metric_submissions')
     submitted_at = models.DateTimeField(auto_now_add=True)

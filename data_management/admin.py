@@ -75,14 +75,26 @@ class TemplateAssignmentAdmin(admin.ModelAdmin):
 
 @admin.register(ESGMetricSubmission)
 class ESGMetricSubmissionAdmin(admin.ModelAdmin):
-    list_display = ['metric', 'assignment', 'value', 'text_value', 'reporting_period', 'submitted_by', 'is_verified']
-    list_filter = ['is_verified', 'metric__polymorphic_ctype__model', 'reporting_period']
-    search_fields = ['metric__name', 'assignment__template__name', 'assignment__layer__company_name']
-    date_hierarchy = 'submitted_at'
+    list_display = (
+        'id', 
+        'assignment', 
+        'metric_display',
+        'reporting_period', 
+        'submitted_by', 
+        'submitted_at',
+        'is_verified',
+        'layer'
+    )
+    list_filter = ('assignment__template', 'assignment__layer', 'metric', 'reporting_period', 'is_verified', 'submitted_by')
+    search_fields = ('metric__name', 'assignment__template__name', 'assignment__layer__company_name', 'notes', 'verification_notes')
+    readonly_fields = ('submitted_at', 'updated_at', 'verified_at')
     raw_id_fields = ['metric', 'assignment', 'submitted_by', 'verified_by']
-    readonly_fields = []
     list_select_related = ('metric', 'assignment', 'layer', 'submitted_by', 'verified_by')
     inlines = []
+
+    def metric_display(self, obj):
+        return obj.metric.name if obj.metric else "No Metric"
+    metric_display.short_description = "Metric"
 
 @admin.register(ESGMetricEvidence)
 class ESGMetricEvidenceAdmin(admin.ModelAdmin):
