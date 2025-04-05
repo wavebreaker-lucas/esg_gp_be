@@ -106,7 +106,14 @@ class TemplateAssignment(models.Model):
         return f"{self.template.name} - {self.layer.company_name}"
 
 class ReportedMetricValue(models.Model):
-    """Parent record storing aggregation results for a specific input metric context."""
+    """Parent record storing aggregation results for a specific input metric context and aggregation level."""
+    LEVEL_CHOICES = [
+        ('M', 'Monthly'),
+        ('Q', 'Quarterly'),
+        ('A', 'Annual'),
+        # Add others if needed ('D' daily, 'W' weekly?)
+    ]
+    
     assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='aggregated_records')
     metric = models.ForeignKey(
         'data_management.BaseESGMetric', # Changed to string reference
@@ -114,7 +121,8 @@ class ReportedMetricValue(models.Model):
         related_name='aggregated_records'
     )
     layer = models.ForeignKey(LayerProfile, on_delete=models.CASCADE, related_name='aggregated_records')
-    reporting_period = models.DateField(help_text="The specific period this aggregated value represents (e.g., month-end, quarter-end)")
+    reporting_period = models.DateField(help_text="End date of the period this aggregated value represents") # Clarified help text
+    level = models.CharField(max_length=1, choices=LEVEL_CHOICES, help_text="Aggregation level (Monthly, Quarterly, Annual)") # New Field
 
     # Aggregated value fields - these may need rethinking based on polymorphic types
     # For now, keep them, but aggregation logic will need updates
@@ -131,17 +139,19 @@ class ReportedMetricValue(models.Model):
     last_submission_at = models.DateTimeField(null=True, blank=True, help_text="Timestamp of the last submission included")
 
     class Meta:
-        unique_together = ['assignment', 'metric', 'reporting_period', 'layer']
+        # Update unique_together and index
+        unique_together = ['assignment', 'metric', 'reporting_period', 'layer', 'level']
         indexes = [
-            models.Index(fields=['assignment', 'metric', 'reporting_period', 'layer'], name='unique_agg_record_idx'),
+            models.Index(fields=['assignment', 'metric', 'reporting_period', 'layer', 'level'], name='unique_agg_record_lvl_idx'),
             models.Index(fields=['reporting_period']),
+            models.Index(fields=['level']), # Index on level
         ]
-        ordering = ['assignment', 'metric', 'reporting_period']
+        ordering = ['assignment', 'metric', 'reporting_period', 'level'] # Add level to ordering
         verbose_name = "Aggregated Metric Record"
         verbose_name_plural = "Aggregated Metric Records"
 
     def __str__(self):
-        return f"Aggregation for {self.metric.name} ({self.reporting_period}) - {self.layer.company_name}"
+        return f"{self.get_level_display()} Agg for {self.metric.name} ({self.reporting_period}) - {self.layer.company_name}"
 
 class ESGMetricSubmission(models.Model):
     """Header record for a raw input data point for an ESG metric within a template assignment.
