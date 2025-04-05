@@ -6,11 +6,12 @@ from django.urls import reverse
 from django.db import models
 from django.conf import settings
 
-from ...models.templates import ESGMetricEvidence, ESGMetricSubmission, ESGMetric
+from ...models.templates import ESGMetricEvidence, ESGMetricSubmission
 from ...serializers.templates import ESGMetricEvidenceSerializer, ESGMetricSubmissionSerializer
 from ...services.bill_analyzer import UtilityBillAnalyzer
 from accounts.permissions import BakerTillyAdmin
 from accounts.models import LayerProfile
+from ...models.polymorphic_metrics import BaseESGMetric
 
 
 class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
@@ -83,8 +84,9 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         metric = None
         if metric_id:
             try:
-                metric = ESGMetric.objects.get(id=metric_id)
-            except ESGMetric.DoesNotExist:
+                # Use BaseESGMetric now
+                metric = BaseESGMetric.objects.get(id=metric_id)
+            except BaseESGMetric.DoesNotExist: # Update exception type
                 return Response({'error': 'Metric not found'}, status=404)
         
         # Handle optional period parameter
@@ -342,8 +344,9 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             return Response({'error': 'metric_id is required'}, status=400)
         
         try:
-            metric = ESGMetric.objects.get(id=metric_id)
-        except ESGMetric.DoesNotExist:
+            # Use BaseESGMetric here
+            metric = BaseESGMetric.objects.get(id=metric_id)
+        except BaseESGMetric.DoesNotExist: # Update exception type
             return Response({'error': 'Metric not found'}, status=404)
         
         # Find evidence for this metric (both directly attached and standalone with intended_metric)

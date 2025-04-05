@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from django.conf import settings
 from django.utils import timezone
-from data_management.models import ESGMetricEvidence, ESGMetric
+from data_management.models import ESGMetricEvidence, BaseESGMetric
 from typing import Callable, Dict, Any, List
 from tempfile import NamedTemporaryFile
 from copy import deepcopy
@@ -96,21 +96,24 @@ class UtilityBillAnalyzer:
                 # Determine analyzer ID
                 analyzer_id = self.default_analyzer_id
                 
-                # For evidence with a submission, use the metric's analyzer
-                if evidence.submission and evidence.submission.metric and evidence.submission.metric.ocr_analyzer_id:
-                    analyzer_id = evidence.submission.metric.ocr_analyzer_id
+                # Check evidence.intended_metric instead of submission.metric
+                if evidence.intended_metric and evidence.intended_metric.ocr_analyzer_id:
+                    analyzer_id = evidence.intended_metric.ocr_analyzer_id
                     logger.info(f"Using metric-specific analyzer: {analyzer_id}")
-                # For standalone evidence, check if metric_id was stored in ocr_data
-                elif evidence.ocr_data and 'intended_metric_id' in evidence.ocr_data:
+                # # Old logic for submission metric - keep commented for reference if needed
+                # # if evidence.submission and evidence.submission.metric and evidence.submission.metric.ocr_analyzer_id:
+                # #    analyzer_id = evidence.submission.metric.ocr_analyzer_id
+                # #    logger.info(f"Using metric-specific analyzer: {analyzer_id}")
+                # Check standalone evidence using intended_metric field
+                elif not evidence.submission and evidence.intended_metric_id:
                     try:
-                        metric_id = evidence.ocr_data.get('intended_metric_id')
-                        if metric_id:
-                            metric = ESGMetric.objects.get(id=metric_id)
-                            if metric.ocr_analyzer_id:
-                                analyzer_id = metric.ocr_analyzer_id
-                                logger.info(f"Using standalone metric analyzer: {analyzer_id}")
-                    except ESGMetric.DoesNotExist:
-                        logger.warning(f"Intended metric {metric_id} not found, using default analyzer")
+                        # We need to get the metric using the new BaseESGMetric
+                        metric = BaseESGMetric.objects.get(id=evidence.intended_metric_id)
+                        if metric.ocr_analyzer_id:
+                            analyzer_id = metric.ocr_analyzer_id
+                            logger.info(f"Using standalone intended metric analyzer: {analyzer_id}")
+                    except BaseESGMetric.DoesNotExist:
+                        logger.warning(f"Intended metric {evidence.intended_metric_id} not found, using default analyzer")
                 
                 # Create Azure Content Understanding client
                 client = AzureContentUnderstandingClient(
@@ -121,7 +124,7 @@ class UtilityBillAnalyzer:
                 
                 # Begin analysis with the appropriate analyzer
                 try:
-                    metric_name = evidence.submission.metric.name if evidence.submission else "standalone file"
+                    metric_name = evidence.intended_metric.name if evidence.intended_metric else "standalone file"
                     logger.info(f"Using analyzer ID: {analyzer_id} for: {metric_name}")
                     response = client.begin_analyze(analyzer_id, file_path)
                     logger.info(f"Analysis started for evidence {evidence.id}, operation URL: {response.headers.get('operation-location')}")

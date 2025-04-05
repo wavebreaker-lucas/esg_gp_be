@@ -7,11 +7,15 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime
+import logging
+from django.db.models import Sum, F
+from django.db import models
 
-from accounts.models import LayerProfile
+from accounts.models import LayerProfile, AppUser
 from accounts.services import get_accessible_layers, has_layer_access
-from ...models import ESGMetric, TemplateAssignment, ESGMetricSubmission
+from ...models import BaseESGMetric, TemplateAssignment, ESGMetricSubmission
 
+logger = logging.getLogger(__name__)
 
 class AvailableLayersView(APIView):
     """
@@ -64,8 +68,6 @@ class AvailableLayersView(APIView):
                 return Response({'error': f'Assignment with ID {assignment_id} not found'}, status=status.HTTP_404_NOT_FOUND)
             except Exception as e: # Catch potential errors from get_parent/child methods if they don't exist
                 # Log the error
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.error(f"Error determining relevant layers for assignment {assignment_id}: {e}")
                 # Fallback to just showing assignment layer if accessible
                 if has_layer_access(request.user, assignment.layer):
@@ -135,22 +137,18 @@ class AvailableLayersView(APIView):
 class SumSubmissionsByLayerView(APIView):
     """
     Aggregates metric submission values by layer for a given assignment.
+    NEEDS REWORK for Polymorphic Metrics.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         """
         Get aggregated values for metric submissions by layer.
-
-        Parameters:
-            assignment_id: Required. The template assignment to aggregate data for.
-            metric_ids: Comma-separated list of metric IDs to include.
-            layer_ids: Comma-separated list of layer IDs to include.
-            period: Optional. Filter submissions to this specific period (YYYY-MM-DD).
         """
         assignment_id = request.query_params.get('assignment_id')
         metric_ids_param = request.query_params.get('metric_ids')
         layer_ids_param = request.query_params.get('layer_ids')
+        period_str = request.query_params.get('period')
 
         if not assignment_id:
             return Response({'error': 'assignment_id is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -166,78 +164,61 @@ class SumSubmissionsByLayerView(APIView):
                 raise ValueError("No valid IDs provided")
         except ValueError:
             return Response({'error': 'Invalid metric_ids or layer_ids format. Use comma-separated integers.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        period = None
+        if period_str:
+            try:
+                period = datetime.strptime(period_str, '%Y-%m-%d').date()
+            except ValueError:
+                 return Response({'error': 'Invalid period format. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             assignment = TemplateAssignment.objects.get(id=assignment_id)
         except TemplateAssignment.DoesNotExist:
             return Response({'error': f'Assignment with ID {assignment_id} not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        # Check permissions for assignment and layers
-        user_layers = get_accessible_layers(request.user)
-        accessible_layer_ids = set(user_layers.values_list('id', flat=True))
-        if not has_layer_access(request.user, assignment.layer):
-             # Check if user has access via parent/child relationship if needed based on your rules
-             # Simplified check: Does user have access to the assignment's specific layer?
-             # You might need more complex logic depending on hierarchy access rules
-             if assignment.layer.id not in accessible_layer_ids: 
-                  return Response({'error': 'You do not have permission to view this assignment'}, status=status.HTTP_403_FORBIDDEN)
-
-        inaccessible_layers = set(layer_ids) - accessible_layer_ids
-        if inaccessible_layers:
-            return Response({'error': f'You do not have access to the following layers: {", ".join(map(str, inaccessible_layers))}'}, status=status.HTTP_403_FORBIDDEN)
-
-        metrics = ESGMetric.objects.filter(id__in=metric_ids)
+        
+        accessible_layer_ids = get_accessible_layers(request.user)
+        user_layers = LayerProfile.objects.filter(id__in=accessible_layer_ids)
+        accessible_requested_layers = [l_id for l_id in layer_ids if l_id in accessible_layer_ids]
+        if not accessible_requested_layers:
+             return Response({'error': 'You do not have access to any of the requested layers'}, status=status.HTTP_403_FORBIDDEN)
+        
+        metrics = BaseESGMetric.objects.filter(id__in=metric_ids).select_related('form')
         if metrics.count() != len(metric_ids):
             found_ids = set(metrics.values_list('id', flat=True))
             missing_ids = set(metric_ids) - found_ids
-            return Response({'error': f'The following metrics were not found: {", ".join(map(str, missing_ids))}'}, status=status.HTTP_404_NOT_FOUND)
-
-        period_filter = {}
-        period = request.query_params.get('period')
-        if period:
-            try:
-                period_date = datetime.strptime(period, '%Y-%m-%d').date()
-                period_filter['reporting_period'] = period_date
-            except ValueError:
-                return Response({'error': 'Invalid period format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': f'Metrics not found: {missing_ids}'}, status=status.HTTP_404_NOT_FOUND)
+        
+        period_filter = {'reporting_period': period} if period else {}
 
         submissions = ESGMetricSubmission.objects.filter(
             assignment_id=assignment_id,
             metric_id__in=metric_ids,
-            layer_id__in=layer_ids,
+            layer_id__in=accessible_requested_layers,
             **period_filter
         ).select_related('metric', 'layer')
 
         result = {
             'assignment_id': assignment_id,
             'period': period,
-            'metrics': {m.id: {'id': m.id, 'name': m.name, 'unit_type': m.unit_type, 'custom_unit': m.custom_unit, 'requires_time_reporting': m.requires_time_reporting, 'form_code': m.form.code} for m in metrics},
-            'layers': {layer.id: {'id': layer.id, 'name': layer.company_name, 'type': layer.layer_type, 'location': layer.company_location} for layer in user_layers.filter(id__in=layer_ids)},
+            'metrics': {m.id: {'id': m.id, 'name': m.name, 'form_code': m.form.code} 
+                        for m in metrics},
+            'layers': {layer.id: {'id': layer.id, 'name': layer.company_name, 'type': layer.layer_type, 'location': layer.company_location} 
+                       for layer in user_layers.filter(id__in=accessible_requested_layers)},
             'aggregation': []
         }
 
         for metric_id in metric_ids:
             metric_data = {'metric_id': metric_id, 'values_by_layer': {}}
-            metric_info = result['metrics'][metric_id]
-
-            for layer_id in layer_ids:
+            for layer_id in accessible_requested_layers:
                 layer_submissions = submissions.filter(metric_id=metric_id, layer_id=layer_id)
                 value = None
                 submission_id = None
                 
-                if period:
-                    submission = layer_submissions.first()
-                    value = submission.value if submission else None
-                    submission_id = submission.id if submission else None
-                else:
-                    if metric_info['requires_time_reporting']:
-                        values = [sub.value for sub in layer_submissions if sub.value is not None]
-                        value = sum(values) if values else None
-                    else:
-                        submission = layer_submissions.first()
-                        value = submission.value if submission else None
-                        submission_id = submission.id if submission else None
-
+                submission = layer_submissions.first()
+                value = submission.value if submission else None
+                submission_id = submission.id if submission else None
+                
                 metric_data['values_by_layer'][layer_id] = {'value': value, 'submission_id': submission_id}
             
             result['aggregation'].append(metric_data)

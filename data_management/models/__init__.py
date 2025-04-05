@@ -2,7 +2,7 @@ from .templates import (
     ESGFormCategory, ESGForm,
     Template, TemplateFormSelection, TemplateAssignment,
     ESGMetricSubmission, ESGMetricEvidence,
-    ReportedMetricValue, ReportedMetricFieldValue
+    ReportedMetricValue
 )
 from .esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
 
@@ -26,7 +26,6 @@ __all__ = [
     'ESGMetricSubmission',
     'ESGMetricEvidence',
     'ReportedMetricValue',
-    'ReportedMetricFieldValue',
     'BoundaryItem',
     'EmissionFactor',
     'ESGData',

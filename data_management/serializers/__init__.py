@@ -1,7 +1,7 @@
 from .templates import (
     TemplateSerializer, TemplateAssignmentSerializer,
     ESGFormSerializer, ESGFormCategorySerializer,
-    ESGMetricSerializer, TemplateFormSelectionSerializer
+    TemplateFormSelectionSerializer
 )
 from .esg import BoundaryItemSerializer, EmissionFactorSerializer, ESGDataSerializer, DataEditLogSerializer
 
@@ -10,7 +10,6 @@ __all__ = [
     'TemplateAssignmentSerializer',
     'ESGFormSerializer',
     'ESGFormCategorySerializer',
-    'ESGMetricSerializer',
     'TemplateFormSelectionSerializer',
     'BoundaryItemSerializer',
     'EmissionFactorSerializer',

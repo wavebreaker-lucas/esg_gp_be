@@ -1,12 +1,12 @@
 from rest_framework.routers import DefaultRouter
 from django.urls import path
+# Removed ESGMetricViewSet, MetricValueFieldViewSet
 from .views import (
     ESGFormViewSet, ESGFormCategoryViewSet, TemplateViewSet, 
-    ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, ESGMetricViewSet, 
+    ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, 
     UserTemplateAssignmentView, TemplateAssignmentView,
-    MetricValueFieldViewSet, BatchEvidenceView,
-    AvailableLayersView, SumSubmissionsByLayerView, # Now imported directly from .views
-    # Import the new ViewSet
+    BatchEvidenceView,
+    AvailableLayersView, SumSubmissionsByLayerView, 
     ReportedMetricValueViewSet
 )
 
@@ -19,9 +19,8 @@ router.register(r'esg-categories', ESGFormCategoryViewSet, basename='esg-categor
 router.register(r'templates', TemplateViewSet, basename='template')
 router.register(r'metric-submissions', ESGMetricSubmissionViewSet, basename='metric-submission')
 router.register(r'metric-evidence', ESGMetricEvidenceViewSet, basename='metric-evidence')
-router.register(r'esg-metrics', ESGMetricViewSet, basename='esg-metric')
-router.register(r'metric-value-fields', MetricValueFieldViewSet, basename='metric-value-field')
-# Register the new ViewSet
+# router.register(r'esg-metrics', ESGMetricViewSet, basename='esg-metric') # Removed
+# router.register(r'metric-value-fields', MetricValueFieldViewSet, basename='metric-value-field') # Removed
 router.register(r'reported-metric-values', ReportedMetricValueViewSet, basename='reported-metric-value')
 
 # Export the router's URLs

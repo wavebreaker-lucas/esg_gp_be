@@ -1,7 +1,6 @@
 # Polymorphic models for ESG Metrics will be defined here. 
 from django.db import models
 from polymorphic.models import PolymorphicModel
-from .templates import ESGForm # Import necessary related models
 
 # Choices definitions (can be moved to a central location later if needed)
 LOCATION_CHOICES = [
@@ -31,7 +30,7 @@ UNIT_TYPES = [
 class BaseESGMetric(PolymorphicModel):
     """Base model for all ESG metrics using django-polymorphic."""
     form = models.ForeignKey(
-        ESGForm, 
+        'data_management.ESGForm',
         on_delete=models.CASCADE, 
         related_name='polymorphic_metrics' # Use a new related_name to avoid conflicts initially
     )

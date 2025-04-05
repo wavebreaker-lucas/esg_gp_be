@@ -1,11 +1,10 @@
 from django.contrib import admin
 from .models.esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
 from .models.templates import (
-    ESGFormCategory, ESGForm, ESGMetric,
+    ESGFormCategory, ESGForm,
     Template, TemplateFormSelection, TemplateAssignment,
     ESGMetricSubmission, ESGMetricEvidence,
-    MetricValueField, MetricValue,
-    ReportedMetricValue, ReportedMetricFieldValue
+    ReportedMetricValue
 )
 
 class BoundaryItemAdmin(admin.ModelAdmin):
@@ -54,27 +53,6 @@ class ESGFormAdmin(admin.ModelAdmin):
     search_fields = ['code', 'name']
     ordering = ['category', 'order']
 
-class MetricValueInline(admin.TabularInline):
-    model = MetricValue
-    extra = 0
-    fields = ['field', 'numeric_value', 'text_value']
-    readonly_fields = ['field']
-    raw_id_fields = ['field']
-
-@admin.register(ESGMetric)
-class ESGMetricAdmin(admin.ModelAdmin):
-    list_display = ['name', 'form', 'unit_type', 'location', 'is_required', 'is_multi_value', 'aggregates_inputs', 'order']
-    list_filter = ['form', 'unit_type', 'location', 'is_required', 'is_multi_value', 'aggregates_inputs']
-    search_fields = ['name', 'description']
-    ordering = ['form', 'order']
-    
-    class MetricValueFieldInline(admin.TabularInline):
-        model = MetricValueField
-        extra = 1
-        fields = ['field_key', 'display_name', 'column_header', 'display_type', 'order', 'is_required']
-    
-    inlines = [MetricValueFieldInline]
-
 @admin.register(Template)
 class TemplateAdmin(admin.ModelAdmin):
     list_display = ['name', 'is_active', 'version', 'created_by']
@@ -98,33 +76,13 @@ class TemplateAssignmentAdmin(admin.ModelAdmin):
 @admin.register(ESGMetricSubmission)
 class ESGMetricSubmissionAdmin(admin.ModelAdmin):
     list_display = ['metric', 'assignment', 'value', 'text_value', 'reporting_period', 'submitted_by', 'is_verified']
-    list_filter = ['is_verified', 'metric__form', 'reporting_period', 'metric__is_multi_value']
+    list_filter = ['is_verified', 'metric__polymorphic_ctype__model', 'reporting_period']
     search_fields = ['metric__name', 'assignment__template__name', 'assignment__layer__company_name']
     date_hierarchy = 'submitted_at'
     raw_id_fields = ['metric', 'assignment', 'submitted_by', 'verified_by']
     readonly_fields = []
     list_select_related = ('metric', 'assignment', 'layer', 'submitted_by', 'verified_by')
-    
-    inlines = [MetricValueInline]
-
-@admin.register(MetricValueField)
-class MetricValueFieldAdmin(admin.ModelAdmin):
-    list_display = ['display_name', 'field_key', 'metric', 'display_type', 'order', 'is_required']
-    list_filter = ['display_type', 'is_required', 'metric__form']
-    search_fields = ['display_name', 'field_key', 'metric__name']
-    ordering = ['metric', 'order']
-    raw_id_fields = ['metric']
-
-@admin.register(MetricValue)
-class MetricValueAdmin(admin.ModelAdmin):
-    list_display = ['get_field_display', 'submission', 'numeric_value', 'text_value']
-    list_filter = ['field__metric']
-    search_fields = ['field__display_name', 'submission__metric__name']
-    raw_id_fields = ['submission', 'field']
-    
-    def get_field_display(self, obj):
-        return f"{obj.field.display_name} ({obj.field.field_key})"
-    get_field_display.short_description = 'Field'
+    inlines = []
 
 @admin.register(ESGMetricEvidence)
 class ESGMetricEvidenceAdmin(admin.ModelAdmin):
@@ -138,24 +96,16 @@ class ESGMetricEvidenceAdmin(admin.ModelAdmin):
         """Safely display submission information"""
         if obj.submission:
             return f"{obj.submission.metric.name} ({obj.submission.id})"
+        elif obj.intended_metric:
+            return f"Intended: {obj.intended_metric.name}"
         return "Standalone"
-    get_submission_display.short_description = 'Submission'
+    get_submission_display.short_description = 'Submission/Metric'
     
     def is_standalone(self, obj):
         """Display if evidence is standalone (not attached to a submission)"""
         return obj.submission is None
     is_standalone.boolean = True
     is_standalone.short_description = "Standalone"
-
-class ReportedMetricFieldValueInline(admin.TabularInline):
-    model = ReportedMetricFieldValue
-    extra = 0
-    fields = ['field', 'aggregated_numeric_value', 'aggregated_text_value', 'aggregation_method', 'source_submission_count', 'last_updated_at']
-    readonly_fields = ['field', 'aggregated_numeric_value', 'aggregated_text_value', 'aggregation_method', 'source_submission_count', 'last_updated_at']
-    can_delete = False
-
-    def has_add_permission(self, request, obj=None):
-        return False
 
 @admin.register(ReportedMetricValue)
 class ReportedMetricValueAdmin(admin.ModelAdmin):
@@ -165,7 +115,8 @@ class ReportedMetricValueAdmin(admin.ModelAdmin):
         'source_submission_count', 'last_updated_at'
     )
     list_filter = (
-        'metric__form', 'metric', 'assignment__template', 
+        'metric__polymorphic_ctype__model',
+        'metric', 'assignment__template', 
         'assignment__reporting_year', 'reporting_period', 'layer'
     )
     search_fields = (
@@ -179,5 +130,4 @@ class ReportedMetricValueAdmin(admin.ModelAdmin):
         'source_submission_count', 'first_submission_at', 'last_submission_at'
     )
     list_select_related = ('metric', 'assignment', 'layer')
-
-    inlines = [ReportedMetricFieldValueInline]
+    inlines = []

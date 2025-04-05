@@ -2,7 +2,6 @@ from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from accounts.models import CustomUser, LayerProfile
 from django.utils import timezone # Import timezone
-from .polymorphic_metrics import BaseESGMetric # Import the new base metric
 
 class ESGFormCategory(models.Model):
     """Categories for ESG disclosure forms (Environmental, Social, Governance)"""
@@ -110,7 +109,7 @@ class ReportedMetricValue(models.Model):
     """Parent record storing aggregation results for a specific input metric context."""
     assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='aggregated_records')
     metric = models.ForeignKey(
-        BaseESGMetric, # Changed from ESGMetric 
+        'data_management.BaseESGMetric', # Changed to string reference
         on_delete=models.CASCADE, 
         related_name='aggregated_records'
     )
@@ -148,7 +147,7 @@ class ESGMetricSubmission(models.Model):
     """Raw input data point for an ESG metric within a template assignment."""
     assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='submissions')
     metric = models.ForeignKey(
-        BaseESGMetric, # Changed from ESGMetric
+        'data_management.BaseESGMetric', # Changed to string reference
         on_delete=models.CASCADE
     )
     # value & text_value might be deprecated in favor of specific submission types later
@@ -202,6 +201,7 @@ class ESGMetricSubmission(models.Model):
     def __str__(self):
         period_str = f" ({self.reporting_period})" if self.reporting_period else ""
         source_str = f" [{self.source_identifier}]" if self.source_identifier else ""
+        # Reverted change: Access metric name correctly
         # Accessing metric.name should still work due to polymorphism
         return f"{self.metric.name}{period_str}{source_str} - {self.assignment.layer.company_name} (Input ID: {self.pk})"
 
@@ -225,7 +225,7 @@ class ESGMetricEvidence(models.Model):
     
     # New field for explicit metric relationship - updated FK
     intended_metric = models.ForeignKey(
-        BaseESGMetric, # Changed from ESGMetric
+        'data_management.BaseESGMetric', # Changed to string reference
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True, 

@@ -6,20 +6,21 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+import logging
 
 from accounts.permissions import BakerTillyAdmin
 from accounts.models import CustomUser, AppUser, LayerProfile
 from ...models import (
-    ESGFormCategory, ESGForm, ESGMetric,
+    ESGFormCategory, ESGForm,
     Template, TemplateFormSelection, TemplateAssignment
 )
-from ...models.templates import ESGMetricSubmission, ESGMetricEvidence
+from ...models.polymorphic_metrics import BaseESGMetric
 from ...serializers.templates import (
-    ESGFormCategorySerializer, ESGFormSerializer, ESGMetricSerializer,
+    ESGFormCategorySerializer, ESGFormSerializer,
     TemplateSerializer, TemplateAssignmentSerializer
 )
-from ..utils import get_required_submission_count
 
+logger = logging.getLogger(__name__) # Initialize logger
 
 class TemplateViewSet(viewsets.ModelViewSet):
     """
@@ -34,20 +35,22 @@ class TemplateViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def preview(self, request, pk=None):
-        """Preview a template with all its forms and metrics"""
+        """Preview a template with all its forms and metrics - NEEDS REWORK"""
         template = self.get_object()
-        # Update to include form__category in select_related
-        form_selections = template.templateformselection_set.select_related('form', 'form__category').prefetch_related('form__metrics')
+        # Update to use polymorphic_metrics and a new polymorphic serializer
+        form_selections = template.templateformselection_set.select_related(
+            'form', 'form__category'
+        ).prefetch_related(
+            'form__polymorphic_metrics' # Use new related name
+        )
         
-        # Create a flat list of forms with their metrics
         forms_data = []
         for selection in form_selections:
             form_data = {
                 'form_id': selection.form.id,
                 'form_code': selection.form.code,
                 'form_name': selection.form.name,
-                'regions': selection.regions,  # Keep the regions info at form level
-                # Add category information to match the user-templates endpoint
+                'regions': selection.regions,
                 'category': {
                     'id': selection.form.category.id,
                     'name': selection.form.category.name,
@@ -59,28 +62,28 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 'metrics': []
             }
             
-            for metric in selection.form.metrics.all():
-                # Only include metrics that match the form's regions or are for ALL locations
+            # Loop through new polymorphic metrics
+            for metric in selection.form.polymorphic_metrics.all():
+                # Location filter logic remains the same
                 if metric.location == 'ALL' or metric.location in selection.regions:
+                    # TODO: Use a polymorphic serializer here to get type-specific data
+                    # For now, just get base fields
                     form_data['metrics'].append({
                         'id': metric.id,
                         'name': metric.name,
-                        'unit_type': metric.unit_type,
-                        'custom_unit': metric.custom_unit,
+                        'description': metric.description,
                         'requires_evidence': metric.requires_evidence,
                         'validation_rules': metric.validation_rules,
                         'location': metric.location,
                         'is_required': metric.is_required,
                         'order': metric.order,
-                        'requires_time_reporting': metric.requires_time_reporting,
-                        'reporting_frequency': metric.reporting_frequency
+                        # Add metric type for frontend
+                        'metric_type': metric.polymorphic_ctype.model 
                     })
             
-            # Sort metrics by order
             form_data['metrics'].sort(key=lambda x: x['order'])
             forms_data.append(form_data)
         
-        # Sort forms by their selection order
         forms_data.sort(key=lambda x: next((s.order for s in form_selections if s.form.id == x['form_id']), 0))
         
         return Response({
@@ -92,88 +95,13 @@ class TemplateViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def completion_status(self, request, pk=None):
-        """Get the completion status of forms in a template for a specific assignment"""
-        template = self.get_object()
-        assignment_id = request.query_params.get('assignment_id')
-        
-        if not assignment_id:
-            return Response(
-                {"error": "assignment_id query parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        try:
-            assignment = TemplateAssignment.objects.get(id=assignment_id, template=template)
-        except TemplateAssignment.DoesNotExist:
-            return Response(
-                {"error": "Template assignment not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-            
-        # Get all form selections for this template
-        form_selections = template.templateformselection_set.select_related('form').all()
-        
-        # Create a response with completion status for each form
-        forms_status = []
-        for selection in form_selections:
-            # Get all required metrics for this form
-            required_metrics = []
-            for metric in selection.form.metrics.filter(is_required=True):
-                if metric.location == 'ALL' or metric.location in selection.regions:
-                    required_metrics.append(metric.id)
-                    
-            # Get submitted metrics for this form
-            submitted_metrics = ESGMetricSubmission.objects.filter(
-                assignment=assignment,
-                metric__form=selection.form
-            ).values_list('metric_id', flat=True)
-            
-            # Calculate completion percentage
-            total_required = len(required_metrics)
-            total_submitted = len(set(required_metrics) & set(submitted_metrics))
-            
-            completion_percentage = 0
-            if total_required > 0:
-                completion_percentage = (total_submitted / total_required) * 100
-                
-            # Get missing metrics if any
-            missing_metrics = []
-            if total_submitted < total_required:
-                missing_metric_ids = set(required_metrics) - set(submitted_metrics)
-                missing_metrics = ESGMetric.objects.filter(
-                    id__in=missing_metric_ids
-                ).values('id', 'name')
-                
-            forms_status.append({
-                'form_id': selection.form.id,
-                'form_name': selection.form.name,
-                'form_code': selection.form.code,
-                'is_completed': selection.is_completed,
-                'completed_at': selection.completed_at,
-                'completed_by': selection.completed_by.email if selection.completed_by else None,
-                'total_required_metrics': total_required,
-                'total_submitted_metrics': total_submitted,
-                'completion_percentage': completion_percentage,
-                'missing_metrics': list(missing_metrics)
-            })
-            
-        # Calculate overall completion percentage
-        total_forms = len(form_selections)
-        completed_forms = sum(1 for selection in form_selections if selection.is_completed)
-        
-        overall_percentage = 0
-        if total_forms > 0:
-            overall_percentage = (completed_forms / total_forms) * 100
-            
-        return Response({
-            'assignment_id': assignment.id,
-            'template_id': template.id,
-            'template_name': template.name,
-            'status': assignment.status,
-            'due_date': assignment.due_date,
-            'completed_at': assignment.completed_at,
-            'total_forms': total_forms,
-            'completed_forms': completed_forms,
-            'overall_completion_percentage': overall_percentage,
-            'forms': forms_status
-        }) 
+        """Get the completion status of forms in a template for a specific assignment - NEEDS REWORK"""
+        # This whole method relies on the old submission structure and metric properties
+        # Needs a complete rewrite based on new polymorphic structure and submission data models
+        logger.warning("completion_status endpoint needs rework for polymorphic metrics")
+        return Response("Completion status endpoint needs rework for polymorphic metrics", status=status.HTTP_501_NOT_IMPLEMENTED)
+
+        # # --- Old logic (commented out) ---
+        # template = self.get_object()
+        # assignment_id = request.query_params.get('assignment_id')
+        # ... (rest of old logic) ... 
