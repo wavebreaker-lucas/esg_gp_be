@@ -12,7 +12,8 @@ from .polymorphic_metrics import (
     BasicMetric, 
     TabularMetric, 
     MaterialTrackingMatrixMetric,
-    TimeSeriesMetric
+    TimeSeriesMetric,
+    MultiFieldTimeSeriesMetric
 )
 
 __all__ = [
@@ -39,4 +40,5 @@ __all__ = [
     'TabularMetric', 
     'MaterialTrackingMatrixMetric',
     'TimeSeriesMetric',
+    'MultiFieldTimeSeriesMetric',
 ] 

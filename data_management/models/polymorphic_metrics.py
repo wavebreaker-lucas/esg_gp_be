@@ -198,6 +198,45 @@ class TimeSeriesMetric(BaseESGMetric):
     def __str__(self):
         return f"[Time Series - {self.get_frequency_display()}] {super().__str__()}"
 
+class MultiFieldTimeSeriesMetric(BaseESGMetric):
+    """Metrics tracking multiple predefined fields over time, potentially with calculations."""
+    REPORTING_FREQUENCY_CHOICES = [
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('annual', 'Annual'),
+        # Add others like weekly if needed
+    ]
+    # Example field_definitions: 
+    # [{"key": "sold", "label": "Total Sold", "type": "number", "unit": "count"}, 
+    #  {"key": "recalled", "label": "Total Recalled", "type": "number", "unit": "count"},
+    #  {"key": "percentage", "label": "Percentage", "type": "calculated", "formula": "recalled / sold * 100", "unit": "%"}]
+    field_definitions = models.JSONField(
+        default=list, 
+        help_text="Definitions of the fixed fields/columns, including type, label, unit, and optional calculations."
+    ) 
+    frequency = models.CharField(
+        max_length=20, 
+        choices=REPORTING_FREQUENCY_CHOICES, 
+        default='monthly',
+        help_text="The time period represented by each row (e.g., monthly)."
+    )
+    show_total_row = models.BooleanField(default=True, help_text="Whether to display an automatically calculated total row.")
+    # Define how totals are calculated if show_total_row is True
+    # Example: {"sold": "SUM", "recalled": "SUM", "percentage": "RECALCULATE"} 
+    total_row_aggregation = models.JSONField(
+        default=dict, 
+        blank=True, 
+        help_text="Defines how each field is aggregated in the total row (e.g., SUM, AVG, RECALCULATE)."
+    )
+
+    class Meta:
+        verbose_name = "Multi-Field Time Series Metric"
+        verbose_name_plural = "Multi-Field Time Series Metrics"
+
+    def __str__(self):
+        fields = len(self.field_definitions) if isinstance(self.field_definitions, list) else 0
+        return f"[Multi-Field TS ({fields} fields) - {self.get_frequency_display()}] {super().__str__()}"
+
 # class VehicleTrackingMetric(BaseESGMetric): ...
 # class NarrativeMetric(BaseESGMetric): ...
 # class MultiFieldMetric(BaseESGMetric): ... # For fixed multi-value fields if needed 
