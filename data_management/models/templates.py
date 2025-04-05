@@ -122,7 +122,12 @@ class ReportedMetricValue(models.Model):
     )
     layer = models.ForeignKey(LayerProfile, on_delete=models.CASCADE, related_name='aggregated_records')
     reporting_period = models.DateField(help_text="End date of the period this aggregated value represents") # Clarified help text
-    level = models.CharField(max_length=1, choices=LEVEL_CHOICES, help_text="Aggregation level (Monthly, Quarterly, Annual)") # New Field
+    level = models.CharField(
+        max_length=1, 
+        choices=LEVEL_CHOICES, 
+        default='A', # Set default to Annual
+        help_text="Aggregation level (Monthly, Quarterly, Annual)"
+    ) # New Field
 
     # Aggregated value fields - these may need rethinking based on polymorphic types
     # For now, keep them, but aggregation logic will need updates
