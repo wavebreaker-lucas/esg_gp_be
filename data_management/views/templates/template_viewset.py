@@ -15,7 +15,7 @@ from ...models import (
     Template, TemplateFormSelection, TemplateAssignment
 )
 from ...models.polymorphic_metrics import BaseESGMetric
-from ...serializers.templates import (
+from ...serializers import (
     ESGFormCategorySerializer, ESGFormSerializer,
     TemplateSerializer, TemplateAssignmentSerializer,
     ESGMetricPolymorphicSerializer
