@@ -17,7 +17,8 @@ from ...models import (
 from ...models.polymorphic_metrics import BaseESGMetric
 from ...serializers.templates import (
     ESGFormCategorySerializer, ESGFormSerializer,
-    TemplateSerializer, TemplateAssignmentSerializer
+    TemplateSerializer, TemplateAssignmentSerializer,
+    ESGMetricPolymorphicSerializer
 )
 
 logger = logging.getLogger(__name__) # Initialize logger
@@ -35,9 +36,8 @@ class TemplateViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def preview(self, request, pk=None):
-        """Preview a template with all its forms and metrics - NEEDS REWORK"""
+        """Preview a template with all its forms and metrics"""
         template = self.get_object()
-        # Update to use polymorphic_metrics and a new polymorphic serializer
         form_selections = template.templateformselection_set.select_related(
             'form', 'form__category'
         ).prefetch_related(
@@ -62,26 +62,19 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 'metrics': []
             }
             
-            # Loop through new polymorphic metrics
+            # Get relevant metrics
+            relevant_metrics = []
             for metric in selection.form.polymorphic_metrics.all():
-                # Location filter logic remains the same
                 if metric.location == 'ALL' or metric.location in selection.regions:
-                    # TODO: Use a polymorphic serializer here to get type-specific data
-                    # For now, just get base fields
-                    form_data['metrics'].append({
-                        'id': metric.id,
-                        'name': metric.name,
-                        'description': metric.description,
-                        'requires_evidence': metric.requires_evidence,
-                        'validation_rules': metric.validation_rules,
-                        'location': metric.location,
-                        'is_required': metric.is_required,
-                        'order': metric.order,
-                        # Add metric type for frontend
-                        'metric_type': metric.polymorphic_ctype.model 
-                    })
+                    relevant_metrics.append(metric)
             
-            form_data['metrics'].sort(key=lambda x: x['order'])
+            # Sort before serializing
+            relevant_metrics.sort(key=lambda m: m.order)
+            
+            # Serialize using the polymorphic serializer
+            metric_serializer = ESGMetricPolymorphicSerializer(relevant_metrics, many=True, context={'request': request})
+            form_data['metrics'] = metric_serializer.data
+            
             forms_data.append(form_data)
         
         forms_data.sort(key=lambda x: next((s.order for s in form_selections if s.form.id == x['form_id']), 0))

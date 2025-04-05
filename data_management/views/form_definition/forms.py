@@ -20,6 +20,7 @@ from ...models.polymorphic_metrics import BaseESGMetric
 from ...serializers.templates import (
     ESGFormSerializer, ESGMetricEvidenceSerializer
 )
+from ...serializers import ESGMetricPolymorphicSerializer
 
 
 class ESGFormViewSet(viewsets.ModelViewSet):
@@ -45,25 +46,16 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         """Create a new ESG form"""
         serializer.save()
 
+    @action(detail=True, methods=['get'])
+    def metrics(self, request, pk=None):
+        """Get polymorphic metrics for a specific form"""
+        form = self.get_object()
+        metrics = form.polymorphic_metrics.all().order_by('order')
+        serializer = ESGMetricPolymorphicSerializer(metrics, many=True, context={'request': request})
+        return Response(serializer.data)
+
     # Commenting out actions heavily dependent on the old metric structure
     # These will need to be redesigned in Phase 4/5
-
-    # @action(detail=True, methods=['get'])
-    # def metrics(self, request, pk=None):
-    #     """Get metrics for a specific form"""
-    #     form = self.get_object()
-    #     # Need to query polymorphic_metrics now
-    #     # metrics = form.polymorphic_metrics.all()
-    #     # Need a polymorphic serializer
-    #     # serializer = PolymorphicESGMetricSerializer(metrics, many=True)
-    #     # return Response(serializer.data)
-    #     return Response("Metrics endpoint needs update for polymorphic model", status=status.HTTP_501_NOT_IMPLEMENTED)
-
-    # @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, BakerTillyAdmin])
-    # def add_metric(self, request, pk=None):
-    #     """Add a new metric to the form"""
-    #     # Needs to handle creation of specific polymorphic metric types
-    #     return Response("Add metric endpoint needs update for polymorphic model", status=status.HTTP_501_NOT_IMPLEMENTED)
 
     # @action(detail=True, methods=['get'])
     # def check_completion(self, request, pk=None):

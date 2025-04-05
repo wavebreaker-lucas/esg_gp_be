@@ -4,6 +4,7 @@ from .templates import (
     TemplateFormSelectionSerializer
 )
 from .esg import BoundaryItemSerializer, EmissionFactorSerializer, ESGDataSerializer, DataEditLogSerializer
+from .polymorphic_metrics import ESGMetricPolymorphicSerializer
 
 __all__ = [
     'TemplateSerializer',
@@ -15,4 +16,5 @@ __all__ = [
     'EmissionFactorSerializer',
     'ESGDataSerializer',
     'DataEditLogSerializer',
+    'ESGMetricPolymorphicSerializer',
 ]
