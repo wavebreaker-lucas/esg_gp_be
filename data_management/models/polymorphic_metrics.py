@@ -237,6 +237,23 @@ class MultiFieldTimeSeriesMetric(BaseESGMetric):
         fields = len(self.field_definitions) if isinstance(self.field_definitions, list) else 0
         return f"[Multi-Field TS ({fields} fields) - {self.get_frequency_display()}] {super().__str__()}"
 
+class MultiFieldMetric(BaseESGMetric):
+    """Metrics representing a fixed set of related fields reported together once per period."""
+    # Example field_definitions: 
+    # [{"key": "scope1", "label": "Scope 1 Emissions", "type": "number", "unit": "tCO2e"}, 
+    #  {"key": "scope2", "label": "Scope 2 Emissions", "type": "number", "unit": "tCO2e"}]
+    field_definitions = models.JSONField(
+        default=list, 
+        help_text="Definitions of the fixed fields/columns, including type, label, and unit."
+    ) 
+
+    class Meta:
+        verbose_name = "Multi-Field Metric"
+        verbose_name_plural = "Multi-Field Metrics"
+
+    def __str__(self):
+        fields = len(self.field_definitions) if isinstance(self.field_definitions, list) else 0
+        return f"[Multi-Field ({fields} fields)] {super().__str__()}"
+
 # class VehicleTrackingMetric(BaseESGMetric): ...
 # class NarrativeMetric(BaseESGMetric): ...
-# class MultiFieldMetric(BaseESGMetric): ... # For fixed multi-value fields if needed 
