@@ -4,6 +4,7 @@ These are helper functions used across multiple view classes.
 """
 
 from accounts.models import LayerProfile
+from ...models.polymorphic_metrics import BaseESGMetric
 
 
 def get_required_submission_count(metric, assignment):
@@ -11,7 +12,7 @@ def get_required_submission_count(metric, assignment):
     Calculate the required number of submissions for time-based metrics.
     
     Args:
-        metric: The ESGMetric instance
+        metric: The BaseESGMetric instance
         assignment: The TemplateAssignment instance
         
     Returns:

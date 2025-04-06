@@ -1,5 +1,5 @@
 from .models.templates import (
-    ESGFormCategory, ESGForm, ESGMetric,
+    ESGFormCategory, ESGForm,
     Template, TemplateFormSelection, TemplateAssignment
 )
 from .models.esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
@@ -7,7 +7,6 @@ from .models.esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
 __all__ = [
     'ESGFormCategory',
     'ESGForm',
-    'ESGMetric',
     'Template',
     'TemplateFormSelection',
     'TemplateAssignment',
