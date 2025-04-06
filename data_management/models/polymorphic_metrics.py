@@ -62,6 +62,12 @@ class BaseESGMetric(PolymorphicModel):
     )
     help_text = models.TextField(blank=True, help_text="Optional guidance text displayed to the user in the form")
 
+    # --- NEW FIELD ---
+    allow_multiple_submissions_per_period = models.BooleanField(
+        default=False, # Default to disallowing multiple submissions
+        help_text="Allow multiple submission records for the same assignment, metric, and reporting period? (Set True for metrics expecting data from multiple sources per period, like TimeSeries from different facilities)"
+    )
+
     class Meta:
         ordering = ['form', 'order']
         verbose_name = "ESG Metric (Base)"
@@ -74,6 +80,7 @@ class BaseESGMetric(PolymorphicModel):
 
 class BasicMetric(BaseESGMetric):
     """Metrics representing a single value (numeric, text, percentage, or custom unit)."""
+    # Inherits allow_multiple_submissions_per_period=False (default)
     unit_type = models.CharField(
         max_length=20, 
         choices=UNIT_TYPES, 
@@ -101,6 +108,7 @@ class BasicMetric(BaseESGMetric):
 
 class TabularMetric(BaseESGMetric):
     """Metrics representing tabular data where users can add/edit rows based on defined columns."""
+    # Inherits allow_multiple_submissions_per_period=False (default)
     column_definitions = models.JSONField(
         default=list, 
         help_text='Structure of table columns. E.g., [{"key": "col_a", "label": "Column A", "type": "text", "required": true}]'
@@ -120,6 +128,7 @@ class TabularMetric(BaseESGMetric):
 
 class MaterialTrackingMatrixMetric(BaseESGMetric):
     """Metrics for tracking materials (e.g., waste, packaging) by type across monthly periods."""
+    # Inherits allow_multiple_submissions_per_period=False (default) - assuming one matrix submission covers the period. Can be overridden if needed.
     MATERIAL_CATEGORIES = [
         ('waste', 'Waste'),
         ('packaging', 'Packaging'),
@@ -199,6 +208,10 @@ class TimeSeriesMetric(BaseESGMetric):
 
 class MultiFieldTimeSeriesMetric(BaseESGMetric):
     """Metrics tracking multiple predefined fields over time, potentially with calculations."""
+    # Consider overriding default? If multiple sources might submit partial data, set True.
+    # If one submission contains all fields for the period, keep False. Let's assume False for now.
+    # allow_multiple_submissions_per_period = models.BooleanField(default=True, ...) # Optional override
+
     REPORTING_FREQUENCY_CHOICES = [
         ('monthly', 'Monthly'),
         ('quarterly', 'Quarterly'),

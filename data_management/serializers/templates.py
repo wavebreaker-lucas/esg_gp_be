@@ -379,13 +379,47 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         return None # Return None if no data found or metric type unhandled
 
     def validate(self, data):
-        """Validate submission based on metric type and ensures only one data field is present."""
+        """
+        Validate submission based on metric type, ensure only one data field is present,
+        and check for duplicates based on the metric's allow_multiple_submissions_per_period flag.
+        """
         metric = data.get('metric')
+        assignment = data.get('assignment') # Needed for duplicate check
+        reporting_period = data.get('reporting_period', None) # Needed for duplicate check
+        
         if not metric:
             # This should be caught by the PrimaryKeyRelatedField, but double-check
             raise serializers.ValidationError("Metric is required.")
         
-        # Check which data field is provided and if it matches the metric type
+        # --- BEGIN: Duplicate check (added logic) ---
+        is_creating = self.instance is None
+        if is_creating: # Only check for duplicates when creating
+            # Check the flag on the metric instance
+            if not metric.allow_multiple_submissions_per_period:
+                # If multiple submissions are *not* allowed, check for existing ones
+                
+                # Assignment is crucial for the uniqueness check
+                if not assignment:
+                    raise serializers.ValidationError({"assignment": "Assignment is required when creating a submission."}) 
+
+                existing_submission_qs = ESGMetricSubmission.objects.filter(
+                    assignment=assignment,
+                    metric=metric,
+                    reporting_period=reporting_period # Handles None correctly
+                )
+
+                if existing_submission_qs.exists():
+                    period_str = f" for period {reporting_period}" if reporting_period else " (no specific period)"
+                    metric_name = getattr(metric, 'name', 'Unknown Metric') # Safe access to name
+                    assignment_name = str(assignment) # Use __str__ of assignment
+                    
+                    raise serializers.ValidationError(
+                        f"A submission already exists for metric '{metric_name}' in assignment '{assignment_name}'{period_str}. "
+                        f"This metric does not allow multiple submissions per period."
+                    )
+        # --- END: Duplicate check ---
+            
+        # --- Existing logic: Check data payload presence and type match --- 
         provided_data_fields = [
             f for f in [
                 'basic_data', 'tabular_rows', 'material_data_points', 
@@ -393,52 +427,54 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             ] if data.get(f) is not None
         ]
         
-        if len(provided_data_fields) == 0:
+        # If creating, data payload is mandatory. If updating, it might be optional.
+        if is_creating and len(provided_data_fields) == 0:
             raise serializers.ValidationError("No submission data provided (e.g., basic_data, tabular_rows, etc.).")
         if len(provided_data_fields) > 1:
             raise serializers.ValidationError("Multiple types of submission data provided. Only one is allowed.")
             
-        provided_field = provided_data_fields[0]
-        metric_instance = metric # Already fetched by PrimaryKeyRelatedField
+        # Only perform type match check if a data field was actually provided
+        if provided_data_fields:
+            provided_field = provided_data_fields[0]
+            metric_instance = metric # Already fetched
+            
+            # --- Type Checking Logic --- 
+            try:
+                specific_metric = metric_instance.get_real_instance()
+            except AttributeError:
+                 # Should not happen if using BaseESGMetric queryset correctly, but safeguard
+                 raise serializers.ValidationError("Could not determine specific metric type.")
+
+            expected_field_map = {
+                BasicMetric: 'basic_data',
+                TabularMetric: 'tabular_rows',
+                MaterialTrackingMatrixMetric: 'material_data_points',
+                TimeSeriesMetric: 'timeseries_data_points',
+                MultiFieldTimeSeriesMetric: 'multifield_timeseries_data_points',
+                MultiFieldMetric: 'multifield_data',
+            }
+
+            expected_field = None
+            for model_class, field_name in expected_field_map.items():
+                if isinstance(specific_metric, model_class):
+                    expected_field = field_name
+                    break
+            
+            if not expected_field:
+                 raise serializers.ValidationError(f"Unsupported metric type encountered: {type(specific_metric).__name__}")
+
+            if provided_field != expected_field:
+                raise serializers.ValidationError(
+                    f"Invalid data field '{provided_field}' provided for metric type '{type(specific_metric).__name__}'. "
+                    f"Expected field: '{expected_field}'."
+                )
+
+        # Detailed validation is handled by validate_<field> methods which are called automatically by DRF
+        # if the corresponding field (e.g., 'basic_data') is present in the input data.
         
-        # --- Type Checking Logic --- 
-        # Fetch the actual subclass instance to check its type
-        # This ensures we are checking against the specific metric type (Basic, Tabular, etc.)
-        try:
-            specific_metric = metric_instance.get_real_instance()
-        except AttributeError:
-             # Should not happen if using BaseESGMetric queryset correctly, but safeguard
-             raise serializers.ValidationError("Could not determine specific metric type.")
+        return data # Return original data dict
 
-        expected_field_map = {
-            BasicMetric: 'basic_data',
-            TabularMetric: 'tabular_rows',
-            MaterialTrackingMatrixMetric: 'material_data_points',
-            TimeSeriesMetric: 'timeseries_data_points',
-            MultiFieldTimeSeriesMetric: 'multifield_timeseries_data_points',
-            MultiFieldMetric: 'multifield_data',
-        }
-
-        expected_field = None
-        for model_class, field_name in expected_field_map.items():
-            if isinstance(specific_metric, model_class):
-                expected_field = field_name
-                break
-        
-        if not expected_field:
-             raise serializers.ValidationError(f"Unsupported metric type encountered: {type(specific_metric).__name__}")
-
-        if provided_field != expected_field:
-            raise serializers.ValidationError(
-                f"Invalid data field '{provided_field}' provided for metric type '{type(specific_metric).__name__}'. "
-                f"Expected field: '{expected_field}'."
-            )
-
-        # Detailed validation is now handled by validate_<field> methods
-        
-        return data
-
-    # --- Field-specific validation methods ---
+    # --- Field-specific validation methods --- 
 
     def _get_specific_metric(self):
         """Helper to get the specific metric instance based on initial data."""
@@ -774,40 +810,55 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         multifield_timeseries_data_points_payload = validated_data.pop('multifield_timeseries_data_points', None)
         multifield_data_payload = validated_data.pop('multifield_data', None)
         
-        # Set submitted_by from context
+        # --- Set submitted_by from context --- 
         request = self.context.get('request')
-        if request and hasattr(request, 'user'):
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
             validated_data['submitted_by'] = request.user
+        elif 'submitted_by' not in validated_data:
+            # Handle case where user context might be missing (e.g., internal process)
+            # Decide if this is an error or if a default user should be assigned
+             pass # Or raise serializers.ValidationError("Submitting user context is required.")
+            
+        # --- Set layer from assignment if not provided --- 
+        if 'assignment' in validated_data and not validated_data.get('layer'):
+            validated_data['layer'] = validated_data['assignment'].layer
             
         # Create the main submission header
         submission = ESGMetricSubmission.objects.create(**validated_data)
         
         # Get the specific metric instance
-        metric = submission.metric.get_real_instance()
+        # We use .get_real_instance() to ensure we have the subclass (BasicMetric, etc.)
+        metric = submission.metric.get_real_instance() 
 
-        # Create the associated specific data based on metric type
-        # (Error handling for missing data should be covered by validate method)
-        if isinstance(metric, BasicMetric) and basic_data_payload:
-            BasicMetricData.objects.create(submission=submission, **basic_data_payload)
-        elif isinstance(metric, TabularMetric) and tabular_rows_payload:
-            for row_data in tabular_rows_payload:
-                TabularMetricRow.objects.create(submission=submission, **row_data)
-        elif isinstance(metric, MaterialTrackingMatrixMetric) and material_data_points_payload:
-            for point_data in material_data_points_payload:
-                 MaterialMatrixDataPoint.objects.create(submission=submission, **point_data)
-        elif isinstance(metric, TimeSeriesMetric) and timeseries_data_points_payload:
-            for point_data in timeseries_data_points_payload:
-                TimeSeriesDataPoint.objects.create(submission=submission, **point_data)
-        elif isinstance(metric, MultiFieldTimeSeriesMetric) and multifield_timeseries_data_points_payload:
-            for point_data in multifield_timeseries_data_points_payload:
-                MultiFieldTimeSeriesDataPoint.objects.create(submission=submission, **point_data)
-        elif isinstance(metric, MultiFieldMetric) and multifield_data_payload:
-            MultiFieldDataPoint.objects.create(submission=submission, **multifield_data_payload)
-        else:
-            # This case should ideally be prevented by the validate method
-            # Consider logging an error or raising an exception if it occurs
-            print(f"Warning: Metric type {type(metric).__name__} matched but no corresponding payload found for submission {submission.pk}")
-            # raise serializers.ValidationError("Mismatch between metric type and provided data payload during creation.")
+        # --- Create the associated specific data based on metric type --- 
+        try:
+            if isinstance(metric, BasicMetric) and basic_data_payload:
+                BasicMetricData.objects.create(submission=submission, **basic_data_payload)
+            elif isinstance(metric, TabularMetric) and tabular_rows_payload:
+                for row_data in tabular_rows_payload:
+                    # Ensure row_index is handled if needed by the model/serializer structure
+                    TabularMetricRow.objects.create(submission=submission, **row_data)
+            elif isinstance(metric, MaterialTrackingMatrixMetric) and material_data_points_payload:
+                for point_data in material_data_points_payload:
+                     MaterialMatrixDataPoint.objects.create(submission=submission, **point_data)
+            elif isinstance(metric, TimeSeriesMetric) and timeseries_data_points_payload:
+                for point_data in timeseries_data_points_payload:
+                    TimeSeriesDataPoint.objects.create(submission=submission, **point_data)
+            elif isinstance(metric, MultiFieldTimeSeriesMetric) and multifield_timeseries_data_points_payload:
+                for point_data in multifield_timeseries_data_points_payload:
+                    MultiFieldTimeSeriesDataPoint.objects.create(submission=submission, **point_data)
+            elif isinstance(metric, MultiFieldMetric) and multifield_data_payload:
+                # MultiFieldDataPoint uses OneToOneField, ensure payload structure is correct
+                MultiFieldDataPoint.objects.create(submission=submission, **multifield_data_payload)
+            # No else needed - validate method ensures payload matches type if provided
+        except Exception as e:
+            # If something goes wrong saving the specific data, 
+            # the submission header might already be created.
+            # Consider deleting the header or logging detailed error.
+            # For now, re-raise to signal failure.
+            # submission.delete() # Optionally rollback header creation
+            print(f"Error creating specific data for submission {submission.pk}: {e}")
+            raise # Re-raise the exception
 
         return submission
 
