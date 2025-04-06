@@ -2,9 +2,13 @@
 
 ## Overview
 
-The ESG Data Management System is designed to handle ESG (Environmental, Social, and Governance) reporting requirements, with a specific focus on HKEX ESG reporting guidelines. The system uses a hierarchical structure of Categories, Forms, and Metrics to organize and collect ESG data.
+The ESG Data Management System is designed to handle ESG (Environmental, Social, and Governance) reporting requirements, with a specific focus on HKEX ESG reporting guidelines. The system uses a hierarchical structure of Categories, Forms, and **polymorphic Metrics** to organize and collect ESG data.
 
-**Key Architectural Change (Approach B):** The system now distinguishes between raw data *inputs* (`ESGMetricSubmission`) and final *reported values* (`ReportedMetricValue`). For certain metrics, raw inputs are automatically aggregated to calculate the final value stored in `ReportedMetricValue`. This provides a clearer separation between data entry and the final figures used for reporting.
+**Key Architectural Changes:**
+- **Polymorphic Metrics:** Metrics are now defined using a base model (`BaseESGMetric`) and specific subclasses (`BasicMetric`, `TabularMetric`, `TimeSeriesMetric`, etc.) to represent different data structures and input types.
+- **Separated Submission Data:** Raw data inputs are handled via a header record (`ESGMetricSubmission`) containing common metadata, linked to specific data storage models (`BasicMetricData`, `TabularMetricRow`, `TimeSeriesDataPoint`, etc.) that hold the actual values corresponding to the polymorphic metric type.
+- **Aggregation & Reported Values:** An aggregation service processes the raw input data from the specific storage models to calculate final values, which are stored in the `ReportedMetricValue` model. This model now includes an aggregation `level` (e.g., Monthly, Annual) to store results at different granularities.
+- **Completion Logic:** Form and template completion status is determined by checking for the existence of the final, annual (`level='A'`) `ReportedMetricValue` records for all required metrics.
 
 ## Layer Support
 
@@ -13,7 +17,7 @@ The ESG Data Management System is designed to handle ESG (Environmental, Social,
 The system now includes comprehensive layer-based data segregation, allowing ESG data to be associated with specific organizational layers:
 
 ### Layer Integration for Submissions, Evidence, and Reported Values
-- Each ESG metric *input* (`ESGMetricSubmission`) can be assigned to a specific layer.
+- Each ESG metric *input header* (`ESGMetricSubmission`) can be assigned to a specific layer.
 - Evidence files (`ESGMetricEvidence`) are associated with input submissions and can also have a layer tag.
 - Final `ReportedMetricValue` records are also linked to a specific layer, crucial for aggregation context.
 - Default layer settings provide fallback when no layer is specified during input submission.
@@ -88,7 +92,7 @@ GET /api/submissions/available-layers/
 
 ### Layer-Based Aggregation of Inputs (`sum_by_layer`)
 
-**Note:** This endpoint operates on the raw *input* data (`ESGMetricSubmission`) and provides a sum of those inputs per layer. It is distinct from the final, potentially calculated values stored in `ReportedMetricValue`.
+**Note:** This endpoint operates on the raw *input* data headers (`ESGMetricSubmission`) and provides a sum of values from their linked specific data models (e.g., `BasicMetricData`, `TimeSeriesDataPoint`) per layer. It is distinct from the final, potentially calculated values stored in `ReportedMetricValue`.
 
 The system supports aggregating raw metric *inputs* across different layers via the `sum_by_layer` endpoint:
 
@@ -186,7 +190,7 @@ GET /api/submissions/sum-by-layer/?assignment_id=1&metric_ids=5,6,7&layer_ids=3,
 - Analyzing performance of different organizational units
 
 ### Submission Input Creation with Layers
-When creating submission *inputs*, the layer can be specified explicitly or will default according to the fallback mechanism:
+When creating submission *input headers*, the layer can be specified explicitly or will default according to the fallback mechanism:
 ```json
 POST /api/metric-submissions/
 {
@@ -199,7 +203,7 @@ POST /api/metric-submissions/
 ```
 
 ### Batch Submission Input with Layers and Source Identifier
-When submitting multiple metric *inputs* at once, a default layer can be specified for all inputs, with individual layer overrides. You can also provide an optional `source_identifier` for each input.
+When submitting multiple metric *input headers* at once, a default layer can be specified for all inputs, with individual layer overrides. You can also provide an optional `source_identifier` for each input.
 ```json
 POST /api/metric-submissions/batch_submit/
 {
@@ -209,39 +213,45 @@ POST /api/metric-submissions/batch_submit/
     {
       "metric_id": 5,
       "value": 1234.56, // Will use default_layer_id 3
-      "source_identifier": "Meter A" // Optional source
+      "source_identifier": "Meter A", // Optional source
+      "layer_id": 3, // Overrides default_layer_id for this specific input
+      "reporting_period": "2024-06-30"
     },
     {
       "metric_id": 6,
       "value": 789.01,
       "layer_id": 4,  // Overrides default_layer_id for this specific input
-      "source_identifier": "Meter B"
+      "source_identifier": "Meter B",
+      "reporting_period": "2024-06-30"
     },
     {
         "metric_id": 7,
         "value": 100,
-        // No source_identifier provided for this one
+        "layer_id": 3,
+        "reporting_period": "2024-06-30",
+        "source_identifier": null
     }
   ]
 }
 ```
 
-## Data Model: Inputs vs. Reported Values
+## Data Model: Polymorphic Metrics, Submissions, and Reported Values
 
-A core change in the system is the separation of raw data inputs from the final values used for reporting.
+The system now uses distinct models for metric definitions, raw submission inputs, and final reported values.
 
-- **`ESGMetricSubmission`**: Represents a single, raw data point entered by a user for a specific metric, period, and layer. Includes an optional `source_identifier` field to label the origin of the input (e.g., 'Meter A', 'Invoice #123'). Multiple inputs can exist for the same metric/period/layer combination, distinguished by their `source_identifier` or lack thereof. Verification (`is_verified` flag) applies to *this specific input*.
-- **`ReportedMetricValue`**: Represents the **parent aggregation record** for a metric for a given assignment, layer, and reporting period. It stores metadata about the aggregation (e.g., number of source inputs, first/last submission time).
-    - For **single-value** metrics (where `ESGMetric.is_multi_value` is `False`), the aggregated result (e.g., sum or latest value of *all* relevant `ESGMetricSubmission` inputs, regardless of `source_identifier`) is stored directly on this record in the `aggregated_numeric_value` or `aggregated_text_value` fields.
-    - For **multi-value** metrics, this record acts as a container, and the aggregated results for each field are stored in child `ReportedMetricFieldValue` records.
-    - This is the value intended for final reports and dashboards. *Note: Verification is currently only applied to raw inputs (`ESGMetricSubmission`), not this final aggregated record.*
-- **`ReportedMetricFieldValue`** (New): Represents the **aggregated result for a specific field** within a multi-value metric. It links back to the parent `ReportedMetricValue` and the specific `MetricValueField` definition. It stores the aggregated numeric or text value for that field, the aggregation method used, and the count of source inputs contributing to that field's value.
+- **`BaseESGMetric` (and subclasses like `BasicMetric`, `TabularMetric`, `TimeSeriesMetric`, etc.)**: Defines the *type* of metric, its structure (e.g., columns for tabular, frequency for time series), validation rules, and other metadata. Uses `django-polymorphic`.
+- **`ESGMetricSubmission`**: Represents a **header record** for a single raw data input event by a user for a specific metric, assignment, and layer. Contains common metadata like submitter, submission time, verification status (for the input itself), notes, evidence links, and an optional `source_identifier`. It no longer stores the actual `value` or `text_value`.
+- **Specific Submission Data Models (`BasicMetricData`, `TabularMetricRow`, `TimeSeriesDataPoint`, etc.)**: These models store the *actual raw data values* submitted. Each is linked back (OneToOne or ForeignKey) to a single `ESGMetricSubmission` header. The type of data model used depends on the type of the linked `BaseESGMetric`.
+- **`ReportedMetricValue`**: Represents the final, calculated, or **aggregated result** for a metric within a specific context (assignment, layer, reporting period, and **aggregation level** - e.g., Monthly, Annual). It stores the final `aggregated_numeric_value` or `aggregated_text_value` and metadata about the aggregation (e.g., number of source inputs contributing to *this specific period/level*, first/last submission time relevant to the inputs used). This is the value intended for final reports and dashboards, and used for completion checks (`level='A'`).
+
+**(Removed Models:** `ESGMetric` (old monolithic), `MetricValueField`, `MetricValue`, `ReportedMetricFieldValue` are obsolete and have been removed).**
 
 This separation allows for:
-- Tracking individual contributions or data points, including their source.
-- Implementing complex aggregation logic for both single and multi-value metrics.
+- Flexible definition of diverse metric types.
+- Tracking individual raw data submissions, including their source.
+- Implementing complex aggregation logic based on metric type.
 - Independent verification of raw inputs.
-- Clearer distinction between data entry and final reporting views.
+- Clear distinction between data entry, aggregation processing, and final reporting views.
 
 ## Core Components
 
@@ -273,76 +283,38 @@ Properties:
 - `is_active`: Whether the form is currently in use
 - `order`: Display sequence within category
 
-### 3. ESG Metrics
-Metrics are the actual data points collected for each form.
+### 3. Polymorphic ESG Metrics (`BaseESGMetric` and Subclasses)
+Metrics are the actual data points collected for each form, now defined polymorphically.
 
-Properties:
+**Base Properties (`BaseESGMetric`):**
 - `form`: Link to ESG Form
 - `name`: Name of the metric
 - `description`: Detailed explanation
-- `unit_type`: Type of measurement
-  - Environmental: 'kWh', 'MWh', 'm3', 'tonnes', 'tCO2e'
-  - Social: 'person', 'hours', 'days', 'count', 'percentage'
-  - Custom: 'custom' (with custom_unit field)
-- `custom_unit`: For custom unit types
-- `requires_evidence`: Whether supporting documentation is required
 - `order`: Display sequence within form
-- `location`: Where this metric applies
-  - 'HK': Hong Kong operations
-  - 'PRC': Mainland China operations
-  - 'ALL': All locations
-- `is_required`: Whether this metric must be reported
-- `requires_time_reporting`: Whether this metric requires reporting for multiple time periods
-- `reporting_frequency`: Required frequency of reporting (monthly, quarterly, annual)
-- `is_multi_value`: Boolean indicating if this metric requires multiple related values (e.g., components of a calculation). Defaults to `false`.
-- **`aggregates_inputs`**: (New) Boolean. If `True`, the final value for this metric (`ReportedMetricValue`) is calculated by aggregating multiple `ESGMetricSubmission` inputs. If `False`, the final value is typically taken directly from a single input.
+- `requires_evidence`: Whether supporting documentation is required
+- `validation_rules`: JSON field for rules (e.g., min/max, regex) applied *during submission data validation*.
+- `location`: Where this metric applies ('HK', 'PRC', 'ALL')
+- `is_required`: Whether this metric must have a final `ReportedMetricValue` (level='A') for form completion.
+- `aggregates_inputs`: If `True`, the `calculate_report_value` service processes raw inputs to generate a `ReportedMetricValue`. If `False`, aggregation is skipped.
+- `help_text`: Guidance text for users.
+- `ocr_analyzer_id`: Optional Azure Form Recognizer ID.
 
-### 4. Multi-Value Metrics (Input vs. Aggregated Structure)
+**Specialized Types (Examples):**
+- **`BasicMetric`**: For single values. Adds `unit_type` (kWh, tonnes, text, count, etc.) and `custom_unit`.
+- **`TabularMetric`**: For row-based data. Adds `column_definitions` (JSON defining keys, labels, types), `allow_adding_rows`, `min_rows`, `max_rows`.
+- **`TimeSeriesMetric`**: For periodic single values. Adds `frequency` (monthly, annual), `aggregation_method` (SUM, AVG, LAST), `unit_type`.
+- **`MaterialTrackingMatrixMetric`**: Specific for material tracking. Adds `category` (waste, packaging), `max_material_types`, `default_unit`, `fixed_time_period`.
+- **`MultiFieldTimeSeriesMetric`**: For tracking multiple defined fields over time. Adds `field_definitions` (JSON), `frequency`, `total_row_aggregation` rules.
+- **`MultiFieldMetric`**: For a fixed set of related fields reported once. Adds `field_definitions` (JSON).
 
-For complex ESG indicators that require multiple related fields, the system distinguishes between the *input structure* and the *aggregated result storage*:
-
-**Input Structure:**
-
-- **Activation**: Set `is_multi_value=True` on the `ESGMetric` model.
-- **Structure Definition**: Define the individual components using the `MetricValueField` model.
-- **Data Submission**: When creating an `ESGMetricSubmission` *input* for a multi-value metric, the individual field values provided by the user are stored using the `MetricValue` model, linked to that single `ESGMetricSubmission` input record.
-
-#### MetricValueField
-Defines the structure of each component within a multi-value metric.
-
-Properties:
-- `metric`: Foreign key to the parent `ESGMetric` (must have `is_multi_value=True`).
-- `field_key`: Unique identifier for this field within the metric (e.g., "products_sold").
-- `display_name`: User-friendly name (e.g., "Total Products Sold").
-- `description`: Optional description.
-- `column_header`: Optional header for tabular display (e.g., "A", "B").
-- `display_type`: Input type ('TEXT', 'NUMBER', 'SELECT').
-- `order`: Display order of this field.
-- `options`: JSON for dropdown choices if `display_type` is 'SELECT'.
-- `is_required`: Whether this specific field must be filled *when submitting an input*.
-
-#### MetricValue
-Stores the actual submitted value for a specific field within a single multi-value `ESGMetricSubmission` *input*.
-
-Properties:
-- `submission`: Foreign key to the parent `ESGMetricSubmission`.
-- `field`: Foreign key to the `MetricValueField` definition.
-- `numeric_value`: Stores float values (if the field is numeric).
-- `text_value`: Stores string values (if the field is text or select).
-
-**Aggregated Result Storage:**
-
-- **`ReportedMetricValue`**: The parent record created by the aggregation service for the overall metric context (assignment, metric, layer, period). Holds metadata like `source_submission_count`.
-- **`ReportedMetricFieldValue`**: Child records linked to the parent `ReportedMetricValue`. Each child stores the aggregated result (e.g., sum of `MetricValue.numeric_value` across multiple inputs) for one specific `MetricValueField`.
-
-**Example**: A "Waste Disposal" metric (`is_multi_value=True`, `aggregates_inputs=True`) might track different waste types per disposal event.
-- *Input Definition*: `MetricValueField`s defined: `field_key="general_waste_kg"`, `field_key="recyclable_waste_kg"`.
-- *User Input*: A user creates one `ESGMetricSubmission` input for Jan 1st, linking two `MetricValue` records (10kg general, 5kg recyclable). Another input for Jan 15th links two more `MetricValue` records (8kg general, 6kg recyclable).
-- *Aggregation*: The `calculate_report_value` service runs.
-    - It creates one parent `ReportedMetricValue` for January.
-    - It creates two child `ReportedMetricFieldValue` records linked to the parent:
-        - One for `field_key="general_waste_kg"` with `aggregated_numeric_value = 18`.
-        - One for `field_key="recyclable_waste_kg"` with `aggregated_numeric_value = 11`.
+### 4. Submission Data Structure
+- **`ESGMetricSubmission` (Header)**: Contains `assignment`, `metric` (FK to `BaseESGMetric`), `layer`, `reporting_period` (tag), `submitted_by`, `submitted_at`, `is_verified` (for input), `notes`, `source_identifier`.
+- **`BasicMetricData`**: Linked OneToOne to header. Contains `value_numeric`, `value_text`.
+- **`TabularMetricRow`**: Linked ManyToOne (FK) to header. Contains `row_index`, `row_data` (JSON).
+- **`TimeSeriesDataPoint`**: Linked ManyToOne to header. Contains `period` (date), `value` (float).
+- **`MaterialMatrixDataPoint`**: Linked ManyToOne to header. Contains `material_type` (str), `period` (date), `value` (float), `unit` (str).
+- **`MultiFieldTimeSeriesDataPoint`**: Linked ManyToOne to header. Contains `period` (date), `field_data` (JSON).
+- **`MultiFieldDataPoint`**: Linked OneToOne to header. Contains `field_data` (JSON).
 
 ### 5. Custom Forms and Metrics
 The system allows Baker Tilly administrators to create custom forms and metrics for specific client needs:
@@ -361,10 +333,9 @@ Custom forms and metrics can be created alongside standard forms in templates, a
 ### Related API Endpoints:
 - `POST /api/esg-categories/`: Create custom category
 - `POST /api/esg-forms/`: Create custom form
-- `POST /api/esg-metrics/`: Create custom metric
-- `POST /api/esg-forms/{id}/add_metric/`: Add metric to existing form
-- `POST /api/metric-value-fields/`: Create a field definition for a multi-value metric (Requires metric ID)
-- `PUT /api/metric-value-fields/{id}/`: Update a multi-value field definition
+- **`POST /api/esg-forms/{id}/add_metric/`**: Add a polymorphic metric to a form (requires `metric_subtype` and type-specific fields in payload).
+- `GET /api/esg-metrics/{id}/`: Get specific metric details (will include type-specific fields).
+- `PUT /api/esg-metrics/{id}/`: Update metric (requires `metric_subtype` and type-specific fields).
 
 ## Templates and Assignments
 
@@ -395,14 +366,14 @@ Assigns templates to companies for reporting:
 
 Properties:
 - `template`: Link to Template
-- `company`: Link to Company (LayerProfile)
+- `layer`: Link to Company (LayerProfile)
 - `assigned_to`: User responsible for reporting
 - `due_date`: Submission deadline
 - `status`: Current status (PENDING, IN_PROGRESS, SUBMITTED, VERIFIED, REJECTED)
-- `reporting_period_start`: Start of reporting period (deprecated, use reporting_year instead)
-- `reporting_period_end`: End of reporting period (deprecated, use reporting_year instead)
-- `reporting_year`: The specific year for which data is being reported (added in 2025)
-- `completed_at`: When the template was submitted
+- `reporting_period_start`: Start of reporting period covered by assignment.
+- `reporting_period_end`: End of reporting period covered by assignment.
+- `reporting_year`: (Deprecated, use start/end dates) The specific year for which data is being reported.
+- `completed_at`: When the template assignment was marked 'SUBMITTED'.
 
 ### User Template Management
 
@@ -591,56 +562,33 @@ Example:
 
 ## Time-Based Reporting (Inputs and Aggregation)
 
-The system supports time-based reporting for metrics that require data for multiple periods.
+The system supports time-based reporting for metrics like `TimeSeriesMetric`, `MaterialTrackingMatrixMetric`, and `MultiFieldTimeSeriesMetric`.
 
-1.  **Configuring Time-Based Metrics**:
-    - Set `requires_time_reporting=True`
-    - Set `reporting_frequency`
-
+1.  **Configuring Time-Based Metrics**: Set the `frequency` field (e.g., 'monthly', 'annual') on the metric definition. Set the `aggregation_method` ('SUM', 'AVG', 'LAST') for `TimeSeriesMetric`.
 2.  **Submitting Time-Based *Inputs***:
-    - When creating `ESGMetricSubmission` *inputs* for time-based metrics, include a `reporting_period` date corresponding to the input's period (e.g., end of month for monthly).
-    - Multiple *input* records will typically be created over the reporting year.
-
+    - Create an `ESGMetricSubmission` header record, tagging it with a consistent `reporting_period` (e.g., month-end date).
+    - Provide the actual data, including the specific `period` date, in the linked data model (e.g., `TimeSeriesDataPoint`, `MaterialMatrixDataPoint`, `MultiFieldTimeSeriesDataPoint`).
+    - Multiple *input* records (header + specific data) will typically be created over the reporting year.
 3.  **Aggregation**:
-    - For metrics where `aggregates_inputs=True`, the `calculate_report_value` service uses the `reporting_period` of the inputs to calculate the final `ReportedMetricValue` (and child `ReportedMetricFieldValue` records if multi-value) for the relevant period(s).
-    - The specific aggregation method (e.g., SUM, LAST) depends on the metric type (single/multi-value) and field type (numeric/text).
-
-4.  **Usage Example (Submitting Inputs)**:
-    ```json
-    // Submit multiple monthly INPUTS for electricity consumption
-    POST /api/metric-submissions/batch_submit/
-    {
-        "assignment_id": 1,
-        "submissions": [
-            { "metric_id": 5, "value": 120.5, "reporting_period": "2024-01-31", ... },
-            { "metric_id": 5, "value": 115.2, "reporting_period": "2024-02-29", ... },
-            { "metric_id": 5, "value": 130.8, "reporting_period": "2024-03-31", ... }
-            // ... more monthly inputs
-        ]
-    }
-    ```
-    - Submitting these inputs automatically triggers the aggregation service to update the relevant `ReportedMetricValue`(s).
-
-5.  **Validation Rules (Inputs)**:
-    - `ESGMetricSubmission` *inputs* no longer have a uniqueness constraint on `assignment`, `metric`, `reporting_period`. Multiple inputs are allowed.
-    - `reporting_period` is generally required for inputs to metrics where `requires_time_reporting=True`.
-
-6.  **Frontend Implementation**:
-    - Guide users to submit *inputs* according to the `reporting_frequency` (e.g., monthly inputs).
-    - Display final aggregated values separately, likely fetched from the `/api/reported-metric-values/` endpoint.
+    - When an input is saved/deleted, the `calculate_report_value` service is triggered via signals.
+    - It calculates aggregates for relevant levels (e.g., Monthly, Annual) and target `reporting_period` end dates.
+    - It fetches the relevant specific data points (e.g., `TimeSeriesDataPoint`) based on their `period` falling within the calculated window (e.g., all points where `period` is in January for the 'M' level ending '2024-01-31').
+    - It applies the aggregation method (SUM, AVG, LAST) to the filtered data points.
+    - It saves the result in `ReportedMetricValue`, tagged with the correct target `reporting_period` and `level`.
 
 ## Aggregation Service (`calculate_report_value`)
 
-For metrics marked with `aggregates_inputs=True`, the `calculate_report_value` service automatically calculates and updates the final aggregated values.
+For metrics marked with `aggregates_inputs=True`, the `calculate_report_value` service automatically calculates and updates the final aggregated values stored in `ReportedMetricValue`.
 
-- **Trigger**: This service is triggered whenever an `ESGMetricSubmission` *input* is created, updated, or deleted for a metric where `aggregates_inputs=True`.
-- **Context**: The calculation requires the `assignment`, `input_metric`, `reporting_period`, and `layer` to identify the correct set of inputs and the target aggregation records.
+- **Trigger**: Triggered by `post_save`/`post_delete` signals on `ESGMetricSubmission`.
+- **Context**: Requires `assignment`, `metric`, `layer`, target `reporting_period` (end date), and target `level` ('M', 'A').
 - **Logic**:
-    - Finds or creates a parent `ReportedMetricValue` record for the context, updating metadata (submission counts, timestamps).
-    - **Single-Value Metrics**: Aggregates `ESGMetricSubmission.value` (default: SUM for numeric types) or `ESGMetricSubmission.text_value` (default: LAST submission) and stores the result directly in the parent `ReportedMetricValue`'s `aggregated_numeric_value` or `aggregated_text_value` fields.
-    - **Multi-Value Metrics**: Iterates through each `MetricValueField` defined for the input metric. For each field, it aggregates the corresponding `MetricValue` records from the source inputs (default: SUM for numeric, LAST for text/select) and updates or creates a child `ReportedMetricFieldValue` record.
-    - Handles cleanup of orphaned aggregation records if inputs are deleted or metric configuration changes.
-- **Result**: Creates or updates the parent `ReportedMetricValue` and any necessary child `ReportedMetricFieldValue` records.
+    - Determines the metric's specific type (e.g., `BasicMetric`, `TimeSeriesMetric`).
+    - Fetches relevant `ESGMetricSubmission` headers broadly.
+    - Fetches *all* linked specific data records (e.g., `BasicMetricData`, `TimeSeriesDataPoint`).
+    - Filters the specific data records based on the target `reporting_period` and `level` (e.g., selects `TimeSeriesDataPoint` where `period` falls within the target month/year).
+    - Applies aggregation (SUM, AVG, LAST, COUNT, etc.) based on metric type and configuration to the *filtered* data. Placeholder logic exists for complex types (`Tabular`, `MaterialMatrix`, etc.).
+    - Creates/Updates the `ReportedMetricValue` record for the specific `reporting_period` and `level`, storing the result in `aggregated_numeric_value` or `aggregated_text_value` and updating metadata. If no relevant data is found for the period/level, any existing `ReportedMetricValue` for that slot is deleted.
 
 ## API Endpoints
 
@@ -653,83 +601,61 @@ For metrics marked with `aggregates_inputs=True`, the `calculate_report_value` s
 - `POST /api/esg-data/{data_id}/verify/`: Verify ESG data entry (Baker Tilly admin only)
 **(Note: These endpoints seem related to an older model `ESGData`. Review if this model and its endpoints are still relevant alongside the Template/Submission/ReportedValue system).**
 
-#### ESG Metric Submission *Input* Endpoints (`/api/metric-submissions/`)
-Manages the **raw input data points** (`ESGMetricSubmission` model).
-- `GET /api/metric-submissions/`: List accessible submission *inputs*.
-- `POST /api/metric-submissions/`: Submit a single metric *input*. Triggers aggregation if `metric.aggregates_inputs` is true.
-- `GET /api/metric-submissions/{id}/`: Get details of a specific submission *input*. Includes `multi_values`.
-- `PUT /api/metric-submissions/{id}/`: Update a metric *input*. Triggers aggregation if `metric.aggregates_inputs` is true.
-- `DELETE /api/metric-submissions/{id}/`: Delete a metric *input*. Triggers aggregation if `metric.aggregates_inputs` is true.
-- `GET /api/metric-submissions/by_assignment/?assignment_id={id}`: Get all submission *inputs* for an assignment. Supports filtering (e.g., by `form_id`, `metric_id`, `layer_id`, `is_verified`).
-- `POST /api/metric-submissions/batch_submit/`: Submit multiple metric *inputs* at once. Triggers aggregation for relevant metrics. Use the `multi_values` dictionary within each submission object for multi-value metrics.
-- `POST /api/metric-submissions/submit_template/`: Mark a template assignment as submitted. **Checks for the existence of required `ReportedMetricValue` records**, not just inputs.
-- `POST /api/metric-submissions/{id}/verify/`: Verify a *specific raw input* (`ESGMetricSubmission`). Does **not** verify the final aggregated value. (Baker Tilly admin only).
-- `GET /api/submissions/available-layers/`: Get layers accessible to the user.
-- `GET /api/submissions/sum-by-layer/`: Aggregate *raw inputs* (`ESGMetricSubmission`) by layer. Distinct from viewing final aggregated values.
+### ESG Metric Submission Endpoints (`/api/metric-submissions/`)
+Manages the **raw input headers** (`ESGMetricSubmission` model) and their linked specific data.
 
-#### Reported Metric Value Endpoints (`/api/reported-metric-values/`) (New)
-Provides **read-only access** to the final, calculated/official **aggregated metric records** (`ReportedMetricValue` and nested `ReportedMetricFieldValue` models).
+- `GET /api/metric-submissions/`: List accessible submission *headers*. Response now includes `submission_data` field containing nested specific data based on metric type.
+- `POST /api/metric-submissions/`: Submit a single metric input. Payload requires `metric` (BaseESGMetric ID), `assignment`, and a specific data field matching the metric type (e.g., `basic_data`, `tabular_rows`). Triggers aggregation.
+- `GET /api/metric-submissions/{id}/`: Get details of a specific submission *header*. Response includes `submission_data` field.
+- `PUT /api/metric-submissions/{id}/`: Update a metric input header and its associated specific data (full replace for list data like tabular rows). Triggers aggregation.
+- `PATCH /api/metric-submissions/{id}/`: Partially update a metric input header (cannot partially update nested specific data easily with default implementation). Triggers aggregation.
+- `DELETE /api/metric-submissions/{id}/`: Delete a metric input header and its linked specific data. Triggers aggregation.
+- `GET /api/metric-submissions/by_assignment/?assignment_id={id}`: Get all submission *headers* for an assignment. Supports filtering. Response includes `submission_data`.
+- `POST /api/metric-submissions/batch_submit/`: Submit multiple metric inputs at once. Payload requires `assignment_id` and a `submissions` list, where each item contains `metric` and a specific data field (e.g., `basic_data`). Triggers aggregation.
+- `POST /api/metric-submissions/submit_template/`: Mark a template assignment as submitted. Checks for the existence of required **annual** (`level='A'`) `ReportedMetricValue` records.
+- `POST /api/metric-submissions/{id}/verify/`: Verify a *specific raw input header* (`ESGMetricSubmission`). (Baker Tilly admin only).
+- `GET /api/submissions/available-layers/`: Get layers accessible to the user.
+- `GET /api/submissions/sum-by-layer/`: Aggregate *raw inputs* by layer (reads from specific data models).
+
+### Reported Metric Value Endpoints (`/api/reported-metric-values/`)
+Provides **read-only access** to the final, calculated **aggregated metric records** (`ReportedMetricValue`).
+
 - `GET /api/reported-metric-values/`: List accessible final aggregated records.
-- **Filtering**: Supports filtering by `assignment`, `metric` (the input metric ID), `layer`, `reporting_period`.
+- **Filtering**: Supports filtering by `assignment`, `metric` (BaseESGMetric ID), `layer`, `reporting_period`, and **`level`** ('M', 'A').
 - **Permissions**: Users only see values for layers they have access to or assignments assigned to them.
-- **Response**: Includes the parent `ReportedMetricValue` details (metadata, single-value results if applicable) and nested `ReportedMetricFieldValue` details for multi-value metrics.
+- **Response**: Includes the `ReportedMetricValue` details (metadata, final aggregated value, `level`). **Does not include nested fields anymore.**
 
 **Example Request:**
 ```
-GET /api/reported-metric-values/?assignment=1&metric=5&layer=3&reporting_period=2024-12-31
+GET /api/reported-metric-values/?assignment=1&metric=5&layer=3&reporting_period=2024-12-31&level=A
 ```
 
 **Example Response (Updated):**
 ```json
 [
   {
-    "id": 55, // ID of the parent ReportedMetricValue
+    "id": 55, // ID of the ReportedMetricValue
     "assignment": 1,
-    "metric": 5, // ID of the *input* ESGMetric
-    "metric_name": "Annual Waste Disposal",
-    "metric_unit": "tonnes", // Unit from the input ESGMetric
+    "metric": 5, // ID of the BaseESGMetric
+    "metric_name": "Annual Waste Disposal", // From metric relation
+    // "metric_unit": "tonnes", // Unit is on specific metric, not easily available here
     "layer": 3,
-    "layer_name": "Manufacturing Division",
+    "layer_name": "Manufacturing Division", // From layer relation
     "reporting_period": "2024-12-31",
-    // --- Single-value Results (Populated if input metric is NOT multi-value) ---
-    "aggregated_numeric_value": null, // e.g., 14500.75 if single-value numeric
+    "level": "A", // The aggregation level this record represents
+    "aggregated_numeric_value": 18050.5, // Final calculated value
     "aggregated_text_value": null,
     // --- Calculation & Aggregation Metadata ---
     "calculated_at": "2025-01-10T10:00:00Z",
     "last_updated_at": "2025-01-15T11:30:00Z",
-    "source_submission_count": 12, // Total count of source ESGMetricSubmission inputs
-    "first_submission_at": "2024-01-15T09:00:00Z",
-    "last_submission_at": "2024-12-10T14:00:00Z",
-    // --- Nested fields for multi-value results (Populated if input metric IS multi-value) ---
-    "aggregated_fields": [
-        {
-            "id": 101, // ID of ReportedMetricFieldValue
-            "field": 10, // ID of the MetricValueField definition
-            "field_key": "general_waste_kg",
-            "field_display_name": "General Waste (kg)",
-            "aggregated_numeric_value": 18050.5,
-            "aggregated_text_value": null,
-            "aggregation_method": "SUM",
-            "source_submission_count": 12, // Submissions providing this field
-            "last_updated_at": "2025-01-15T11:30:00Z"
-        },
-        {
-            "id": 102,
-            "field": 11,
-            "field_key": "recyclable_waste_kg",
-            "field_display_name": "Recyclable Waste (kg)",
-            "aggregated_numeric_value": 5520.0,
-            "aggregated_text_value": null,
-            "aggregation_method": "SUM",
-            "source_submission_count": 11,
-            "last_updated_at": "2025-01-15T11:30:00Z"
-        }
-    ]
+    "source_submission_count": 12, // Count of source inputs *used for this specific period/level*
+    "first_submission_at": "2024-01-15T09:00:00Z", // Timestamp of earliest submission header found
+    "last_submission_at": "2024-12-10T14:00:00Z" // Timestamp of latest submission header found
   }
 ]
 ```
 
-#### ESG Metric Evidence Endpoints
+### ESG Metric Evidence Endpoints
 - `GET /api/metric-evidence/`: List all accessible evidence files
 - `POST /api/metric-evidence/`: Upload evidence for a metric submission
 - `GET /api/metric-evidence/{id}/`: Get details of a specific evidence file
@@ -744,12 +670,11 @@ GET /api/reported-metric-values/?assignment=1&metric=5&layer=3&reporting_period=
 - `GET /api/esg-forms/{id}/`: Get specific form details
 - `POST /api/esg-forms/`: Create new ESG form (Baker Tilly Admin only)
 - `PUT /api/esg-forms/{id}/`: Update ESG form (Baker Tilly Admin only)
-- `PATCH /api/esg-forms/{id}/`: Partially update ESG form (Baker Tilly Admin only)
 - `DELETE /api/esg-forms/{id}/`: Delete ESG form (Baker Tilly Admin only)
-- `GET /api/esg-forms/{id}/metrics/`: Get metrics for a specific form
-- `POST /api/esg-forms/{id}/add_metric/`: Add a metric to a form (Baker Tilly Admin only)
-- `GET /api/esg-forms/{id}/check_completion/?assignment_id={id}`: Check completion status of a specific form
-- `POST /api/esg-forms/{id}/complete_form/`: Mark a form as completed
+- `GET /api/esg-forms/{id}/metrics/`: Get **polymorphic** metrics for a specific form (uses `ESGMetricPolymorphicSerializer`).
+- `POST /api/esg-forms/{id}/add_metric/`: Add a **polymorphic** metric to a form (Admin only, requires `metric_subtype` in payload).
+- `GET /api/esg-forms/{id}/check_completion/?assignment_id={id}`: Check completion status (uses `ReportedMetricValue`, level 'A').
+- `POST /api/esg-forms/{id}/complete_form/`: Mark a form as completed (uses `ReportedMetricValue`, level 'A').
 
 #### ESG Categories
 - `GET /api/esg-categories/`: List all categories with their active forms
@@ -759,23 +684,12 @@ GET /api/reported-metric-values/?assignment=1&metric=5&layer=3&reporting_period=
 - `PATCH /api/esg-categories/{id}/`: Partially update category (Baker Tilly Admin only)
 - `DELETE /api/esg-categories/{id}/`: Delete category (Baker Tilly Admin only)
 
-#### ESG Metrics
-- `GET /api/esg-metrics/`: List all metrics
-- `GET /api/esg-metrics/?form_id={id}`: List metrics for a specific form
-- `GET /api/esg-metrics/{id}/`: Get specific metric details
-- `POST /api/esg-metrics/`: Create new metric (Baker Tilly Admin only)
-- `PUT /api/esg-metrics/{id}/`: Update metric (Baker Tilly Admin only)
-- `PATCH /api/esg-metrics/{id}/`: Partially update metric (Baker Tilly Admin only)
-- `DELETE /api/esg-metrics/{id}/`: Delete metric (Baker Tilly Admin only)
-
-#### Metric Value Fields (for Multi-Value Metrics)
-- `GET /api/metric-value-fields/`: List all metric value field definitions
-- `GET /api/metric-value-fields/?metric_id={id}`: List fields for a specific multi-value metric
-- `GET /api/metric-value-fields/{id}/`: Get details of a specific field definition
-- `POST /api/metric-value-fields/`: Create a new field definition (Baker Tilly Admin only)
-- `PUT /api/metric-value-fields/{id}/`: Update a field definition (Baker Tilly Admin only)
-- `PATCH /api/metric-value-fields/{id}/`: Partially update a field definition (Baker Tilly Admin only)
-- `DELETE /api/metric-value-fields/{id}/`: Delete a field definition (Baker Tilly Admin only)
+#### ESG Metrics (Polymorphic)
+- `GET /api/esg-metrics/`: List all *base* metrics (might not be very useful). Use `/api/esg-forms/{id}/metrics/` instead.
+- `GET /api/esg-metrics/{id}/`: Get specific metric details (will use polymorphic serializer to show correct fields).
+- `POST /api/esg-metrics/`: Create new metric (Admin only - requires `metric_subtype` and type-specific fields).
+- `PUT /api/esg-metrics/{id}/`: Update metric (Admin only - requires `metric_subtype` and type-specific fields).
+- `DELETE /api/esg-metrics/{id}/`: Delete metric (Admin only).
 
 #### Templates (Baker Tilly Admin only)
 - `GET /api/templates/`: List all templates
@@ -784,7 +698,7 @@ GET /api/reported-metric-values/?assignment=1&metric=5&layer=3&reporting_period=
 - `PUT /api/templates/{id}/`: Update template
 - `DELETE /api/templates/{id}/`: Delete template
 - `GET /api/templates/{id}/preview/`: Preview template with forms and metrics
-- `GET /api/templates/{id}/completion_status/?assignment_id={id}`: Get completion status of all forms in a template
+- `GET /api/templates/{id}/completion_status/?assignment_id={id}`: Get completion status (uses `ReportedMetricValue`, level 'A').
 
 #### Template Assignments
 - `GET /api/clients/{layer_id}/templates/`: Get client's template assignments
@@ -981,73 +895,109 @@ When integrating with these endpoints in your client application:
 
 ### Example Requests and Responses
 
-#### 1. ESG Data Management (Legacy - Review if needed)
-(Keep as is for now, add note about potential deprecation)
-
-#### 2. Template Management
-(Remains the same)
-
-#### 3. ESG Form and Metric Management
-(Remains the same)
-
-#### 4. ESG Metric Submissions (*Inputs* and Completion)
-
-##### Submit a Single Metric *Input* Value
-(Request/Response largely the same, removed `reported_value_id` from response)
+#### Submit a Single Metric Input Value
 ```json
 POST /api/metric-submissions/
 {
     "assignment": 1,
-    "metric": 5, // Assume aggregates_inputs=True, requires_time_reporting=True
-    "value": 120.5,
-    "reporting_period": "2024-03-31",
+    "metric": 5,
     "layer_id": 3,
-    "notes": "Input value for March 2024 electricity bill"
+    "reporting_period": "2024-03-31",
+    "notes": "Input value for March 2024 electricity",
+    "basic_data": {
+        "value_numeric": 120.5
+    }
 }
 
 // Response (Example - Updated)
 {
-    "id": 101, // ID of this specific input record
+    "id": 101,
     "assignment": 1,
     "metric": 5,
     "metric_name": "Electricity consumption (CLP)",
-    "metric_unit": "kWh",
-    "value": 120.5,
-    "text_value": null,
     "reporting_period": "2024-03-31",
-    "submitted_by": 3,
     "submitted_by_name": "john.doe@example.com",
     "submitted_at": "...",
     "updated_at": "...",
-    "notes": "Input value for March 2024 electricity bill",
-    "is_verified": false, // Verification of this input
-    "verified_by": null,
-    // ... verification fields for input ...
+    "notes": "Input value for March 2024 electricity",
+    "is_verified": false,
     "layer_id": 3,
     "layer_name": "Manufacturing Division",
-    "is_multi_value": false,
-    "multi_values": [],
-    "evidence": []
+    "source_identifier": null,
+    "evidence": [],
+    "submission_data": {
+        "data_type": "BasicMetricData",
+        "value_numeric": 120.5,
+        "value_text": null
+    }
 }
 ```
 
-##### Batch Submit Multiple Metric *Input* Values
-(Request remains the same. Response message clarified).
+#### Batch Submit Multiple Metric Input Values
 ```json
 POST /api/metric-submissions/batch_submit/
-{ ... } // Same request structure
-
-// Response (Example)
 {
-    // Updated message to clarify inputs
-    "message": "Created 2 submission inputs. Aggregation triggered for relevant metrics.",
-    "evidence_attached": 0, // If evidence was attached to inputs
-    "assignment_status": "IN_PROGRESS" // Current status
+  "assignment_id": 1,
+  "submissions": [
+    {
+      "metric": 5,
+      "layer_id": 3,
+      "reporting_period": "2024-06-30",
+      "source_identifier": "Meter A",
+      "basic_data": { "value_numeric": 1234.56 }
+    },
+    {
+      "metric": 6,
+      "layer_id": 4,
+      "reporting_period": "2024-06-30",
+      "source_identifier": "Waste Log",
+      "tabular_rows": [
+          { "row_index": 0, "row_data": { "waste_type": "Paper", "amount_kg": 50 } },
+          { "row_index": 1, "row_data": { "waste_type": "Plastic", "amount_kg": 25 } }
+      ]
+    }
+  ]
 }
+
+// Response (Example - List of created submission headers w/ data)
+[
+    {
+        "id": 102,
+        "assignment": 1,
+        "metric": 5,
+        "metric_name": "...",
+        "reporting_period": "2024-06-30",
+        // ... other header fields ...
+        "source_identifier": "Meter A",
+        "submission_data": {
+            "data_type": "BasicMetricData",
+            "value_numeric": 1234.56,
+            "value_text": null
+        }
+    },
+    {
+        "id": 103,
+        "assignment": 1,
+        "metric": 6,
+        "metric_name": "...",
+        "reporting_period": "2024-06-30",
+        // ... other header fields ...
+        "source_identifier": "Waste Log",
+        "submission_data": {
+            "data_type": "TabularMetricRow",
+            "many": true,
+            "results": [
+                {"id": 201, "row_index": 0, "row_data": {"waste_type": "Paper", "amount_kg": 50}},
+                {"id": 202, "row_index": 1, "row_data": {"waste_type": "Plastic", "amount_kg": 25}}
+            ]
+        }
+    }
+]
+
 ```
 
 ##### Check Form Completion Status
-(Request remains the same. Response description updated to reflect check against `ReportedMetricValue`).
+(Description updated to reflect check against `ReportedMetricValue` level 'A').
 ```json
 GET /api/esg-forms/{form_id}/check_completion/?assignment_id=1
 
@@ -1056,19 +1006,24 @@ GET /api/esg-forms/{form_id}/check_completion/?assignment_id=1
     "form_id": 2,
     "form_name": "Resource Use",
     "form_code": "HKEX-A2",
-    "is_completed": false, // Based on ReportedMetricValue existence
-    "completion_percentage": 75.0, // Based on ReportedMetricValue existence
-    "total_required_metrics": 4,
-    "reported_metric_count": 3, // Count of required metrics with a ReportedMetricValue
-    "missing_final_reported_values": [ // List metrics lacking a final ReportedMetricValue
-        {"id": 10, "name": "Wastewater consumption", "location": "HK", "expected_periods": ["2024-12-31"]} // Example detail
+    "assignment_id": 1,
+    "is_completed": false,
+    "is_actually_complete": false,
+    "status_inconsistent": false,
+    "completed_at": null,
+    "completed_by": null,
+    "completion_percentage": 75.0,
+    "total_required_points": 4,
+    "reported_points_count": 3,
+    "missing_final_reported_values": [
+        {"metric_id": 10, "metric_name": "Wastewater consumption", "location": "HK", "expected_periods_count": 1, "found_periods_count": 0, "missing_periods": ["2024-12-31"]}
     ],
     "can_complete": false
 }
 ```
 
 ##### Complete a Form
-(Request remains the same. Response description updated).
+(Description updated).
 ```json
 POST /api/esg-forms/{form_id}/complete_form/
 {
@@ -1077,23 +1032,16 @@ POST /api/esg-forms/{form_id}/complete_form/
 
 // Response (Success Example)
 {
-    "message": "Form successfully completed (all required reported values exist)",
+    "message": "Form 'Resource Use' successfully marked as completed.",
     "form_id": 2,
-    // ... other fields ...
-    "assignment_status": "IN_PROGRESS" // Or SUBMITTED if this was the last form
+    "form_is_complete": true,
+    "assignment_status_updated": false,
+    "assignment_status": "In Progress"
 }
-// Response (Error Example)
-{
-    "error": "Cannot complete form. Final reported values are missing.",
-    "missing_final_reported_values": [
-         {"id": 10, "name": "Wastewater consumption", ... }
-    ]
-}
-
 ```
 
 ##### Submit a Template
-(Request remains the same. Response description updated).
+(Description updated).
 ```json
 POST /api/metric-submissions/submit_template/
 {
@@ -1102,54 +1050,45 @@ POST /api/metric-submissions/submit_template/
 
 // Response (Success Example)
 {
-    "message": "Template successfully submitted (all required reported values exist)",
+    "message": "Template successfully submitted (all required annual reported values exist)",
     "assignment_id": 1,
     "status": "SUBMITTED",
     "completed_at": "..."
 }
-// Response (Error Example)
-{
-    "status": "incomplete",
-    "message": "Template is incomplete. Final reported values are missing.",
-    "missing_final_values": [ // Details similar to check_completion missing values
-         { ... }
-    ]
-}
 ```
 
 ##### Get Template Completion Status
-(Request remains the same. Response description updated).
+(Description updated).
 ```json
 GET /api/templates/{template_id}/completion_status/?assignment_id=1
 
 // Response (Example reflecting new logic)
 {
     "assignment_id": 1,
-    // ... assignment details ...
-    "overall_completion_percentage": 33.33, // Based on ReportedMetricValue existence
-    "forms": [
+    "template_id": 1,
+    "template_name": "Environmental Assessment 2024",
+    "assignment_status": "In Progress",
+    "overall_completion_percentage": 75.00,
+    "overall_total_required_points": 4,
+    "overall_reported_points_count": 3,
+    "all_requirements_met": false,
+    "form_statuses": [
         {
             "form_id": 1,
             "form_name": "Emissions",
-            "form_code": "HKEX-A1",
-            "is_completed": false,
-            // ... completion details ...
-            "reported_metric_count": 2, // Required metrics with ReportedMetricValue
-            "completion_percentage": 50.0, // Based on ReportedMetricValue
-            "missing_final_reported_values": [ // Metrics lacking ReportedMetricValue
-                 {"id": 3, "name": "Indirect GHG emissions", ...}
-            ]
+            "is_marked_complete": true,
+            "is_actually_complete": true,
+            "total_required_points": 1,
+            "reported_points_count": 1
         },
         {
             "form_id": 2,
             "form_name": "Resource Use",
-            "is_completed": true,
-             // ... completion details ...
-           "reported_metric_count": 3,
-           "completion_percentage": 100.0,
-           "missing_final_reported_values": []
-        },
-       // ... other forms ...
+            "is_marked_complete": false,
+            "is_actually_complete": false,
+            "total_required_points": 3,
+            "reported_points_count": 2
+        }
     ]
 }
 ```
@@ -1180,18 +1119,6 @@ Properties:
 - `source_submission_count`: Total number of source `ESGMetricSubmission` inputs contributing to this aggregation.
 - `first_submission_at`: Timestamp of the earliest source input.
 - `last_submission_at`: Timestamp of the latest source input.
-
-### `ReportedMetricFieldValue` (New)
-Stores the **aggregated value for a specific field** within a multi-value metric aggregation.
-
-Properties:
-- `reported_value`: Link to the parent `ReportedMetricValue` record.
-- `field`: Link to the `MetricValueField` definition (from the input metric).
-- `aggregated_numeric_value`: Stores the aggregated numeric value for this specific field.
-- `aggregated_text_value`: Stores the aggregated text value for this specific field.
-- `aggregation_method`: Method used for aggregation (e.g., 'SUM', 'LAST').
-- `source_submission_count`: Number of source `ESGMetricSubmission` inputs contributing to *this specific field's* aggregation.
-- `last_updated_at`: Timestamp when this field value was last updated.
 
 ### `ESGMetricSubmission` (Updated)
 Represents a **raw input data point**.
@@ -1348,17 +1275,15 @@ This approach consolidates what would otherwise require multiple separate API ca
 Access the admin interface at `/admin/` to manage:
 - ESG Form Categories
 - ESG Forms
-- ESG Metrics (including defining multi-value fields via inlines)
-- Metric Value Fields
-- Metric Values (Values within raw inputs)
+- **Base ESG Metrics (and subclasses)** - View/Edit polymorphic metrics.
 - Templates
 - Template Assignments
-- ESG Metric Submissions (Raw inputs, including viewing multi-values via inlines and the `source_identifier`)
-- **Reported Metric Values** (Parent aggregation records, view metadata and single-value results)
-- **Reported Metric Field Values** (Aggregated results for multi-value fields, linked to parent)
-- ESG Metric Evidence (Linked to raw inputs)
+- **ESG Metric Submissions (Headers)** - View common metadata, links to evidence.
+- **Specific Submission Data Models** (`BasicMetricData`, `TabularMetricRow`, etc.) - View raw submitted values (possibly via inlines on Submission admin).
+- **Reported Metric Values** - View final aggregated values for different levels ('M', 'A').
+- ESG Metric Evidence
 
-Note: Access requires either superuser status or Baker Tilly admin privileges.
+**(Removed:** `ESGMetric`, `MetricValueField`, `MetricValue`, `ReportedMetricFieldValue` from admin list).**
 
 ### Time-Based Metrics Validation
 
@@ -1458,12 +1383,8 @@ This approach ensures that when requirements change (e.g., new metrics are added
   "completion_percentage": 75,
   "total_required_metrics": 8,
   "total_submitted_metrics": 6,
-  "missing_regular_metrics": [
-    {
-      "id": 45,
-      "name": "Water consumption",
-      "location": "HK"
-    }
+  "missing_final_reported_values": [
+    {"metric_id": 45, "metric_name": "Water consumption", "location": "HK", "expected_periods_count": 1, "found_periods_count": 0, "missing_periods": ["2024-12-31"]}
   ],
   "incomplete_time_based_metrics": [],
   "can_complete": false

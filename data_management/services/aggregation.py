@@ -9,10 +9,7 @@ from django.db import transaction
 import datetime # Need date/time handling
 
 from accounts.models import LayerProfile
-from ..models.templates import (
-    ESGMetricSubmission, ReportedMetricValue, ESGMetric, TemplateAssignment,
-    MetricValue, MetricValueField, ReportedMetricFieldValue
-)
+from ..models.templates import TemplateAssignment, ReportedMetricValue, ESGMetricSubmission # Remove ESGMetric, MetricValue, etc.
 from ..models.polymorphic_metrics import (
     BaseESGMetric, BasicMetric, TimeSeriesMetric, TabularMetric, 
     MaterialTrackingMatrixMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric

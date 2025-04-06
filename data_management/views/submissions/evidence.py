@@ -11,7 +11,8 @@ from ...serializers.templates import ESGMetricEvidenceSerializer, ESGMetricSubmi
 from ...services.bill_analyzer import UtilityBillAnalyzer
 from accounts.permissions import BakerTillyAdmin
 from accounts.models import LayerProfile
-from ...models.polymorphic_metrics import BaseESGMetric
+from ...models.polymorphic_metrics import BaseESGMetric, BasicMetric
+from ...models.submission_data import BasicMetricData
 
 
 class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
@@ -291,42 +292,73 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         
         # Apply OCR data if requested and available
         apply_ocr = request.data.get('apply_ocr_data') == 'true'
-        if apply_ocr and evidence.is_processed_by_ocr and evidence.extracted_value is not None:
-            # Check if submission already has a value
-            if submission.value == 0:
-                # Warn that we're overriding a zero value, but proceed if explicitly requested
-                warning = "Overriding an explicit zero value with OCR data"
-            elif submission.value is not None:
-                # Warn that we're overriding a non-zero value
-                warning = f"Overriding existing value {submission.value} with OCR data"
-            else:
-                warning = None
-                
-            # Update submission value
-            submission.value = evidence.extracted_value
-            
-            # Update period if available - use user-selected period first, then OCR period
-            evidence_period = evidence.period or evidence.ocr_period
-            if evidence_period:
-                submission.reporting_period = evidence_period
-                
-            submission.save()
-            
-            return Response({
-                'message': 'Evidence attached to submission and OCR data applied',
-                'submission_id': submission.id,
-                'value_updated': True,
-                'new_value': submission.value,
-                'period_updated': evidence_period is not None,
-                'new_period': submission.reporting_period,
-                'warning': warning
-            })
+        value_updated = False
+        period_updated = False
+        new_value = None
+        new_period = submission.reporting_period # Default to existing
+        warning = None
+        message = 'Evidence attached to submission successfully'
         
-        # Return success without applying OCR data
+        if apply_ocr and evidence.is_processed_by_ocr and evidence.extracted_value is not None:
+            try:
+                # Get the specific metric instance to check its type
+                specific_metric = submission.metric.get_real_instance()
+                
+                # Only apply OCR numeric value if it's a BasicMetric and not a 'text' type
+                if isinstance(specific_metric, BasicMetric) and specific_metric.unit_type != 'text':
+                    # Get or create the associated BasicMetricData record
+                    basic_data, created = BasicMetricData.objects.get_or_create(submission=submission)
+                    
+                    # Check for existing value to warn about override
+                    existing_value = basic_data.value_numeric
+                    if existing_value == 0 and evidence.extracted_value != 0: # Check for overriding zero
+                        warning = "Overriding an explicit zero value with OCR data"
+                    elif existing_value is not None and existing_value != evidence.extracted_value:
+                        warning = f"Overriding existing value {existing_value} with OCR data"
+                    
+                    # Update BasicMetricData value
+                    basic_data.value_numeric = evidence.extracted_value
+                    basic_data.value_text = None # Clear text value if setting numeric
+                    basic_data.save()
+                    value_updated = True
+                    new_value = basic_data.value_numeric
+                    message = 'Evidence attached and OCR numeric data applied to BasicMetricData'
+
+                    # Update submission's reporting period if evidence period is available
+                    evidence_period = evidence.period or evidence.ocr_period
+                    if evidence_period:
+                        if submission.reporting_period != evidence_period:
+                            submission.reporting_period = evidence_period
+                            submission.save() # Save submission only if period changes
+                            period_updated = True
+                        new_period = submission.reporting_period # Update new_period regardless
+                        message += ' and submission period updated' if period_updated else ' (submission period already matched)'
+                    
+                else:
+                    # Metric type is not compatible for applying numeric OCR value
+                    warning = f"OCR value not applied: Metric type ({type(specific_metric).__name__}) is not a non-text BasicMetric."
+                    message = 'Evidence attached, but OCR numeric value could not be applied due to incompatible metric type.'
+
+            except BaseESGMetric.DoesNotExist:
+                warning = "Could not find the metric associated with the submission."
+                message = 'Evidence attached, but could not verify metric type to apply OCR data.'
+            except AttributeError:
+                warning = "Could not determine the specific type of the metric."
+                message = 'Evidence attached, but could not determine specific metric type to apply OCR data.'
+            except Exception as e:
+                # Catch unexpected errors during OCR application
+                warning = f"An unexpected error occurred while trying to apply OCR data: {str(e)}"
+                message = 'Evidence attached, but an error occurred during OCR data application.'
+
+        # Return the response    
         return Response({
-            'message': 'Evidence attached to submission successfully',
+            'message': message,
             'submission_id': submission.id,
-            'value_updated': False
+            'value_updated': value_updated,
+            'new_value': new_value,
+            'period_updated': period_updated,
+            'new_period': new_period,
+            'warning': warning
         })
 
     @action(detail=False, methods=['get'])

@@ -1,6 +1,11 @@
 from ..models.templates import ESGMetricEvidence
 import logging
 from datetime import datetime
+# Import the new polymorphic metric models
+from ..models.polymorphic_metrics import (
+    BaseESGMetric, TimeSeriesMetric, MaterialTrackingMatrixMetric,
+    MultiFieldTimeSeriesMetric
+)
 
 # Configure logging to show in console
 logging.basicConfig(
@@ -50,14 +55,25 @@ def attach_evidence_to_submissions(submissions, user):
         
         # Get the metric to check if it's time-based
         try:
-            from ..models.templates import ESGMetric
-            metric = ESGMetric.objects.get(id=metric_id)
-            is_time_based = metric.requires_time_reporting
-        except ESGMetric.DoesNotExist:
-            logger.warning(f"Metric {metric_id} not found, assuming not time-based")
+            # Use the new BaseESGMetric model
+            base_metric = BaseESGMetric.objects.get(id=metric_id)
+            # Get the specific instance to check its type
+            specific_metric = base_metric.get_real_instance()
+            # Determine if time-based by checking the type
+            is_time_based = isinstance(specific_metric, (
+                TimeSeriesMetric,
+                MaterialTrackingMatrixMetric,
+                MultiFieldTimeSeriesMetric
+            ))
+            logger.info(f"Metric {metric_id} is type {type(specific_metric).__name__}. Is time-based: {is_time_based}")
+        except BaseESGMetric.DoesNotExist: # Use the correct exception
+            logger.warning(f"BaseESGMetric {metric_id} not found, assuming not time-based for evidence matching.")
             is_time_based = False
+        except AttributeError: # Handle cases where get_real_instance might fail (shouldn't normally)
+             logger.error(f"Could not determine specific type for BaseESGMetric {metric_id}. Assuming not time-based.")
+             is_time_based = False
         
-        # Get standalone evidence for this metric
+        # Get standalone evidence for this metric (intended_metric points to BaseESGMetric, so this is OK)
         evidence_query = ESGMetricEvidence.objects.filter(
             submission__isnull=True,
             uploaded_by=user,

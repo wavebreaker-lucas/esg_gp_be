@@ -21,7 +21,7 @@ When uploading evidence, users can specify a layer:
 POST /api/metric-evidence/
 {
   file: [file data],
-  metric_id: 123,
+  metric_id: 123, // BaseESGMetric ID
   layer_id: 3,  // Layer association
   period: "2024-06-30"
 }
@@ -74,16 +74,16 @@ class ESGMetricEvidence(models.Model):
 
 ## Key Components
 
-### ESGMetric Enhancements
-- **Custom Analyzer ID**: Each metric can have a specific `ocr_analyzer_id` to use a custom Azure Content Understanding analyzer tailored for specific utility bill formats.
+### Polymorphic Metric Enhancements (`BaseESGMetric`)
+- **Custom Analyzer ID**: Each polymorphic metric (`BaseESGMetric`) can have a specific `ocr_analyzer_id` to use a custom Azure Content Understanding analyzer tailored for specific utility bill formats.
   ```python
-  class ESGMetric(models.Model):
+  class BaseESGMetric(PolymorphicModel):
       # ... other fields ...
       ocr_analyzer_id = models.CharField(
           max_length=100, 
           blank=True, 
           null=True,
-          help_text="Custom analyzer ID for OCR processing of this metric's evidence"
+          help_text="Custom Azure Form Recognizer model ID for evidence processing (if applicable)"
       )
   ```
 
@@ -100,9 +100,9 @@ class ESGMetricEvidence(models.Model):
     # ... other fields ...
     
     # Direct metric relationship for standalone evidence
-    intended_metric = models.ForeignKey(ESGMetric, on_delete=models.SET_NULL, 
+    intended_metric = models.ForeignKey(BaseESGMetric, on_delete=models.SET_NULL, # <-- Updated to BaseESGMetric
         null=True, blank=True, related_name='intended_evidence',
-        help_text="The metric this evidence is intended for, before being attached to a submission")
+        help_text="The metric this evidence is intended for, before being attached to a submission input")
     
     # OCR-related fields
     is_processed_by_ocr = models.BooleanField(default=False, 
@@ -157,7 +157,7 @@ Evidence files can be stored in two ways:
      - Do NOT manually set the Content-Type header - let the browser/client handle it
    - Parameters:
      - `file`: The evidence file to upload (required)
-     - `metric_id`: (Optional) ID of the metric this evidence relates to; sets the `intended_metric` field for easier association with submissions
+     - `metric_id`: (Optional) ID of the *BaseESGMetric* this evidence relates to; sets the `intended_metric` field for easier association with submissions
      - `period`: (Optional) Reporting period in YYYY-MM-DD format
      - `description`: (Optional) Description of the evidence
    - Response:
@@ -172,7 +172,7 @@ Evidence files can be stored in two ways:
 2. **Get Evidence by Metric** (Confirmation Endpoint)
    - `GET /api/metric-evidence/by_metric/?metric_id=123`
    - **Use for user confirmation:** This is the primary endpoint to let users confirm their uploads
-   - Returns all evidence files related to a specific metric:
+   - Returns all evidence files related to a specific metric (using `intended_metric` or `submission.metric`):
      - Files directly uploaded for this metric (standalone)
      - Files attached to submissions for this metric
    - Response includes:
@@ -193,7 +193,7 @@ Evidence files can be stored in two ways:
          "description": "",
          "is_processed_by_ocr": false,
          "uploaded_by": "user@example.com",
-         "metric_id": 123
+         "intended_metric": 123 // BaseESGMetric ID
        }
      ]
      ```
@@ -203,7 +203,13 @@ Evidence files can be stored in two ways:
    - Requires `submission_id` parameter
    - Optional: `apply_ocr_data=true|false` to apply OCR data to the submission
    - Only works for evidence files that aren't already attached to a submission
-   - When `apply_ocr_data=true`, displays warnings if overriding existing values
+   - **Applying OCR Data**: 
+     - If `apply_ocr_data=true`, `evidence.extracted_value` is not null, and the linked `submission.metric` is a non-text `BasicMetric`:
+       - Finds/creates the associated `BasicMetricData` record.
+       - Updates `BasicMetricData.value_numeric` with the OCR value.
+       - Updates `submission.reporting_period` if `evidence.period` or `evidence.ocr_period` is available and different.
+       - Returns warnings if overriding existing values or if the metric type is incompatible.
+     - Otherwise, only the evidence is attached.
 
 ### OCR-Specific Endpoints
 
@@ -267,8 +273,9 @@ Evidence files can be stored in two ways:
 
 4. **Evidence Attachment**
    - When attaching evidence to a submission, user can choose to apply OCR data
-   - System warns if applying OCR data would override existing values
-   - Evidence is attached to the submission with or without OCR data
+   - System checks metric compatibility (must be non-text `BasicMetric` to apply numeric OCR value).
+   - System warns if applying OCR data would override existing values.
+   - Evidence is attached to the submission; specific data record (`BasicMetricData`) is updated if OCR data is applied and compatible.
 
 ### File Upload Best Practices
 
@@ -304,7 +311,7 @@ var formData = new FormData();
 formData.append('file', fileObject);
 
 // Add other parameters
-formData.append('metric_id', '123');
+formData.append('metric_id', '123'); // BaseESGMetric ID
 formData.append('period', '2023-06-30');
 
 // Send request - DO NOT set Content-Type header
@@ -318,8 +325,8 @@ The system supports a streamlined workflow where users can upload evidence files
 
 1. For each ESG metric, users can upload supporting evidence files
 2. Users select the reporting period for each evidence file
-3. All evidence is initially created as standalone (no submission association)
-4. When a form is completed or when batch submitting metrics, evidence files are automatically attached to the appropriate submissions based on the period
+3. All evidence is initially created as standalone (no submission association) with `intended_metric` set.
+4. When a form is completed or when batch submitting metrics, evidence files are automatically attached to the appropriate submissions based on the period (using the logic in `data_management.services.evidence.attach_evidence_to_submissions`).
 
 ### Evidence Attachment Architecture
 
@@ -350,10 +357,10 @@ The evidence attachment functionality has been modularized to improve maintainab
    - Manages Azure Content Understanding API integration
    - Extracts and standardizes data from OCR results
 
-3. **Evidence Attachment Service**
-   - Manages the attachment of evidence to submissions
-   - Handles period matching logic
-   - Supports both manual and automatic attachment
+3. **Evidence Attachment Service (`data_management.services.evidence`)**
+   - Manages the attachment of evidence to submissions (called during form completion / batch submit).
+   - Handles period matching logic.
+   - Supports automatic attachment based on `intended_metric`, period, and layer.
 
 4. **Frontend Integration**
    - Provides clear feedback on upload status
@@ -368,7 +375,7 @@ The evidence attachment functionality has been modularized to improve maintainab
    POST /api/metric-evidence/
    {
      "file": [file data],
-     "metric_id": 456,
+     "metric_id": 456, // BaseESGMetric ID
      "period": "2023-04-30",
      "enable_ocr_processing": "true"
    }
@@ -392,6 +399,7 @@ The evidence attachment functionality has been modularized to improve maintainab
      "apply_ocr_data": "true"
    }
    ```
+   (This will update the `BasicMetricData` record if the metric is compatible).
 
 ## Testing OCR Processing
 
@@ -420,7 +428,7 @@ python manage.py test_ocr 123 --format json
 ## Best Practices for Evidence Management
 
 1. **Always specify the reporting period** when uploading evidence files
-2. **Use per-metric uploads** to organize evidence files by the metrics they support
+2. **Use per-metric uploads** to organize evidence files by the metrics they support (`intended_metric` field)
 3. **Enable OCR for utility bills** to extract consumption data and period when appropriate
 4. **Review OCR results before applying** to ensure accuracy
 5. **Explicitly apply OCR data** only when needed - never rely on automatic application
@@ -429,11 +437,10 @@ python manage.py test_ocr 123 --format json
 
 ## Technical Implementation Details
 
-1. All evidence is initially created as standalone (without a submission)
-2. The `metric_id` is stored in the `ocr_data` field as `intended_metric_id`
-3. Evidence is attached to submissions during form completion and batch submission
-4. The system never automatically applies OCR data to submissions, only attaches the evidence files
-5. Template submission no longer handles evidence attachment as this happens at the form level
+1. All evidence is initially created as standalone (without a submission), linked via `intended_metric`.
+2. Evidence is automatically attached to submissions during form completion and batch submission using the `attach_evidence_to_submissions` service.
+3. The system never automatically applies OCR data to submission *data models*, only attaches the evidence files during the automatic attachment process. Applying OCR data requires an explicit call to the `attach_to_submission` endpoint with `apply_ocr_data=true`.
+4. Template submission no longer handles evidence attachment as this happens at the form level or during batch submission.
 
 ## Migration Notes
 
@@ -444,8 +451,9 @@ python manage.py test_ocr 123 --format json
    ```
 
 2. Database changes:
-   - The `submission` field on `ESGMetricEvidence` is now nullable to support standalone evidence
-   - Field renames for clarity: `ocr_processed` → `is_processed_by_ocr`, `extracted_period` → `period` 
+   - The `submission` field on `ESGMetricEvidence` is now nullable to support standalone evidence.
+   - Field renames for clarity: `ocr_processed` → `is_processed_by_ocr`, `extracted_period` → `period`.
+   - `intended_metric` ForeignKey now points to `BaseESGMetric`.
 
 ## Evidence-Metric Association
 
@@ -453,21 +461,24 @@ python manage.py test_ocr 123 --format json
 
 Evidence files can be directly associated with metrics in two ways:
 
-1. **When attached to a submission**: Evidence inherits the metric association from the submission it's attached to.
+1. **When attached to a submission**: Evidence inherits the metric association from the `submission.metric` relationship.
 
-2. **Standalone evidence (new approach)**: Evidence can be directly associated with a metric via the `intended_metric` field, making it easier and more reliable to find and attach evidence to submissions later.
+2. **Standalone evidence**: Evidence can be directly associated with a metric via the `intended_metric` (ForeignKey to `BaseESGMetric`) field, making it easier and more reliable to find and attach evidence to submissions later.
 
-Before the standalone evidence is attached to a submission, the system uses the `intended_metric` field to identify which metric the evidence belongs to. This replaces the previous approach of storing the metric ID in the `ocr_data` JSON field.
+Before the standalone evidence is attached to a submission, the system uses the `intended_metric` field to identify which metric the evidence belongs to.
 
 ### Benefits of the New Approach
 
-- **Explicit relationship**: Direct database relationship instead of storing in JSON
-- **Better performance**: Proper database indexing for faster queries
-- **Improved reliability**: No need to parse or search within JSON content
-- **Cleaner model semantics**: Separates relationship data from OCR processing data
+- **Explicit relationship**: Direct database relationship.
+- **Better performance**: Proper database indexing for faster queries.
+- **Improved reliability**.
+- **Cleaner model semantics**.
 
 ### Automatic Evidence Attachment
 
 The system automatically attaches standalone evidence files to submissions when:
 
-1. Users submit individual metrics via `batch_submit` with `auto_attach_evidence=true`
+1. Users complete a form via `complete_form`.
+2. Users submit individual metrics via `batch_submit` with `auto_attach_evidence=true`.
+
+(The logic resides in `data_management.services.evidence.attach_evidence_to_submissions`).
