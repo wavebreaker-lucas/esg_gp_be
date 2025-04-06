@@ -6,6 +6,11 @@ from .models.templates import (
     ESGMetricSubmission, ESGMetricEvidence,
     ReportedMetricValue
 )
+from polymorphic.admin import PolymorphicParentModelAdmin, PolymorphicChildModelAdmin, PolymorphicChildModelFilter
+from .models.polymorphic_metrics import (
+    BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
+    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric
+)
 
 class BoundaryItemAdmin(admin.ModelAdmin):
     list_display = ('name', 'is_default')
@@ -143,3 +148,53 @@ class ReportedMetricValueAdmin(admin.ModelAdmin):
     )
     list_select_related = ('metric', 'assignment', 'layer')
     inlines = []
+
+@admin.register(BasicMetric)
+class BasicMetricAdmin(PolymorphicChildModelAdmin):
+    base_model = BasicMetric
+    # Optional: Customize admin options specific to BasicMetric if needed
+    # e.g., add 'unit_type', 'custom_unit' to list_display or fieldsets
+
+@admin.register(TabularMetric)
+class TabularMetricAdmin(PolymorphicChildModelAdmin):
+    base_model = TabularMetric
+    # Optional: Customize for TabularMetric (e.g., display column_definitions info)
+
+@admin.register(MaterialTrackingMatrixMetric)
+class MaterialTrackingMatrixMetricAdmin(PolymorphicChildModelAdmin):
+    base_model = MaterialTrackingMatrixMetric
+    # Optional: Customize
+
+@admin.register(TimeSeriesMetric)
+class TimeSeriesMetricAdmin(PolymorphicChildModelAdmin):
+    base_model = TimeSeriesMetric
+    # Optional: Customize (e.g., show frequency, aggregation_method)
+
+@admin.register(MultiFieldTimeSeriesMetric)
+class MultiFieldTimeSeriesMetricAdmin(PolymorphicChildModelAdmin):
+    base_model = MultiFieldTimeSeriesMetric
+    # Optional: Customize
+
+@admin.register(MultiFieldMetric)
+class MultiFieldMetricAdmin(PolymorphicChildModelAdmin):
+    base_model = MultiFieldMetric
+    # Optional: Customize
+
+@admin.register(BaseESGMetric)
+class BaseESGMetricAdmin(PolymorphicParentModelAdmin):
+    base_model = BaseESGMetric
+    # List all registered child models
+    child_models = (
+        BasicMetric,
+        TabularMetric,
+        MaterialTrackingMatrixMetric,
+        TimeSeriesMetric,
+        MultiFieldTimeSeriesMetric,
+        MultiFieldMetric,
+        # Add other metric types here if they are created and registered
+    )
+    list_display = ('name', 'form', 'polymorphic_ctype', 'order', 'location', 'is_required')
+    list_filter = (PolymorphicChildModelFilter, 'form', 'location', 'is_required') # Filter by specific metric type
+    search_fields = ('name', 'description', 'form__name', 'form__code')
+    ordering = ('form', 'order')
+    # Common fields for the list view and edit view of the base model itself
