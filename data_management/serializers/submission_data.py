@@ -1,6 +1,6 @@
 from rest_framework import serializers
 # Using drf_polymorphic import based on user feedback
-from drf_polymorphic.serializers import PolymorphicSerializer
+from rest_polymorphic.serializers import PolymorphicSerializer
 from ..models.submission_data import (
     BasicMetricData, TabularMetricRow, MaterialMatrixDataPoint, 
     TimeSeriesDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint

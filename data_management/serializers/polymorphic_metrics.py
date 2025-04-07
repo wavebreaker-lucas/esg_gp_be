@@ -1,6 +1,6 @@
 # Serializers for Polymorphic ESG Metrics 
 # Using drf_polymorphic import based on user feedback
-from drf_polymorphic.serializers import PolymorphicSerializer
+from rest_polymorphic.serializers import PolymorphicSerializer
 from rest_framework import serializers
 from ..models.polymorphic_metrics import (
     BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
@@ -70,7 +70,7 @@ class MultiFieldMetricSerializer(serializers.ModelSerializer):
 # --- Polymorphic Base Serializer ---
 
 class ESGMetricPolymorphicSerializer(PolymorphicSerializer):
-    serializer_mapping = {
+    model_serializer_mapping = {
         # BaseESGMetric: BaseMetricSerializer, # Optional: Define a serializer just for the base if needed
         BasicMetric: BasicMetricSerializer,
         TabularMetric: TabularMetricSerializer,

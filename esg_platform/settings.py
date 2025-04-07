@@ -51,7 +51,7 @@ INSTALLED_APPS = [
     'django_extensions',
     'drf_yasg',
     'polymorphic',
-    'drf_polymorphic',
+    'rest_polymorphic',
     
     # Local
     'accounts',
