@@ -102,30 +102,15 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         except TemplateAssignment.DoesNotExist:
             return Response({"error": "Assignment not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # --- CORRECTED PERMISSION CHECK --- 
+        # --- SIMPLIFIED PERMISSION CHECK --- 
         # Check user access to the assignment's layer, BUT bypass for admins
-        print(f"--- check_completion: Checking access for user: {request.user} (ID: {request.user.pk}) ---")
-        print(f"--- check_completion: Target Layer ID: {assignment.layer_id} ---")
         is_admin = getattr(request.user, 'is_baker_tilly_admin', False)
-        print(f"--- check_completion: Is Admin? {is_admin} ---")
-        
-        access_granted = False # Flag to track access
         if not is_admin: # Only check layer access if user is NOT an admin
-            print(f"--- check_completion: Calling has_layer_access... ---")
-            has_access = has_layer_access(request.user, assignment.layer_id)
-            print(f"--- check_completion: has_layer_access result: {has_access} ---")
-            if not has_access:
-                 # Log before returning 403
-                 print(f"--- check_completion: Denying access based on has_layer_access ---")
+            # Call has_layer_access and return immediately if False
+            if not has_layer_access(request.user, assignment.layer_id):
                  return Response({"detail": "You do not have permission for this assignment's layer."}, status=status.HTTP_403_FORBIDDEN)
-            else:
-                 access_granted = True # Non-admin has specific access
-        else:
-            access_granted = True # Admin has access
-        
-        if access_granted:
-            print(f"--- check_completion: Access GRANTED, proceeding with completion logic. ---")
-        # --- END CORRECTION --- 
+        # If we reach here, access is granted (either admin or passed has_layer_access)
+        # --- END SIMPLIFIED CHECK --- 
 
         # Get all required metrics for this form using the correct related_name
         required_metrics = form.polymorphic_metrics.filter(is_required=True)
