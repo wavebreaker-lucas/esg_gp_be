@@ -73,13 +73,27 @@ def get_all_lower_layers(layer):
 def get_creator_layers(user):
     """
     Fetch all layers associated with the creator's GROUP layer.
+    (Original, potentially restrictive logic)
     """
+    print(f"--- get_creator_layers: Called for user {user} (ID: {user.pk}) ---")
+    # Find the IDs of any GROUP layers the user is directly assigned to via AppUser
     group_ids = GroupLayer.objects.filter(app_users__user=user).values_list('id', flat=True)
-    subsidiary_ids = SubsidiaryLayer.objects.filter(group_layer__id__in=group_ids).values_list('id', flat=True)
-    branch_ids = BranchLayer.objects.filter(subsidiary_layer__id__in=subsidiary_ids).values_list('id', flat=True)
+    print(f"--- get_creator_layers: Direct Group Layer IDs: {list(group_ids)} ---")
 
+    # Find all subsidiary IDs belonging to those group(s)
+    subsidiary_ids = SubsidiaryLayer.objects.filter(group_layer__id__in=group_ids).values_list('id', flat=True)
+    print(f"--- get_creator_layers: Subsidiary IDs under groups: {list(subsidiary_ids)} ---")
+
+    # Find all branch IDs belonging to those subsidiaries
+    branch_ids = BranchLayer.objects.filter(subsidiary_layer__id__in=subsidiary_ids).values_list('id', flat=True)
+    print(f"--- get_creator_layers: Branch IDs under subsidiaries: {list(branch_ids)} ---")
+
+    all_accessible_ids = list(group_ids) + list(subsidiary_ids) + list(branch_ids)
+    print(f"--- get_creator_layers: Total accessible layer IDs: {all_accessible_ids} ---")
+
+    # Return a queryset containing the Group layers, their subsidiaries, and their branches
     return LayerProfile.objects.filter(
-        id__in=list(group_ids) + list(subsidiary_ids) + list(branch_ids)
+        id__in=all_accessible_ids
     )
 
 def get_parent_layer(layer):
