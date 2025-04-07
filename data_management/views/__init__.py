@@ -16,7 +16,7 @@ from .submissions import (
 )
 
 # Import from templates package
-from .templates import TemplateViewSet, TemplateAssignmentView, UserTemplateAssignmentView
+from .templates import TemplateViewSet, TemplateAssignmentView, UserTemplateAssignmentView, UserTemplateAssignmentStructureView
 
 # Import utilities
 from .utils import get_required_submission_count, attach_evidence_to_submissions
@@ -35,6 +35,7 @@ __all__ = [
     'TemplateViewSet',
     'TemplateAssignmentView',
     'UserTemplateAssignmentView',
+    'UserTemplateAssignmentStructureView',
     'ESGFormCategoryViewSet',
     'ESGFormViewSet',
     # 'AggregatedMetricDataView', # Commented out

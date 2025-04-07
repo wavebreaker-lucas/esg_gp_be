@@ -5,7 +5,8 @@ from django.urls import path, include
 from .views import (
     ESGFormViewSet, ESGFormCategoryViewSet, TemplateViewSet, 
     ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, 
-    UserTemplateAssignmentView, TemplateAssignmentView,
+    UserTemplateAssignmentView, UserTemplateAssignmentStructureView,
+    TemplateAssignmentView,
     BatchEvidenceView,
     AvailableLayersView, SumSubmissionsByLayerView, 
     ReportedMetricValueViewSet
@@ -36,6 +37,7 @@ urlpatterns = router.urls
 urlpatterns += [
     path('user-templates/', UserTemplateAssignmentView.as_view(), name='user-templates'),
     path('user-templates/<int:assignment_id>/', UserTemplateAssignmentView.as_view(), name='user-template-detail'),
+    path('user-templates/<int:assignment_id>/structure/', UserTemplateAssignmentStructureView.as_view(), name='user_template_assignment_structure'),
     path('layer/<int:layer_id>/templates/', TemplateAssignmentView.as_view(), name='layer-templates'),
     path('metric-evidence/batch/', BatchEvidenceView.as_view(), name='batch-evidence'),
     path('submissions/available-layers/', AvailableLayersView.as_view(), name='submission-available-layers'),

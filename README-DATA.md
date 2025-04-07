@@ -442,6 +442,7 @@ Returns detailed information about a specific template assignment, including all
   "reporting_period_start": "2024-01-01",
   "reporting_period_end": "2024-12-31",
   "reporting_year": 2025,
+  "relationship": "direct",
   "forms": [
     {
       "form_id": 1,
@@ -505,13 +506,63 @@ Returns detailed information about a specific template assignment, including all
 }
 ```
 
+#### GET /api/user-templates/{assignment_id}/structure/
+Returns the detailed structure (forms and metrics) for a specific template assignment.
+
+**Response Example:**
+```json
+{
+  "forms": [
+    {
+      "form_id": 1,
+      "form_code": "HKEX-A1",
+      "form_name": "Environmental - Emissions",
+      "regions": ["HK", "PRC"],
+      "category": {
+        "id": 1,
+        "name": "Environmental",
+        "code": "environmental",
+        "icon": "leaf",
+        "order": 1
+      },
+      "order": 1,
+      "metrics": [
+        {
+          "id": 1,
+          "metric_subtype": "BasicMetric",
+          "name": "Greenhouse gas emissions",
+          "unit_type": "tCO2e",
+          "custom_unit": null,
+          "requires_evidence": true,
+          "validation_rules": {"min": 0},
+          "location": "HK",
+          "is_required": true,
+          "order": 1
+        },
+        {
+          "id": 5,
+          "metric_subtype": "TimeSeriesMetric",
+          "name": "Electricity consumption (CLP)",
+          "unit_type": "kWh",
+          "custom_unit": null,
+          "requires_evidence": true,
+          "validation_rules": {"min": 0},
+          "location": "HK",
+          "is_required": true,
+          "order": 2,
+          "frequency": "monthly"
+        }
+      ]
+    }
+  ]
+}
+```
+
 **Important Notes:**
-- Returns complete form and metric details for the template
-- Only includes metrics relevant to the selected regions
+- Returns complete form and metric details for the template assignment structure.
+- Only includes metrics relevant to the selected regions for the specific form within the assignment.
 - Provides validation rules and requirements for each metric
 - **Includes category information for each form**, allowing frontend to group forms by category
-- Each form includes its `order` value for proper sequencing within its category
-- Requires appropriate permissions to access
 
 ### Reporting Year Implementation
 

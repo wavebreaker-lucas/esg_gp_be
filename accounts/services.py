@@ -246,4 +246,43 @@ def is_creator_on_layer(user, layer):
         layer=layer,
         user=user,
         user__role=RoleChoices.CREATOR
-    ).exists() 
+    ).exists()
+
+def get_user_layers_and_parents_ids(user):
+    """Gets all layer IDs accessible to the user (direct + parents).
+
+    This is used to find assignments inherited from parent layers.
+    """
+    # Ensure user is authenticated or handle appropriately if needed
+    if not user or not user.is_authenticated:
+        return set()
+
+    user_app_users = AppUser.objects.filter(user=user).select_related('layer')
+    # Handle cases where a user might somehow not have an AppUser/Layer assigned
+    user_layers = [app_user.layer for app_user in user_app_users if app_user.layer]
+
+    accessible_layer_ids = set()
+    for layer in user_layers:
+        accessible_layer_ids.add(layer.id)
+
+        current_layer = layer
+        # Traverse up the hierarchy
+        # Using hasattr avoids needing specific LayerType imports here
+        if hasattr(current_layer, 'branchlayer'):
+            # If it's a branch, get subsidiary and potentially group
+            subsidiary = current_layer.branchlayer.subsidiary_layer
+            if subsidiary:
+                accessible_layer_ids.add(subsidiary.id)
+                if hasattr(subsidiary, 'subsidiarylayer') and hasattr(subsidiary.subsidiarylayer, 'group_layer'):
+                    group = subsidiary.subsidiarylayer.group_layer
+                    if group:
+                        accessible_layer_ids.add(group.id)
+
+        elif hasattr(current_layer, 'subsidiarylayer'):
+             # If it's a subsidiary, get group
+             if hasattr(current_layer.subsidiarylayer, 'group_layer'):
+                 group = current_layer.subsidiarylayer.group_layer
+                 if group:
+                     accessible_layer_ids.add(group.id)
+
+    return accessible_layer_ids 
