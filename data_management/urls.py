@@ -1,6 +1,7 @@
 from rest_framework.routers import DefaultRouter
-from django.urls import path
+from django.urls import path, include
 # Removed ESGMetricViewSet, MetricValueFieldViewSet
+# Adjust import to include metrics view module
 from .views import (
     ESGFormViewSet, ESGFormCategoryViewSet, TemplateViewSet, 
     ESGMetricSubmissionViewSet, ESGMetricEvidenceViewSet, 
@@ -9,6 +10,8 @@ from .views import (
     AvailableLayersView, SumSubmissionsByLayerView, 
     ReportedMetricValueViewSet
 )
+# Import the metrics view separately (or adjust above import)
+from .views.form_definition import metrics as metric_views
 
 # Create a router for ViewSets
 router = DefaultRouter()
@@ -20,10 +23,13 @@ router.register(r'templates', TemplateViewSet, basename='template')
 router.register(r'metric-submissions', ESGMetricSubmissionViewSet, basename='metric-submission')
 router.register(r'metric-evidence', ESGMetricEvidenceViewSet, basename='metric-evidence')
 # router.register(r'esg-metrics', ESGMetricViewSet, basename='esg-metric') # Removed
+# Uncomment/add the registration for the new ESGMetricViewSet
+router.register(r'esg-metrics', metric_views.ESGMetricViewSet, basename='esgmetric')
 # router.register(r'metric-value-fields', MetricValueFieldViewSet, basename='metric-value-field') # Removed
 router.register(r'reported-metric-values', ReportedMetricValueViewSet, basename='reported-metric-value')
 
 # Export the router's URLs
+# Assuming this urls.py is included under /api/ in your main urls.py
 urlpatterns = router.urls
 
 # Add non-ViewSet URLs

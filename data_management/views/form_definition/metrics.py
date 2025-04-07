@@ -1,7 +1,7 @@
 """
 Views for managing individual ESG metrics and their value fields.
 """
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -11,6 +11,8 @@ from ...models import ESGForm
 # from ...models.templates import MetricValueField # Removed
 # Import new base model for future reference
 from ...models.polymorphic_metrics import BaseESGMetric 
+# Import polymorphic serializer
+from ...serializers.polymorphic_metrics import ESGMetricPolymorphicSerializer
 
 # Removed ESGMetricSerializer, MetricValueFieldSerializer
 # from ...serializers.templates import (
@@ -105,3 +107,41 @@ from accounts.permissions import BakerTillyAdmin
 #                 pass # Let serializer validation handle invalid metric ID
 #         else:
 #              serializer.save() 
+
+# --- NEW: ViewSet for Polymorphic ESG Metrics --- 
+
+class ESGMetricViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing polymorphic ESG metrics (Basic, TimeSeries, etc.).
+    Allows CRUD operations. Only Baker Tilly admins can modify.
+    """
+    # Use the base model for the queryset
+    # Note: Polymorphic manager automatically handles fetching appropriate subclasses
+    queryset = BaseESGMetric.objects.all().select_related('form', 'form__category').order_by('form__id', 'order') # Added ordering
+    # Use the polymorphic serializer
+    serializer_class = ESGMetricPolymorphicSerializer
+    permission_classes = [IsAuthenticated] # Base permission
+
+    def get_permissions(self):
+        """
+        Only Baker Tilly admins can create, update, or delete metrics.
+        All authenticated users can view metrics.
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            # Ensure BakerTillyAdmin is correctly imported and used
+            return [IsAuthenticated(), BakerTillyAdmin()]
+        # Allow read access for any authenticated user
+        return [IsAuthenticated()]
+
+    # Optional: Override methods if specific logic is needed
+    # For example, perform_create might need context or validation
+    # def perform_create(self, serializer):
+    #     # Example: Ensure form_id is provided if creating via this endpoint?
+    #     form_id = self.request.data.get('form_id')
+    #     if not form_id:
+    #         raise serializers.ValidationError({'form_id': 'This field is required when creating metrics directly.'})
+    #     serializer.save()
+
+    # Note: Creating metrics via POST /api/esg-metrics/ requires 'form_id' 
+    # and 'metric_subtype' in the payload. Using the form-specific 
+    # POST /api/esg-forms/{form_id}/add_metric/ is generally preferred. 
