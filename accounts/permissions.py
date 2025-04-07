@@ -8,6 +8,10 @@ from .models import (
     BranchLayer,
     CustomUser
 )
+# Import BaseESGMetric to check its instances
+from data_management.models.polymorphic_metrics import BaseESGMetric
+# Also import other needed models if not implicitly handled
+from data_management.models.templates import Template, ESGForm, ESGFormCategory
 
 class BakerTillyAccessMixin:
     """
@@ -16,17 +20,23 @@ class BakerTillyAccessMixin:
     """
     def has_permission(self, request, view):
         # Baker Tilly admins always have permission
-        if request.user.is_baker_tilly_admin:
+        # Use safer getattr check
+        if getattr(request.user, 'is_baker_tilly_admin', False):
             return True
         # Otherwise, check normal permissions
-        return super().has_permission(request, view)
+        # Ensure super() is called correctly based on MRO if this mixin is used elsewhere
+        if hasattr(super(), 'has_permission'):
+             return super().has_permission(request, view)
+        return True # Or False depending on desired default if no super().has_permission
 
     def has_object_permission(self, request, view, obj):
         # Baker Tilly admins can access any object
-        if request.user.is_baker_tilly_admin:
+        if getattr(request.user, 'is_baker_tilly_admin', False):
             return True
         # Otherwise, check normal permissions
-        return super().has_object_permission(request, view, obj)
+        if hasattr(super(), 'has_object_permission'):
+             return super().has_object_permission(request, view, obj)
+        return True # Or False depending on desired default
 
 class BakerTillyAdmin(BasePermission):
     """
@@ -34,26 +44,36 @@ class BakerTillyAdmin(BasePermission):
     Combines client setup and advisory capabilities.
     """
     def has_permission(self, request, view):
-        return request.user.is_baker_tilly_admin
+        is_admin = getattr(request.user, 'is_baker_tilly_admin', False)
+        # print(f"--- BakerTillyAdmin has_permission check: User={request.user}, IsAdmin={is_admin} ---")
+        return is_admin
 
     def has_object_permission(self, request, view, obj):
-        if not request.user.is_baker_tilly_admin:
+        print(f"--- BakerTillyAdmin: Checking object permission for user {request.user} on object {obj} (type: {type(obj)}) ---")
+        is_admin = getattr(request.user, 'is_baker_tilly_admin', False) # Safer check
+        print(f"User is_baker_tilly_admin: {is_admin}")
+
+        if not is_admin:
+            print("Permission DENIED: User is not Baker Tilly Admin.")
             return False
-            
-        # Full access to company and user management
-        if isinstance(obj, (LayerProfile, CustomUser, AppUser, 
-                          GroupLayer, SubsidiaryLayer, BranchLayer)):
-            return True
-            
-        # Can manage templates and configurations
-        if hasattr(obj, 'template_type') or hasattr(obj, 'is_configuration'):
-            return True
-            
-        # Allow access to Template objects
-        if obj.__class__.__name__ in ['Template', 'ESGForm', 'ESGFormCategory', 'ESGMetric']:
-            return True
-            
-        return False
+
+        # Add checks for other types if BakerTillyAdmin should manage them
+        if isinstance(obj, (LayerProfile, CustomUser, AppUser, GroupLayer, SubsidiaryLayer, BranchLayer)):
+             print(f"Permission GRANTED: Object is Layer/User type.")
+             return True
+        if isinstance(obj, (Template, ESGForm, ESGFormCategory)):
+             print(f"Permission GRANTED: Object is Template/Form/Category type.")
+             return True
+
+        # Check for Polymorphic Metrics
+        is_metric = isinstance(obj, BaseESGMetric)
+        print(f"Is object instance of BaseESGMetric? {is_metric}")
+        if is_metric:
+             print(f"Permission GRANTED: Object is BaseESGMetric instance.")
+             return True
+
+        print("Permission DENIED: Object type not recognized for admin object permission.")
+        return False # Default deny
 
 class IsManagement(BakerTillyAccessMixin, BasePermission):
     """
