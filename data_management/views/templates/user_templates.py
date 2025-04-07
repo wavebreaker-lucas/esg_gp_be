@@ -8,6 +8,8 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.models import AppUser, LayerProfile
 from ...models import TemplateAssignment
+from ...serializers.polymorphic_metrics import ESGMetricPolymorphicSerializer
+from ...serializers.templates import TemplateAssignmentSerializer
 
 
 class UserTemplateAssignmentView(views.APIView):
@@ -52,7 +54,9 @@ class UserTemplateAssignmentView(views.APIView):
                 
                 # Get template with forms and metrics
                 template = assignment.template
-                form_selections = template.templateformselection_set.select_related('form', 'form__category').prefetch_related('form__metrics')
+                form_selections = template.templateformselection_set.select_related(
+                    'form', 'form__category'
+                ).prefetch_related('form__polymorphic_metrics')
                 
                 # Create a flat list of forms with their metrics
                 forms_data = []
@@ -73,29 +77,22 @@ class UserTemplateAssignmentView(views.APIView):
                         'metrics': []
                     }
                     
-                    for metric in selection.form.metrics.all():
+                    # Iterate using the correct polymorphic related name
+                    for metric in selection.form.polymorphic_metrics.all():
                         # Only include metrics that match the form's regions or are for ALL locations
                         if metric.location == 'ALL' or metric.location in selection.regions:
-                            form_data['metrics'].append({
-                                'id': metric.id,
-                                'name': metric.name,
-                                'unit_type': metric.unit_type,
-                                'custom_unit': metric.custom_unit,
-                                'requires_evidence': metric.requires_evidence,
-                                'validation_rules': metric.validation_rules,
-                                'location': metric.location,
-                                'is_required': metric.is_required,
-                                'order': metric.order,
-                                'requires_time_reporting': metric.requires_time_reporting,
-                                'reporting_frequency': metric.reporting_frequency
-                            })
+                            # --- REFACTORED: Use Polymorphic Serializer --- 
+                            # Use the polymorphic serializer to get the correct representation
+                            serializer = ESGMetricPolymorphicSerializer(metric, context=self.get_serializer_context())
+                            form_data['metrics'].append(serializer.data) # Append the serialized data
+                            # --- End Refactor --- 
                     
-                    # Sort metrics by order
-                    form_data['metrics'].sort(key=lambda x: x['order'])
+                    # Sort metrics by order (using the 'order' field from the serialized data)
+                    form_data['metrics'].sort(key=lambda x: x.get('order', 0))
                     forms_data.append(form_data)
                 
-                # Sort forms by their selection order
-                forms_data.sort(key=lambda x: next((s.order for s in form_selections if s.form.id == x['form_id']), 0))
+                # Sort forms by their selection order in the template
+                forms_data.sort(key=lambda form_d: next((s.order for s in form_selections if s.form_id == form_d['form_id']), 0))
                 
                 response_data = {
                     'assignment_id': assignment.id,
@@ -119,19 +116,19 @@ class UserTemplateAssignmentView(views.APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
         else:
-            # Get all template assignments for these layers
+            # Get all template assignments for these layers (LIST VIEW)
             assignments = TemplateAssignment.objects.filter(
                 layer_id__in=accessible_layer_ids
             ).select_related('template', 'layer')
             
             # Add layer relationship info to each assignment
             assignments_data = []
+            user_direct_layers = [layer.id for layer in user_layers]
             for assignment in assignments:
-                from ...serializers.templates import TemplateAssignmentSerializer
-                assignment_data = TemplateAssignmentSerializer(assignment).data
+                # Use the imported TemplateAssignmentSerializer
+                assignment_data = TemplateAssignmentSerializer(assignment, context=self.get_serializer_context()).data
                 
                 # Add relationship info (direct or inherited)
-                user_direct_layers = [layer.id for layer in user_layers]
                 if assignment.layer_id in user_direct_layers:
                     assignment_data['relationship'] = 'direct'
                 else:
@@ -139,4 +136,12 @@ class UserTemplateAssignmentView(views.APIView):
                 
                 assignments_data.append(assignment_data)
             
-            return Response(assignments_data) 
+            return Response(assignments_data)
+
+    def get_serializer_context(self):
+        """Ensures request context is passed to serializers."""
+        return {
+            'request': self.request,
+            'format': self.format_kwarg,
+            'view': self
+        } 
