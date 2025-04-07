@@ -427,7 +427,7 @@ Returns all template assignments accessible to the authenticated user, including
 - Provides essential template information including status and due dates
 
 #### GET /api/user-templates/{assignment_id}/
-Returns detailed information about a specific template assignment, including all forms and metrics.
+Returns detailed **metadata** about a specific template assignment, such as status, dates, and layer information.
 
 **Response Example:**
 ```json
@@ -442,67 +442,7 @@ Returns detailed information about a specific template assignment, including all
   "reporting_period_start": "2024-01-01",
   "reporting_period_end": "2024-12-31",
   "reporting_year": 2025,
-  "relationship": "direct",
-  "forms": [
-    {
-      "form_id": 1,
-      "form_code": "HKEX-A1",
-      "form_name": "Environmental - Emissions",
-      "regions": ["HK", "PRC"],
-      "category": {
-        "id": 1,
-        "name": "Environmental",
-        "code": "environmental",
-        "icon": "leaf",
-        "order": 1
-      },
-      "order": 1,
-      "metrics": [
-        {
-          "id": 1,
-          "name": "Greenhouse gas emissions",
-          "unit_type": "tCO2e",
-          "custom_unit": null,
-          "requires_evidence": true,
-          "validation_rules": {"min": 0},
-          "location": "HK",
-          "is_required": true,
-          "order": 1,
-          "requires_time_reporting": false,
-          "reporting_frequency": null,
-          "is_multi_value": false
-        },
-        {
-          "id": 5,
-          "name": "Electricity consumption (CLP)",
-          "unit_type": "kWh",
-          "custom_unit": null,
-          "requires_evidence": true,
-          "validation_rules": {"min": 0},
-          "location": "HK",
-          "is_required": true,
-          "order": 2,
-          "requires_time_reporting": true,
-          "reporting_frequency": "monthly",
-          "is_multi_value": false
-        },
-        {
-          "id": 8,
-          "name": "Packaging material - Paper",
-          "unit_type": "tonnes",
-          "custom_unit": null,
-          "requires_evidence": true,
-          "validation_rules": {"min": 0},
-          "location": "HK",
-          "is_required": false,
-          "order": 3,
-          "requires_time_reporting": true,
-          "reporting_frequency": "monthly",
-          "is_multi_value": false
-        }
-      ]
-    }
-  ]
+  "relationship": "direct"
 }
 ```
 
