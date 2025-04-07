@@ -384,63 +384,137 @@ Returns all template assignments accessible to the authenticated user, including
 ```json
 [
   {
-    "id": 1,
-    "template": {
+    "id": 1, // Assignment ID
+    "template": { // Template Object (TemplateSerializer)
       "id": 1,
-      "name": "HKEX",
-      "description": "Investors are becoming increasingly aware...", // Truncated
+      "name": "HKEX ESG Reporting Template 2024",
+      "description": "Standard HKEX template covering Environmental, Social, and Governance aspects.",
+      "is_active": true,
+      "version": 1,
+      "created_by": 1, // User ID
+      "created_at": "2024-05-01T10:00:00Z",
+      "updated_at": "2024-05-10T11:30:00Z",
+      "selected_forms": [ // Nested List (TemplateFormSelectionSerializer)
+        {
+          "id": 10,
+          "form": { // Basic Form Details (ESGFormSerializer)
+            "id": 1,
+            "code": "HKEX-A1",
+            "name": "Environmental - Emissions",
+            "description": "Reporting on greenhouse gas emissions.",
+            "is_active": true,
+            "category": { // Nested Category (ESGFormCategorySerializer)
+              "id": 1,
+              "name": "Environmental",
+              "code": "environmental",
+              "icon": "leaf",
+              "order": 1
+            },
+            "category_id": 1,
+            "order": 1,
+            "metric_count": 3
+          },
+          "regions": ["HK", "PRC"],
+          "order": 1,
+          "is_completed": false,
+          "completed_at": null,
+          "completed_by": null
+        },
+        {
+          "id": 11,
+          "form": {
+            "id": 2,
+            "code": "HKEX-A2",
+            "name": "Environmental - Resource Use",
+            "description": "Reporting on consumption of resources like water and energy.",
+            "is_active": true,
+            "category": {
+              "id": 1,
+              "name": "Environmental",
+              "code": "environmental",
+              "icon": "leaf",
+              "order": 1
+            },
+            "category_id": 1,
+            "order": 2,
+            "metric_count": 2
+          },
+          "regions": ["HK"],
+          "order": 2,
+          "is_completed": false,
+          "completed_at": null,
+          "completed_by": null
+        }
+      ]
+    },
+    "layer": { // Nested Layer (LayerBasicSerializer)
+        "id": 5,
+        "company_name": "Example Subsidiary Ltd."
+    },
+    "assigned_to": 25, // User ID or null
+    "assigned_at": "2024-06-01T09:00:00Z",
+    "due_date": "2025-03-31",
+    "completed_at": null,
+    "reporting_period_start": "2024-01-01",
+    "reporting_period_end": "2024-12-31",
+    "reporting_year": 2024,
+    "status": "IN_PROGRESS",
+    "relationship": "direct" // Added by view
+  },
+  {
+    "id": 2, // Second Assignment example
+    "template": { // Template Object
+      "id": 2,
+      "name": "Governance Disclosure 2024",
+      "description": "Template for governance reporting.",
       "is_active": true,
       "version": 1,
       "created_by": 1,
-      "created_at": "2025-04-03T23:23:57.913307Z",
-      "updated_at": "2025-04-07T11:21:53.524304Z",
+      "created_at": "2024-04-15T14:00:00Z",
+      "updated_at": "2024-04-15T14:00:00Z",
       "selected_forms": [
-        // Note: Template's selected forms are nested here
-        // Example entry:
         {
-          "id": 2,
+          "id": 15,
           "form": {
-            "id": 1,
-            "code": "A2.1 & A2.2",
-            "name": "Use of Resource",
-            // ... other form fields
+            "id": 5,
+            "code": "HKEX-G1",
+            "name": "Governance - Board Structure",
+            "description": "Details about the board.",
+            "is_active": true,
+            "category": {
+              "id": 3,
+              "name": "Governance",
+              "code": "governance",
+              "icon": "balance-scale",
+              "order": 3
+            },
+            "category_id": 3,
+            "order": 1,
+            "metric_count": 4
           },
-          "regions": ["HK","PRC"],
+          "regions": ["ALL"],
           "order": 1,
-          "is_completed": false
-          // ... other selected_form fields
+          "is_completed": true,
+          "completed_at": "2024-11-01T16:00:00Z",
+          "completed_by": 30
         }
-        // ... more selected_forms ...
       ]
     },
-    "layer": 1, // Layer ID only
-    "assigned_to": null,
-    "assigned_at": "2025-04-03T23:24:46.361518Z",
-    "due_date": "2025-12-31",
-    "completed_at": null,
-    "reporting_period_start": "2025-01-01",
-    "reporting_period_end": "2025-12-31",
-    "reporting_year": 2025,
-    "status": "PENDING",
-    "relationship": "direct" // Added by the view
-  },
-  {
-    "id": 2,
-    "template": {
-      "id": 2,
-      "name": "Governance Disclosure 2024"
-    },
-    "layer": {
+    "layer": { // Layer for the second assignment
       "id": 1,
-      "name": "Parent Group"
+      "company_name": "Parent Group Inc."
     },
-    "status": "PENDING",
-    "due_date": "2024-12-31",
+    "assigned_to": 30, // User ID
+    "assigned_at": "2024-07-01T10:00:00Z",
+    "due_date": "2025-01-31",
+    "completed_at": "2024-11-01T16:00:00Z", // Example completed assignment
     "reporting_period_start": "2024-01-01",
     "reporting_period_end": "2024-12-31",
-    "reporting_year": 2025,
-    "relationship": "inherited"
+    "reporting_year": 2024,
+    "status": "SUBMITTED",
+    "relationship": "inherited" // Example inherited assignment
   }
+  // ... more assignments in the list ...
 ]
 ```
 
@@ -459,42 +533,80 @@ Returns detailed **metadata** about a specific template assignment, such as stat
   "id": 1,
   "template": {
     "id": 1,
-    "name": "HKEX",
-    "description": "Investors are becoming increasingly aware...", // Truncated
+    "name": "HKEX ESG Reporting Template 2024",
+    "description": "Standard HKEX template covering Environmental, Social, and Governance aspects.",
     "is_active": true,
     "version": 1,
-    "created_by": 1,
-    "created_at": "2025-04-03T23:23:57.913307Z",
-    "updated_at": "2025-04-07T11:21:53.524304Z",
+    "created_by": 1, // User ID
+    "created_at": "2024-05-01T10:00:00Z",
+    "updated_at": "2024-05-10T11:30:00Z",
     "selected_forms": [
-      // Note: Template's selected forms are nested here
-      // Example entry:
       {
-        "id": 2,
-        "form": {
+        "id": 10, // TemplateFormSelection ID
+        "form": { // Basic Form Details (from ESGFormSerializer)
           "id": 1,
-          "code": "A2.1 & A2.2",
-          "name": "Use of Resource",
-          // ... other form fields
+          "code": "HKEX-A1",
+          "name": "Environmental - Emissions",
+          "description": "Reporting on greenhouse gas emissions.",
+          "is_active": true,
+          "category": { // Nested Category (from ESGFormCategorySerializer)
+            "id": 1,
+            "name": "Environmental",
+            "code": "environmental",
+            "icon": "leaf",
+            "order": 1
+          },
+          "category_id": 1, // Write-only field, not typically shown in read response
+          "order": 1, // Form's order within its category
+          "metric_count": 3 // Example count of metrics in this form
         },
-        "regions": ["HK","PRC"],
-        "order": 1,
-        "is_completed": false
-        // ... other selected_form fields
+        "regions": ["HK", "PRC"], // Regions selected for this form in this template
+        "order": 1, // Order of this form within this template
+        "is_completed": false,
+        "completed_at": null,
+        "completed_by": null // User ID or null
+      },
+      {
+        "id": 11, // TemplateFormSelection ID
+        "form": { // Basic Form Details (from ESGFormSerializer)
+          "id": 2,
+          "code": "HKEX-A2",
+          "name": "Environmental - Resource Use",
+          "description": "Reporting on consumption of resources like water and energy.",
+          "is_active": true,
+          "category": { // Nested Category
+            "id": 1,
+            "name": "Environmental",
+            "code": "environmental",
+            "icon": "leaf",
+            "order": 1
+          },
+          "category_id": 1,
+          "order": 2,
+          "metric_count": 2
+        },
+        "regions": ["HK"], // Different regions for this form
+        "order": 2,
+        "is_completed": false,
+        "completed_at": null,
+        "completed_by": null
       }
-      // ... more selected_forms ...
+      // ... potentially more selected forms ...
     ]
   },
-  "layer": 1, // Layer ID only
-  "assigned_to": null,
-  "assigned_at": "2025-04-03T23:24:46.361518Z",
-  "due_date": "2025-12-31",
+  "layer": { // Nested Layer Details (from LayerBasicSerializer)
+      "id": 5,
+      "company_name": "Example Subsidiary Ltd."
+  },
+  "assigned_to": 25, // User ID or null
+  "assigned_at": "2024-06-01T09:00:00Z",
+  "due_date": "2025-03-31",
   "completed_at": null,
-  "reporting_period_start": "2025-01-01",
-  "reporting_period_end": "2025-12-31",
-  "reporting_year": 2025,
-  "status": "PENDING",
-  "relationship": "direct" // Added by the view
+  "reporting_period_start": "2024-01-01",
+  "reporting_period_end": "2024-12-31",
+  "reporting_year": 2024, // Or null/deprecated depending on implementation
+  "status": "IN_PROGRESS", // e.g., PENDING, IN_PROGRESS, SUBMITTED, VERIFIED, REJECTED
+  "relationship": "direct" // Added by the view ('direct' or 'inherited')
 }
 ```
 
@@ -509,43 +621,111 @@ Returns the detailed structure (forms and metrics) for a specific template assig
       "form_id": 1,
       "form_code": "HKEX-A1",
       "form_name": "Environmental - Emissions",
-      "regions": ["HK", "PRC"],
-      "category": {
+      "regions": ["HK", "PRC"], // Regions active for this form in this assignment
+      "category": { // Full Category Details
         "id": 1,
         "name": "Environmental",
         "code": "environmental",
         "icon": "leaf",
         "order": 1
       },
-      "order": 1,
-      "metrics": [
+      "order": 1, // Form's order within the template selection
+      "metrics": [ // Detailed Polymorphic Metrics List
         {
+          // --- Fields from BaseESGMetric ---
           "id": 1,
-          "metric_subtype": "BasicMetric",
-          "name": "Greenhouse gas emissions",
-          "unit_type": "tCO2e",
-          "custom_unit": null,
+          "metric_subtype": "BasicMetric", // Added by polymorphic serializer
+          "name": "Scope 1 GHG Emissions",
+          "description": "Direct emissions from owned or controlled sources.",
+          "order": 1, // Metric order within the form
           "requires_evidence": true,
           "validation_rules": {"min": 0},
-          "location": "HK",
+          "location": "ALL", // Location applicability
           "is_required": true,
-          "order": 1
+          "aggregates_inputs": true,
+          "help_text": "Report total Scope 1 emissions in tonnes of CO2e.",
+          "ocr_analyzer_id": null,
+          // --- Fields specific to BasicMetric ---
+          "unit_type": "tCO2e", // Display value or code
+          "custom_unit": null
         },
         {
+          // --- Fields from BaseESGMetric ---
+          "id": 2,
+          "metric_subtype": "BasicMetric",
+          "name": "Scope 2 GHG Emissions",
+          "description": "Indirect emissions from the generation of purchased energy.",
+          "order": 2,
+          "requires_evidence": true,
+          "validation_rules": {"min": 0},
+          "location": "ALL",
+          "is_required": true,
+          "aggregates_inputs": true,
+          "help_text": "Report total Scope 2 emissions in tonnes of CO2e.",
+          "ocr_analyzer_id": null,
+          // --- Fields specific to BasicMetric ---
+          "unit_type": "tCO2e",
+          "custom_unit": null
+        },
+        {
+           // --- Fields from BaseESGMetric ---
           "id": 5,
           "metric_subtype": "TimeSeriesMetric",
-          "name": "Electricity consumption (CLP)",
-          "unit_type": "kWh",
-          "custom_unit": null,
+          "name": "Electricity Consumption (Grid)",
+          "description": "Monthly electricity consumption from the grid.",
+          "order": 3,
           "requires_evidence": true,
+          "validation_rules": {"min": 0},
+          "location": "HK", // Specific location example
+          "is_required": true,
+          "aggregates_inputs": true,
+          "help_text": "Report monthly grid electricity usage in kWh.",
+          "ocr_analyzer_id": null,
+           // --- Fields specific to TimeSeriesMetric ---
+          "frequency": "monthly", // Display value or code
+          "aggregation_method": "SUM", // Display value or code
+          "unit_type": "kWh",
+          "custom_unit": null
+        }
+        // ... more metrics for this form ...
+      ]
+    },
+    {
+      "form_id": 2,
+      "form_code": "HKEX-A2",
+      "form_name": "Environmental - Resource Use",
+      "regions": ["HK"], // Regions active for this form in this assignment
+      "category": { // Full Category Details
+        "id": 1,
+        "name": "Environmental",
+        "code": "environmental",
+        "icon": "leaf",
+        "order": 1
+      },
+      "order": 2, // Form's order within the template selection
+      "metrics": [
+        {
+           // --- Fields from BaseESGMetric ---
+          "id": 10,
+          "metric_subtype": "BasicMetric",
+          "name": "Total Water Consumption",
+          "description": "Total water consumed from all sources.",
+          "order": 1,
+          "requires_evidence": false,
           "validation_rules": {"min": 0},
           "location": "HK",
           "is_required": true,
-          "order": 2,
-          "frequency": "monthly"
+          "aggregates_inputs": true,
+          "help_text": "Report total water usage in cubic meters (m³).",
+          "ocr_analyzer_id": null,
+           // --- Fields specific to BasicMetric ---
+          "unit_type": "m3",
+          "custom_unit": null
         }
+        // ... more metrics for this form ...
       ]
     }
+    // ... more forms ...
   ]
 }
 ```
