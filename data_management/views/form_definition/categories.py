@@ -35,7 +35,7 @@ class ESGFormCategoryViewSet(viewsets.ModelViewSet):
         categories = self.get_queryset()
         # Prefetch related forms and metrics for performance
         categories = categories.prefetch_related(
-            'forms__metrics'
+            'forms__polymorphic_metrics'
         )
         serializer = self.get_serializer(categories, many=True)
         return Response(serializer.data) 
