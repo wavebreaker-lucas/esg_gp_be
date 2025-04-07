@@ -70,7 +70,7 @@ class MultiFieldMetricSerializer(serializers.ModelSerializer):
 # --- Polymorphic Base Serializer ---
 
 class ESGMetricPolymorphicSerializer(PolymorphicSerializer):
-    model_serializer_mapping = {
+    serializer_mapping = {
         # BaseESGMetric: BaseMetricSerializer, # Optional: Define a serializer just for the base if needed
         BasicMetric: BasicMetricSerializer,
         TabularMetric: TabularMetricSerializer,
