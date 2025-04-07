@@ -444,7 +444,8 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         
         # Prepare data for the serializer
         metric_data = request.data.copy()
-        metric_data['form'] = form.pk # Ensure the form FK is set
+        # Use 'form_id', which matches the PrimaryKeyRelatedField in specific serializers
+        metric_data['form_id'] = form.pk # Ensure the form FK is set using the expected field name
 
         # Use the polymorphic serializer to create the metric
         # The request data MUST include 'metric_subtype' (or whatever resource_type_field_name is set to)
