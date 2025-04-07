@@ -188,20 +188,37 @@ class TemplateSerializer(serializers.ModelSerializer):
         
         return instance
 
+# --- Simple Serializer for Nested Layer Info ---
+class LayerBasicSerializer(serializers.ModelSerializer):
+    """Basic serializer for LayerProfile including just ID and name."""
+    class Meta:
+        model = LayerProfile
+        fields = ['id', 'company_name']
+        read_only_fields = fields # Make all fields read-only
+
+# --- Template Assignment Serializer --- 
+
 class TemplateAssignmentSerializer(serializers.ModelSerializer):
     template = TemplateSerializer(read_only=True)
-    template_id = serializers.PrimaryKeyRelatedField(queryset=Template.objects.all(), write_only=True)
-    layer = serializers.PrimaryKeyRelatedField(queryset=LayerProfile.objects.all())
+    template_id = serializers.PrimaryKeyRelatedField(queryset=Template.objects.all(), write_only=True, source='template') # Added source for clarity
+    # layer = serializers.PrimaryKeyRelatedField(queryset=LayerProfile.objects.all()) # Removed old field
+    layer = LayerBasicSerializer(read_only=True) # Use nested serializer for read operations
+    layer_id = serializers.PrimaryKeyRelatedField(queryset=LayerProfile.objects.all(), write_only=True, source='layer') # Add separate write field
     assigned_to = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all(), required=False, allow_null=True)
 
     class Meta:
         model = TemplateAssignment
-        fields = '__all__'
+        # fields = '__all__' # Replaced with explicit list
+        fields = [
+            'id', 'template', 'template_id', 'layer', 'layer_id', 'assigned_to', 
+            'assigned_at', 'due_date', 'completed_at', 'reporting_period_start', 
+            'reporting_period_end', 'reporting_year', 'status'
+        ] # Explicitly list fields to include new layer_id
         
     def create(self, validated_data):
-        template = validated_data.pop('template_id')
-        validated_data['template'] = template
-        return super().create(validated_data)
+        # template = validated_data.pop('template_id') # No longer needed due to source='template' on template_id
+        # validated_data['template'] = template
+        return super().create(validated_data) # Correctly call super to create the instance
 
 # === Moved Serializers from esg.py ===
 
