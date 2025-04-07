@@ -387,18 +387,42 @@ Returns all template assignments accessible to the authenticated user, including
     "id": 1,
     "template": {
       "id": 1,
-      "name": "Environmental Assessment 2024"
+      "name": "HKEX",
+      "description": "Investors are becoming increasingly aware...", // Truncated
+      "is_active": true,
+      "version": 1,
+      "created_by": 1,
+      "created_at": "2025-04-03T23:23:57.913307Z",
+      "updated_at": "2025-04-07T11:21:53.524304Z",
+      "selected_forms": [
+        // Note: Template's selected forms are nested here
+        // Example entry:
+        {
+          "id": 2,
+          "form": {
+            "id": 1,
+            "code": "A2.1 & A2.2",
+            "name": "Use of Resource",
+            // ... other form fields
+          },
+          "regions": ["HK","PRC"],
+          "order": 1,
+          "is_completed": false
+          // ... other selected_form fields
+        }
+        // ... more selected_forms ...
+      ]
     },
-    "layer": {
-      "id": 3,
-      "name": "Example Corp"
-    },
-    "status": "PENDING",
-    "due_date": "2024-12-31",
-    "reporting_period_start": "2024-01-01",
-    "reporting_period_end": "2024-12-31",
+    "layer": 1, // Layer ID only
+    "assigned_to": null,
+    "assigned_at": "2025-04-03T23:24:46.361518Z",
+    "due_date": "2025-12-31",
+    "completed_at": null,
+    "reporting_period_start": "2025-01-01",
+    "reporting_period_end": "2025-12-31",
     "reporting_year": 2025,
-    "relationship": "direct"
+    "status": "PENDING",
+    "relationship": "direct" // Added by the view
   },
   {
     "id": 2,
@@ -432,17 +456,45 @@ Returns detailed **metadata** about a specific template assignment, such as stat
 **Response Example:**
 ```json
 {
-  "assignment_id": 1,
-  "template_id": 1,
-  "template_name": "Environmental Assessment 2024",
-  "layer_id": 3,
-  "layer_name": "Example Corp",
-  "status": "PENDING",
-  "due_date": "2024-12-31",
-  "reporting_period_start": "2024-01-01",
-  "reporting_period_end": "2024-12-31",
+  "id": 1,
+  "template": {
+    "id": 1,
+    "name": "HKEX",
+    "description": "Investors are becoming increasingly aware...", // Truncated
+    "is_active": true,
+    "version": 1,
+    "created_by": 1,
+    "created_at": "2025-04-03T23:23:57.913307Z",
+    "updated_at": "2025-04-07T11:21:53.524304Z",
+    "selected_forms": [
+      // Note: Template's selected forms are nested here
+      // Example entry:
+      {
+        "id": 2,
+        "form": {
+          "id": 1,
+          "code": "A2.1 & A2.2",
+          "name": "Use of Resource",
+          // ... other form fields
+        },
+        "regions": ["HK","PRC"],
+        "order": 1,
+        "is_completed": false
+        // ... other selected_form fields
+      }
+      // ... more selected_forms ...
+    ]
+  },
+  "layer": 1, // Layer ID only
+  "assigned_to": null,
+  "assigned_at": "2025-04-03T23:24:46.361518Z",
+  "due_date": "2025-12-31",
+  "completed_at": null,
+  "reporting_period_start": "2025-01-01",
+  "reporting_period_end": "2025-12-31",
   "reporting_year": 2025,
-  "relationship": "direct"
+  "status": "PENDING",
+  "relationship": "direct" // Added by the view
 }
 ```
 
