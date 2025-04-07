@@ -14,7 +14,6 @@ class BasicMetricSerializer(serializers.ModelSerializer):
     form_id = serializers.PrimaryKeyRelatedField(
         queryset=ESGForm.objects.all(), source='form', write_only=True
     )
-    component_type = serializers.CharField(default='basic-input', read_only=True)
     class Meta:
         model = BasicMetric
         # Include base fields + specialized fields
@@ -26,7 +25,6 @@ class TabularMetricSerializer(serializers.ModelSerializer):
     form_id = serializers.PrimaryKeyRelatedField(
         queryset=ESGForm.objects.all(), source='form', write_only=True
     )
-    component_type = serializers.CharField(default='tabular-input', read_only=True)
     class Meta:
         model = TabularMetric
         fields = '__all__'
@@ -36,7 +34,6 @@ class MaterialTrackingMatrixMetricSerializer(serializers.ModelSerializer):
     form_id = serializers.PrimaryKeyRelatedField(
         queryset=ESGForm.objects.all(), source='form', write_only=True
     )
-    component_type = serializers.CharField(default='material-matrix-input', read_only=True)
     class Meta:
         model = MaterialTrackingMatrixMetric
         fields = '__all__'
@@ -46,7 +43,6 @@ class TimeSeriesMetricSerializer(serializers.ModelSerializer):
     form_id = serializers.PrimaryKeyRelatedField(
         queryset=ESGForm.objects.all(), source='form', write_only=True
     )
-    component_type = serializers.CharField(default='timeseries-input', read_only=True)
     class Meta:
         model = TimeSeriesMetric
         fields = '__all__'
@@ -56,7 +52,6 @@ class MultiFieldTimeSeriesMetricSerializer(serializers.ModelSerializer):
     form_id = serializers.PrimaryKeyRelatedField(
         queryset=ESGForm.objects.all(), source='form', write_only=True
     )
-    component_type = serializers.CharField(default='multifield-timeseries-input', read_only=True)
     class Meta:
         model = MultiFieldTimeSeriesMetric
         fields = '__all__'
@@ -66,7 +61,6 @@ class MultiFieldMetricSerializer(serializers.ModelSerializer):
     form_id = serializers.PrimaryKeyRelatedField(
         queryset=ESGForm.objects.all(), source='form', write_only=True
     )
-    component_type = serializers.CharField(default='multifield-input', read_only=True)
     class Meta:
         model = MultiFieldMetric
         fields = '__all__'
