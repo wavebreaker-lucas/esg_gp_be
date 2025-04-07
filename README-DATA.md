@@ -637,7 +637,6 @@ GET /api/reported-metric-values/?assignment=1&metric=5&layer=3&reporting_period=
     "id": 55, // ID of the ReportedMetricValue
     "assignment": 1,
     "metric": 5, // ID of the BaseESGMetric
-    "metric_name": "Annual Waste Disposal", // From metric relation
     // "metric_unit": "tonnes", // Unit is on specific metric, not easily available here
     "layer": 3,
     "layer_name": "Manufacturing Division", // From layer relation
@@ -666,12 +665,12 @@ GET /api/reported-metric-values/?assignment=1&metric=5&layer=3&reporting_period=
 ### Form and Template Management
 
 #### ESG Forms
-- `GET /api/esg-forms/`: List active ESG forms
-- `GET /api/esg-forms/{id}/`: Get specific form details
+- `GET /api/esg-forms/`: List active ESG forms. **Uses `ESGFormSerializer` and returns basic form details *without* nested metrics, but *includes* `metric_count` (the number of metrics associated with the form), optimized for list views.**
+- `GET /api/esg-forms/{id}/`: Get specific form details. **Uses `ESGFormDetailSerializer` and includes nested `polymorphic_metrics` for the specified form.**
 - `POST /api/esg-forms/`: Create new ESG form (Baker Tilly Admin only)
 - `PUT /api/esg-forms/{id}/`: Update ESG form (Baker Tilly Admin only)
 - `DELETE /api/esg-forms/{id}/`: Delete ESG form (Baker Tilly Admin only)
-- `GET /api/esg-forms/{id}/metrics/`: Get **polymorphic** metrics for a specific form (uses `ESGMetricPolymorphicSerializer`).
+- `GET /api/esg-forms/{id}/metrics/`: Get **polymorphic** metrics for a specific form (uses `ESGMetricPolymorphicSerializer`). **Note:** The detail view (`GET /api/esg-forms/{id}/`) now also includes these metrics.
 - `POST /api/esg-forms/{id}/add_metric/`: Add a **polymorphic** metric to a form (Admin only, requires `metric_subtype` in payload).
 - `GET /api/esg-forms/{id}/check_completion/?assignment_id={id}`: Check completion status (uses `ReportedMetricValue`, level 'A').
 - `POST /api/esg-forms/{id}/complete_form/`: Mark a form as completed (uses `ReportedMetricValue`, level 'A').

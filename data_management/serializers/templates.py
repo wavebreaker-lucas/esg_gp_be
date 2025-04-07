@@ -27,6 +27,8 @@ from .submission_data import (
     MultiFieldDataPointSerializer,
     PolymorphicSubmissionDataSerializer # Import the new polymorphic reader
 )
+# Import the polymorphic metric serializer
+from .polymorphic_metrics import ESGMetricPolymorphicSerializer 
 
 # --- Serializers for Removed/Obsolete Models (Commented Out) ---
 # class ESGMetricSerializer(serializers.ModelSerializer):
@@ -98,7 +100,7 @@ class ESGFormCategorySerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'code', 'icon', 'order']
 
 class ESGFormSerializer(serializers.ModelSerializer):
-    """Serializer for ESG forms with nested metrics"""
+    """Serializer for ESG forms (Basic List/Create/Update View)"""
     # metrics = ESGMetricSerializer(many=True, read_only=True) # Commented out: Needs Polymorphic relation
     category = ESGFormCategorySerializer(read_only=True)
     category_id = serializers.PrimaryKeyRelatedField(
@@ -106,11 +108,15 @@ class ESGFormSerializer(serializers.ModelSerializer):
         write_only=True,
         source='category'
     )
+    # Explicitly define the annotated field
+    metric_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = ESGForm
         # Removed 'metrics' from fields
-        fields = ['id', 'code', 'name', 'description', 'is_active', 'category', 'category_id', 'order']
+        # Add the annotated 'metric_count' field
+        fields = ['id', 'code', 'name', 'description', 'is_active', 'category', 'category_id', 'order', 'metric_count']
+        # No need to list metric_count in read_only_fields here, as it's defined as read_only above
         read_only_fields = ['id']
 
     def create(self, validated_data):
@@ -1030,4 +1036,26 @@ class ReportedMetricValueSerializer(serializers.ModelSerializer):
     # def get_metric_unit(self, obj):
     #     # Needs update for specialized types
     #     pass
+
+# --- NEW: Detail Serializer for ESG Forms (Includes Nested Metrics) ---
+class ESGFormDetailSerializer(serializers.ModelSerializer):
+    """Serializer for detailed ESG form view, including nested polymorphic metrics."""
+    category = ESGFormCategorySerializer(read_only=True)
+    # Use the related_name defined in BaseESGMetric.form ForeignKey
+    polymorphic_metrics = ESGMetricPolymorphicSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ESGForm
+        # Ensure 'polymorphic_metrics' matches the field name used above
+        fields = [
+            'id', 'code', 'name', 'description', 'is_active',
+            'category', 'order', 'polymorphic_metrics'
+        ]
+        read_only_fields = ['id', 'polymorphic_metrics'] # Metrics are read-only in the context of the form detail
+
+
+    def create(self, validated_data):
+        # ... existing code ...
+        pass
+
 # ----------------------------------

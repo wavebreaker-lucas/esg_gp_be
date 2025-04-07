@@ -2,12 +2,13 @@
 Views for managing ESG forms.
 """
 
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from django.utils import timezone
+from django.db.models import Count
 
 from accounts.permissions import BakerTillyAdmin
 from accounts.models import CustomUser, AppUser, LayerProfile
@@ -19,7 +20,7 @@ from ...models import (
 )
 from ...models.polymorphic_metrics import BaseESGMetric
 from ...serializers.templates import (
-    ESGFormSerializer, ESGMetricEvidenceSerializer
+    ESGFormSerializer, ESGFormDetailSerializer
 )
 from ...serializers import ESGMetricPolymorphicSerializer
 
@@ -30,9 +31,35 @@ class ESGFormViewSet(viewsets.ModelViewSet):
     Baker Tilly admins can create, update, and delete forms.
     Other users can only view forms.
     """
-    queryset = ESGForm.objects.filter(is_active=True)
-    serializer_class = ESGFormSerializer
-    permission_classes = [IsAuthenticated]
+    queryset = ESGForm.objects.select_related('category').all().order_by('category__order', 'order')
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        """Return appropriate serializer class based on action."""
+        if self.action == 'retrieve':
+            # Use the detailed serializer when fetching a single form instance
+            return ESGFormDetailSerializer
+        # Use the basic serializer for list, create, update, etc.
+        return ESGFormSerializer
+
+    def get_queryset(self):
+        """Optimize queryset based on action."""
+        # Start with the base queryset defined for the class
+        queryset = super().get_queryset()
+
+        if self.action == 'retrieve':
+            # For a single form detail view, prefetch the polymorphic metrics
+            # Use the correct 'related_name' from BaseESGMetric.form field
+            return queryset.prefetch_related('polymorphic_metrics')
+        elif self.action == 'list':
+            # For the list view, annotate with the count of metrics
+            # Use the correct related_name from BaseESGMetric.form
+            queryset = queryset.annotate(metric_count=Count('polymorphic_metrics'))
+            # No need to prefetch metrics here, just count them.
+            # select_related('category') is already in the base queryset.
+
+        # Return the optimized queryset for the current action
+        return queryset
 
     def get_permissions(self):
         """
