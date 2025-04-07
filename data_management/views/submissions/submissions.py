@@ -6,9 +6,13 @@ from rest_framework import viewsets, views, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
 from django.db import transaction, models
 from django.utils import timezone
 import logging
+# Import the filter backend and FilterSet
+import django_filters
+from django_filters.rest_framework import DjangoFilterBackend 
 
 from accounts.models import CustomUser, AppUser, LayerProfile
 from accounts.services import get_accessible_layers, has_layer_access
@@ -30,6 +34,21 @@ from ...serializers.templates import (
 
 logger = logging.getLogger(__name__)
 
+# --- Custom FilterSet --- 
+class ESGMetricSubmissionFilter(django_filters.FilterSet):
+    # RENAME Filter by the form ID via the related metric
+    form_id = django_filters.NumberFilter(field_name='metric__form', lookup_expr='exact')
+    # RENAME existing filters
+    assignment_id = django_filters.NumberFilter(field_name='assignment', lookup_expr='exact')
+    metric = django_filters.NumberFilter(field_name='metric', lookup_expr='exact')
+    reporting_period = django_filters.DateFilter(field_name='reporting_period', lookup_expr='exact')
+    is_verified = django_filters.BooleanFilter(field_name='is_verified')
+
+    class Meta:
+        model = ESGMetricSubmission
+        # UPDATE fields list to use new names
+        fields = ['assignment_id', 'metric', 'form_id', 'reporting_period', 'is_verified']
+
 class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing individual ESG metric submission inputs.
@@ -39,8 +58,11 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ESGMetricSubmissionSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [] # Add filters later if needed
-    # filterset_fields = ['assignment', 'metric', 'reporting_period', 'is_verified'] # Needs review
+    # Use the custom FilterSet
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = ESGMetricSubmissionFilter 
+    # Disable pagination
+    pagination_class = None 
 
     def get_queryset(self):
         """Ensure users only see submissions for layers they have access to."""
