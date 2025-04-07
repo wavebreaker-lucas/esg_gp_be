@@ -20,7 +20,7 @@ class BasicMetricSerializer(serializers.ModelSerializer):
         # Include base fields + specialized fields
         fields = '__all__'
         # Optional: Add specific read_only_fields if needed
-        # read_only_fields = ['polymorphic_ctype'] 
+        read_only_fields = ('form',)
 
 class TabularMetricSerializer(serializers.ModelSerializer):
     form_id = serializers.PrimaryKeyRelatedField(
@@ -30,6 +30,7 @@ class TabularMetricSerializer(serializers.ModelSerializer):
     class Meta:
         model = TabularMetric
         fields = '__all__'
+        read_only_fields = ('form',)
 
 class MaterialTrackingMatrixMetricSerializer(serializers.ModelSerializer):
     form_id = serializers.PrimaryKeyRelatedField(
@@ -39,6 +40,7 @@ class MaterialTrackingMatrixMetricSerializer(serializers.ModelSerializer):
     class Meta:
         model = MaterialTrackingMatrixMetric
         fields = '__all__'
+        read_only_fields = ('form',)
 
 class TimeSeriesMetricSerializer(serializers.ModelSerializer):
     form_id = serializers.PrimaryKeyRelatedField(
@@ -48,6 +50,7 @@ class TimeSeriesMetricSerializer(serializers.ModelSerializer):
     class Meta:
         model = TimeSeriesMetric
         fields = '__all__'
+        read_only_fields = ('form',)
 
 class MultiFieldTimeSeriesMetricSerializer(serializers.ModelSerializer):
     form_id = serializers.PrimaryKeyRelatedField(
@@ -57,6 +60,7 @@ class MultiFieldTimeSeriesMetricSerializer(serializers.ModelSerializer):
     class Meta:
         model = MultiFieldTimeSeriesMetric
         fields = '__all__'
+        read_only_fields = ('form',)
 
 class MultiFieldMetricSerializer(serializers.ModelSerializer):
     form_id = serializers.PrimaryKeyRelatedField(
@@ -66,6 +70,7 @@ class MultiFieldMetricSerializer(serializers.ModelSerializer):
     class Meta:
         model = MultiFieldMetric
         fields = '__all__'
+        read_only_fields = ('form',)
 
 # --- Polymorphic Base Serializer ---
 

@@ -440,20 +440,36 @@ class ESGFormViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, BakerTillyAdmin])
     def add_metric(self, request, pk=None):
         """Add a new polymorphic metric to this form."""
+        print(f"--- add_metric called for form ID: {pk} ---") # Log entry
+        print(f"Request data: {request.data}") # Log raw request data
+        
         form = self.get_object() # Get the target form
         
         # Prepare data for the serializer
         metric_data = request.data.copy()
         # Use 'form_id', which matches the PrimaryKeyRelatedField in specific serializers
         metric_data['form_id'] = form.pk # Ensure the form FK is set using the expected field name
+        print(f"Data passed to serializer: {metric_data}") # Log data before serialization
 
         # Use the polymorphic serializer to create the metric
         # The request data MUST include 'metric_subtype' (or whatever resource_type_field_name is set to)
         # to determine which specific metric model/serializer to use.
         serializer = ESGMetricPolymorphicSerializer(data=metric_data, context={'request': request})
         
+        print("Attempting serializer.is_valid()...") # Log before validation
         if serializer.is_valid():
-            serializer.save() # This creates the correct subclass instance
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            print("Serializer IS valid. Attempting save...") # Log success
+            try:
+                serializer.save() # This creates the correct subclass instance
+                print("Save successful.") # Log save success
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                print(f"!!! ERROR DURING SAVE: {type(e).__name__} - {e}") # Log save error
+                # Consider logging the full traceback here too for deeper debugging
+                import traceback
+                traceback.print_exc()
+                # Re-raise or return a 500
+                return Response({"error": "Internal server error during save.", "detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         else:
+            print(f"Serializer IS NOT valid. Errors: {serializer.errors}") # Log the actual errors
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

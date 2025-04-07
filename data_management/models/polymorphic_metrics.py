@@ -35,7 +35,7 @@ class BaseESGMetric(PolymorphicModel):
         related_name='polymorphic_metrics' # Use a new related_name to avoid conflicts initially
     )
     name = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
+    description = models.TextField(blank=True, null=True)
     order = models.PositiveIntegerField(default=0, help_text="Display order within the form")
     requires_evidence = models.BooleanField(default=False, help_text="Does this metric require supporting evidence?")
     validation_rules = models.JSONField(
@@ -60,7 +60,7 @@ class BaseESGMetric(PolymorphicModel):
         default=False,
         help_text="Indicates if this metric's value is derived from aggregating other inputs/metrics"
     )
-    help_text = models.TextField(blank=True, help_text="Optional guidance text displayed to the user in the form")
+    help_text = models.TextField(blank=True, null=True, help_text="Optional guidance text displayed to the user in the form")
 
     # --- NEW FIELD ---
     allow_multiple_submissions_per_period = models.BooleanField(
