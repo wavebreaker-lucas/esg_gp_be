@@ -10,8 +10,10 @@ from datetime import datetime
 import logging
 from django.db.models import Sum, F
 from django.db import models
+from django.core.exceptions import ObjectDoesNotExist
 
-from accounts.models import LayerProfile, AppUser
+# Import specific layer types
+from accounts.models import LayerProfile, AppUser, GroupLayer, SubsidiaryLayer, BranchLayer, LayerTypeChoices
 from accounts.services import get_accessible_layers, has_layer_access
 from ...models import BaseESGMetric, TemplateAssignment, ESGMetricSubmission
 
@@ -24,6 +26,50 @@ class AvailableLayersView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    def _get_specific_instance(self, layer_proxy):
+        """Helper to get the specific subclass instance from a LayerProfile proxy."""
+        if not isinstance(layer_proxy, LayerProfile):
+            return layer_proxy # Already specific instance
+        try:
+            if layer_proxy.layer_type == LayerTypeChoices.GROUP:
+                # Default related name is lowercase model name
+                return layer_proxy.grouplayer 
+            elif layer_proxy.layer_type == LayerTypeChoices.SUBSIDIARY:
+                return layer_proxy.subsidiarylayer
+            elif layer_proxy.layer_type == LayerTypeChoices.BRANCH:
+                return layer_proxy.branchlayer
+        except ObjectDoesNotExist: # Catch if related object doesn't exist
+            logger.warning(
+                f"Could not find specific instance for LayerProfile ID "
+                f"{layer_proxy.pk} with type {layer_proxy.layer_type}"
+            )
+        # Fallback if type doesn't match or related obj not found
+        return layer_proxy # Return base instance
+
+    def _get_parent(self, layer):
+        """Helper to get the actual parent layer based on type."""
+        # Ensure we have the specific instance before checking parent relation
+        specific_layer = self._get_specific_instance(layer)
+        if isinstance(specific_layer, BranchLayer):
+            return specific_layer.subsidiary_layer
+        elif isinstance(specific_layer, SubsidiaryLayer):
+            return specific_layer.group_layer
+        else: # GroupLayer or base LayerProfile
+            return None
+
+    def _get_children(self, layer):
+        """Helper to get child layers based on type."""
+        # Ensure we have the specific instance before checking child relation
+        specific_layer = self._get_specific_instance(layer)
+        if isinstance(specific_layer, GroupLayer):
+            # Use the specific instance to filter
+            return SubsidiaryLayer.objects.filter(group_layer=specific_layer) 
+        elif isinstance(specific_layer, SubsidiaryLayer):
+            # Use the specific instance to filter
+            return BranchLayer.objects.filter(subsidiary_layer=specific_layer)
+        else: # BranchLayer or base LayerProfile
+            return LayerProfile.objects.none() # Return empty queryset
+
     def get(self, request):
         """
         Get all layers that the current user has access to.
@@ -31,104 +77,115 @@ class AvailableLayersView(APIView):
         Optional parameters:
             assignment_id: Filter layers to those relevant for a specific assignment
         """
-        user_layers = get_accessible_layers(request.user)
+        user_layers_qs = get_accessible_layers(request.user) # Start with QuerySet
         assignment_id = request.query_params.get('assignment_id')
 
         if assignment_id:
             try:
-                assignment = TemplateAssignment.objects.get(id=assignment_id)
-                assignment_layer = assignment.layer
-
+                # Fetch the assignment and its layer
+                # Use select_related to potentially fetch subclass data efficiently
+                assignment = TemplateAssignment.objects.select_related(
+                    'layer__grouplayer', 
+                    'layer__subsidiarylayer', 
+                    'layer__branchlayer'
+                ).get(id=assignment_id)
+                # Use the helper to get the concrete layer instance
+                assignment_layer = self._get_specific_instance(assignment.layer) 
+                
                 if not has_layer_access(request.user, assignment_layer):
                     return Response({'error': f'You do not have access to layer {assignment_layer.id}'}, status=status.HTTP_403_FORBIDDEN)
 
                 # Logic to determine relevant layers based on assignment
-                # (This is a simplified version of the original logic for clarity)
-                # You might want to refine this based on your exact hierarchy needs
                 relevant_layers = set()
                 relevant_layers.add(assignment_layer)
 
-                # Add parent layers
-                parent = assignment_layer.get_parent_layer()
+                # Add parent layers using the helper
+                parent = self._get_parent(assignment_layer)
                 while parent:
+                    # Parent is already specific instance from _get_parent logic
                     if has_layer_access(request.user, parent):
                         relevant_layers.add(parent)
-                    parent = parent.get_parent_layer()
+                    parent = self._get_parent(parent) # Get next parent
 
-                # Add child layers
-                for child in assignment_layer.get_child_layers():
+                # Add child layers using the helper
+                children = self._get_children(assignment_layer)
+                for child in children:
+                    # Child is already specific instance from _get_children logic
                     if has_layer_access(request.user, child):
                         relevant_layers.add(child)
-                        # Optionally add grandchildren etc. recursively
-                        # for grandchild in child.get_child_layers(): ...
+                        # Get grandchildren
+                        grandchildren = self._get_children(child)
+                        for grandchild in grandchildren:
+                             # Grandchild is already specific instance
+                             if has_layer_access(request.user, grandchild):
+                                  relevant_layers.add(grandchild)
                 
-                user_layers = user_layers.filter(id__in=[layer.id for layer in relevant_layers])
+                # Filter the initial accessible layers queryset
+                user_layers_qs = user_layers_qs.filter(id__in=[layer.id for layer in relevant_layers])
 
             except TemplateAssignment.DoesNotExist:
                 return Response({'error': f'Assignment with ID {assignment_id} not found'}, status=status.HTTP_404_NOT_FOUND)
-            except Exception as e: # Catch potential errors from get_parent/child methods if they don't exist
-                # Log the error
-                logger.error(f"Error determining relevant layers for assignment {assignment_id}: {e}")
+            except ObjectDoesNotExist: # Catch if specific layer access fails
+                 logger.error(f"Could not find specific layer instance related to assignment {assignment_id}")
+                 return Response({'error': 'Internal server error resolving layer hierarchy.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except Exception as e: # Catch other potential errors
+                logger.error(f"Error determining relevant layers for assignment {assignment_id}: {type(e).__name__} - {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 # Fallback to just showing assignment layer if accessible
-                if has_layer_access(request.user, assignment.layer):
-                     user_layers = user_layers.filter(id=assignment.layer.id)
-                else:
-                     user_layers = LayerProfile.objects.none() # Should not happen due to initial check
+                try: # Need nested try for this fallback
+                    # Fetch base layer for fallback check
+                    assignment_layer_fb = TemplateAssignment.objects.get(id=assignment_id).layer
+                    if has_layer_access(request.user, assignment_layer_fb):
+                        user_layers_qs = user_layers_qs.filter(id=assignment_layer_fb.id)
+                    else:
+                        user_layers_qs = LayerProfile.objects.none() 
+                except TemplateAssignment.DoesNotExist:
+                    user_layers_qs = LayerProfile.objects.none() 
+                except Exception as fb_e:
+                    logger.error(f"Error during fallback layer access check: {fb_e}")
+                    user_layers_qs = LayerProfile.objects.none()
 
-        # Prepare result format (similar to original logic)
+
+        # Prepare result format
         result = []
         layers_processed = set()
-        
-        # Helper to add layer and its parents recursively
-        def add_layer_and_parents(layer, parent_data=None):
-            if layer.id in layers_processed:
-                return
+
+        # Order the queryset before iteration
+        # Add select_related for potential performance gain when getting specific instances
+        ordered_layers = user_layers_qs.select_related(
+            'grouplayer', 'subsidiarylayer', 'branchlayer'
+        ).order_by('layer_type', 'company_name')
+
+        for layer_proxy in ordered_layers:
+            if layer_proxy.id in layers_processed:
+                continue
+                
+            # Get the specific subclass instance using the helper
+            layer = self._get_specific_instance(layer_proxy) 
             
-            current_parent_data = None
-            parent_layer = layer.get_parent_layer()
-            if parent_layer and has_layer_access(request.user, parent_layer):
-                 current_parent_data = {
-                     'id': parent_layer.id,
-                     'name': parent_layer.company_name
-                 }
-                 add_layer_and_parents(parent_layer) # Recursive call for parent
+            parent_info = None
+            parent_layer = self._get_parent(layer)
+            if parent_layer:
+                 # Parent is already specific instance
+                 if has_layer_access(request.user, parent_layer):
+                      parent_info = {
+                         'id': parent_layer.id,
+                         'name': parent_layer.company_name
+                      }
             
             layer_data = {
                 'id': layer.id,
                 'name': layer.company_name,
-                'type': layer.layer_type,
+                'type': layer.layer_type, # Use the type from the instance
                 'location': layer.company_location,
-                'parent': parent_data or current_parent_data
+                'parent': parent_info # Use the potentially found parent info
             }
-            if layer.id not in layers_processed:
-                 result.append(layer_data)
-                 layers_processed.add(layer.id)
-        
-        # Add all accessible layers ensuring hierarchy is represented
-        # Order by type then name
-        ordered_layers = user_layers.order_by('layer_type', 'company_name')
-        for layer in ordered_layers:
-             # The recursive helper might have already added this layer when processing a child
-             if layer.id not in layers_processed:
-                  parent = layer.get_parent_layer()
-                  parent_info = None
-                  if parent and has_layer_access(request.user, parent):
-                       parent_info = {'id': parent.id, 'name': parent.company_name}
-                  
-                  # Check again if processed, as parent call might add it
-                  if layer.id not in layers_processed:
-                        result.append({
-                             'id': layer.id,
-                             'name': layer.company_name,
-                             'type': layer.layer_type,
-                             'location': layer.company_location,
-                             'parent': parent_info
-                        })
-                        layers_processed.add(layer.id)
+            result.append(layer_data)
+            layers_processed.add(layer.id)
 
-        # Ensure consistent sorting for the final list if needed
-        # Example: sort by type index, then name
-        type_order = {'GROUP': 0, 'SUBSIDIARY': 1, 'BRANCH': 2}
+        # Sort the final list (optional, but keeps original behavior)
+        type_order = {LayerTypeChoices.GROUP: 0, LayerTypeChoices.SUBSIDIARY: 1, LayerTypeChoices.BRANCH: 2}
         result.sort(key=lambda x: (type_order.get(x['type'], 99), x['name']))
 
         return Response(result)
