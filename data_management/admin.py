@@ -1,4 +1,5 @@
 from django.contrib import admin
+import logging # Import the logging module
 from .models.esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
 from .models.templates import (
     ESGFormCategory, ESGForm,
@@ -11,6 +12,9 @@ from .models.polymorphic_metrics import (
     BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
     TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric
 )
+
+# Initialize the logger
+logger = logging.getLogger(__name__)
 
 class BoundaryItemAdmin(admin.ModelAdmin):
     list_display = ('name', 'is_default')
@@ -84,6 +88,7 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
         'id', 
         'assignment', 
         'metric_display',
+        'get_submitted_value',
         'reporting_period', 
         'submitted_by', 
         'submitted_at',
@@ -92,7 +97,7 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
     )
     list_filter = ('assignment__template', 'assignment__layer', 'metric', 'reporting_period', 'is_verified', 'submitted_by')
     search_fields = ('metric__name', 'assignment__template__name', 'assignment__layer__company_name', 'notes', 'verification_notes')
-    readonly_fields = ('submitted_at', 'updated_at', 'verified_at')
+    readonly_fields = ('submitted_at', 'updated_at', 'verified_at', 'get_submitted_value')
     raw_id_fields = ['metric', 'assignment', 'submitted_by', 'verified_by']
     list_select_related = ('metric', 'assignment', 'layer', 'submitted_by', 'verified_by')
     inlines = []
@@ -100,6 +105,34 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
     def metric_display(self, obj):
         return obj.metric.name if obj.metric else "No Metric"
     metric_display.short_description = "Metric"
+    
+    def get_submitted_value(self, obj):
+        """Display the actual submitted value based on metric type."""
+        try:
+            # Ensure we have the specific metric instance
+            metric = obj.metric.get_real_instance()
+            
+            # Check metric type and fetch corresponding data
+            if isinstance(metric, BasicMetric):
+                try:
+                    data = obj.basic_data
+                    val = data.value_numeric if data.value_numeric is not None else data.value_text
+                    return val
+                except obj._meta.get_field('basic_data').related_model.DoesNotExist:
+                    return "(No basic data)"
+            elif isinstance(metric, TimeSeriesMetric):
+                # For time series, maybe show count or last value? Showing count for now.
+                return f"{obj.timeseries_data_points.count()} points"
+            elif isinstance(metric, TabularMetric):
+                return f"{obj.tabular_rows.count()} rows"
+            # Add checks for other metric types (Material, MultiField, etc.) here
+            else:
+                return "(Data type not shown)"
+        except Exception as e:
+            # Catch errors like missing related objects or metric type issues
+            logger.error(f"Error getting submitted value for Submission {obj.pk}: {e}")
+            return "(Error)"
+    get_submitted_value.short_description = "Submitted Value"
 
 @admin.register(ESGMetricEvidence)
 class ESGMetricEvidenceAdmin(admin.ModelAdmin):
