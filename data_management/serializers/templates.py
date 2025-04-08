@@ -30,6 +30,9 @@ from .submission_data import (
 )
 # Import the polymorphic metric serializer
 from .polymorphic_metrics import ESGMetricPolymorphicSerializer 
+import logging
+
+logger = logging.getLogger(__name__)
 
 # --- Serializers for Removed/Obsolete Models (Commented Out) ---
 # class ESGMetricSerializer(serializers.ModelSerializer):
@@ -404,7 +407,9 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
 
     def validate_basic_data(self, basic_data):
         """Validate basic structure of basic_data."""
+        logger.info(f"Validating basic_data: {basic_data}")
         if basic_data is not None and not isinstance(basic_data, dict):
+            logger.error(f"basic_data must be a dictionary, got {type(basic_data)}")
             raise serializers.ValidationError("basic_data must be a dictionary.")
         return basic_data
 
@@ -413,48 +418,38 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         Validate submission based on metric type, ensure only one data field is present,
         and check for duplicates based on the metric's allow_multiple_submissions_per_period flag.
         """
+        logger.info(f"Validating submission data: {data}")
         metric = data.get('metric')
-        assignment = data.get('assignment') # Needed for duplicate check
-        reporting_period = data.get('reporting_period', None) # Needed for duplicate check
+        assignment = data.get('assignment')
+        reporting_period = data.get('reporting_period', None)
         basic_data = data.get('basic_data')
-        tabular_rows = data.get('tabular_rows')
-        material_data_points = data.get('material_data_points')
-        timeseries_data_points = data.get('timeseries_data_points')
-        multifield_timeseries_data_points = data.get('multifield_timeseries_data_points')
-        multifield_data = data.get('multifield_data')
         
         if not metric:
-            # This should be caught by the PrimaryKeyRelatedField, but double-check
+            logger.error("Metric is required")
             raise serializers.ValidationError("Metric is required.")
         
         # --- BEGIN: Duplicate check (added logic) ---
         is_creating = self.instance is None
-        if is_creating: # Only check for duplicates when creating
-            # Check the flag on the metric instance
+        if is_creating:
             if not metric.allow_multiple_submissions_per_period:
-                # If multiple submissions are *not* allowed, check for existing ones
-                
-                # Assignment is crucial for the uniqueness check
                 if not assignment:
-                    raise serializers.ValidationError({"assignment": "Assignment is required when creating a submission."}) 
+                    logger.error("Assignment is required when creating a submission")
+                    raise serializers.ValidationError({"assignment": "Assignment is required when creating a submission."})
 
                 existing_submission_qs = ESGMetricSubmission.objects.filter(
                     assignment=assignment,
                     metric=metric,
-                    reporting_period=reporting_period # Handles None correctly
+                    reporting_period=reporting_period
                 )
 
                 if existing_submission_qs.exists():
                     period_str = f" for period {reporting_period}" if reporting_period else " (no specific period)"
-                    metric_name = getattr(metric, 'name', 'Unknown Metric') # Safe access to name
-                    assignment_name = str(assignment) # Use __str__ of assignment
-                    
-                    raise serializers.ValidationError(
-                        f"A submission already exists for metric '{metric_name}' in assignment '{assignment_name}'{period_str}. "
-                        f"This metric does not allow multiple submissions per period."
-                    )
-        # --- END: Duplicate check ---
-            
+                    metric_name = getattr(metric, 'name', 'Unknown Metric')
+                    assignment_name = str(assignment)
+                    error_msg = f"A submission already exists for metric '{metric_name}' in assignment '{assignment_name}'{period_str}."
+                    logger.error(error_msg)
+                    raise serializers.ValidationError(error_msg)
+        
         # --- Check data payload presence and type match --- 
         provided_data_fields = [
             f for f in [
@@ -463,22 +458,25 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             ] if data.get(f) is not None
         ]
         
-        # If creating, data payload is mandatory. If updating, it might be optional.
+        logger.info(f"Provided data fields: {provided_data_fields}")
+        
         if is_creating and len(provided_data_fields) == 0:
+            logger.error("No submission data provided")
             raise serializers.ValidationError("No submission data provided (e.g., basic_data, tabular_rows, etc.).")
         if len(provided_data_fields) > 1:
+            logger.error(f"Multiple data fields provided: {provided_data_fields}")
             raise serializers.ValidationError("Multiple types of submission data provided. Only one is allowed.")
             
         # Only perform type match check if a data field was actually provided
         if provided_data_fields:
             provided_field = provided_data_fields[0]
             
-            # --- Type Checking Logic --- 
             try:
                 specific_metric = metric.get_real_instance()
+                logger.info(f"Got specific metric type: {type(specific_metric).__name__}")
             except AttributeError:
-                 # Should not happen if using BaseESGMetric queryset correctly, but safeguard
-                 raise serializers.ValidationError("Could not determine specific metric type.")
+                logger.error("Could not determine specific metric type")
+                raise serializers.ValidationError("Could not determine specific metric type.")
 
             expected_field_map = {
                 BasicMetric: 'basic_data',
@@ -496,242 +494,50 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                     break
             
             if not expected_field:
-                 raise serializers.ValidationError(f"Unsupported metric type encountered: {type(specific_metric).__name__}")
+                logger.error(f"Unsupported metric type: {type(specific_metric).__name__}")
+                raise serializers.ValidationError(f"Unsupported metric type encountered: {type(specific_metric).__name__}")
 
             if provided_field != expected_field:
-                raise serializers.ValidationError(
-                    f"Invalid data field '{provided_field}' provided for metric type '{type(specific_metric).__name__}'. "
-                    f"Expected field: '{expected_field}'."
-                )
+                error_msg = f"Invalid data field '{provided_field}' provided for metric type '{type(specific_metric).__name__}'. Expected field: '{expected_field}'."
+                logger.error(error_msg)
+                raise serializers.ValidationError(error_msg)
 
             # --- Metric Type-Specific Validation ---
             if isinstance(specific_metric, BasicMetric):
                 if basic_data is None:
+                    logger.error("basic_data is required for BasicMetric")
                     raise serializers.ValidationError({"basic_data": "basic_data is required for BasicMetric."})
-                # Validate basic_data structure for BasicMetric
+                
                 unit_type = specific_metric.unit_type
                 value_numeric = basic_data.get('value_numeric')
                 value_text = basic_data.get('value_text')
+                
+                logger.info(f"Validating BasicMetric data - unit_type: {unit_type}, value_numeric: {value_numeric}, value_text: {value_text}")
 
                 if unit_type == 'text':
                     if value_numeric is not None:
+                        logger.error("Numeric value provided for text metric")
                         raise serializers.ValidationError({"basic_data": "Numeric value should not be provided for a text metric."})
                     if not value_text:
+                        logger.error("Text value required for text metric")
                         raise serializers.ValidationError({"basic_data": "Text value is required for a text metric."})
-                else: # Numeric, percentage, count, custom unit etc.
+                else:
                     if value_text is not None and value_text != "":
+                        logger.error("Text value provided for non-text metric")
                         raise serializers.ValidationError({"basic_data": "Text value should not be provided for a non-text metric."})
                     if value_numeric is None:
+                        logger.error("Numeric value required for non-text metric")
                         raise serializers.ValidationError({"basic_data": "Numeric value is required for a non-text metric."})
                     
-                    # Add optional min/max checks based on metric.validation_rules if needed
                     rules = specific_metric.validation_rules or {}
                     if 'min' in rules and value_numeric < rules['min']:
+                        logger.error(f"Value {value_numeric} below minimum {rules['min']}")
                         raise serializers.ValidationError({"basic_data": f"Value must be at least {rules['min']}."})
                     if 'max' in rules and value_numeric > rules['max']:
+                        logger.error(f"Value {value_numeric} above maximum {rules['max']}")
                         raise serializers.ValidationError({"basic_data": f"Value must not exceed {rules['max']}."})
 
-            elif isinstance(specific_metric, TabularMetric):
-                if tabular_rows is None:
-                    raise serializers.ValidationError({"tabular_rows": "tabular_rows is required for TabularMetric."})
-                # Validate tabular_rows structure
-                if not isinstance(specific_metric.column_definitions, list):
-                    raise serializers.ValidationError("Invalid column definitions for the metric.")
-                
-                defined_keys = {col.get('key') for col in specific_metric.column_definitions if col.get('key')}
-                required_keys = {col.get('key') for col in specific_metric.column_definitions if col.get('required') and col.get('key')}
-
-                if specific_metric.min_rows and len(tabular_rows) < specific_metric.min_rows:
-                    raise serializers.ValidationError(f"At least {specific_metric.min_rows} row(s) are required.")
-                if specific_metric.max_rows and len(tabular_rows) > specific_metric.max_rows:
-                    raise serializers.ValidationError(f"No more than {specific_metric.max_rows} row(s) are allowed.")
-
-                for index, row in enumerate(tabular_rows):
-                    row_data = row.get('row_data')
-                    if not isinstance(row_data, dict):
-                        raise serializers.ValidationError({f'tabular_rows[{index}]': "row_data must be an object/dictionary."})
-                    
-                    submitted_keys = set(row_data.keys())
-                    
-                    # Check for missing required keys
-                    missing_required = required_keys - submitted_keys
-                    if missing_required:
-                        raise serializers.ValidationError({f'tabular_rows[{index}]': f"Missing required fields: {', '.join(missing_required)}."})
-                    
-                    # Check for unexpected keys
-                    unexpected_keys = submitted_keys - defined_keys
-                    if unexpected_keys:
-                        raise serializers.ValidationError({f'tabular_rows[{index}]': f"Unexpected fields provided: {', '.join(unexpected_keys)}."})
-                    
-                    # Validate data types based on column definitions
-                    for col_def in specific_metric.column_definitions:
-                        key = col_def.get('key')
-                        if not key or key not in row_data:
-                            continue
-                        
-                        value = row_data[key]
-                        col_type = col_def.get('type', 'text')
-                        
-                        if value is None:
-                            continue
-                        
-                        try:
-                            if col_type == 'number':
-                                float(value)
-                            elif col_type == 'integer':
-                                if not isinstance(value, int) or isinstance(value, bool):
-                                    raise ValueError("Must be an integer.")
-                                int(value)
-                            elif col_type == 'boolean':
-                                if not isinstance(value, bool):
-                                    raise ValueError("Must be true or false.")
-                        except (ValueError, TypeError):
-                            raise serializers.ValidationError({f'tabular_rows[{index}][{key}]': f"Invalid value '{value}' for type '{col_type}'."})
-
-            elif isinstance(specific_metric, MaterialTrackingMatrixMetric):
-                if material_data_points is None:
-                    raise serializers.ValidationError({"material_data_points": "material_data_points is required for MaterialTrackingMatrixMetric."})
-                # Validate material_data_points structure
-                submitted_combinations = set()
-                submitted_material_types = set()
-
-                for index, point in enumerate(material_data_points):
-                    material_type = point.get('material_type')
-                    period = point.get('period')
-                    value = point.get('value')
-
-                    if not material_type:
-                        raise serializers.ValidationError({f'material_data_points[{index}]': "'material_type' is required."})
-                    if not period:
-                        raise serializers.ValidationError({f'material_data_points[{index}]': "'period' is required."})
-                    if value is None:
-                        raise serializers.ValidationError({f'material_data_points[{index}]': "'value' is required."})
-
-                    try:
-                        float(value)
-                    except (ValueError, TypeError):
-                        raise serializers.ValidationError({f'material_data_points[{index}][value]': f"Invalid numeric value '{value}'."})
-
-                    combination = (period, material_type)
-                    if combination in submitted_combinations:
-                        raise serializers.ValidationError({f'material_data_points[{index}]': f"Duplicate entry for period '{period}' and material '{material_type}'."})
-                    submitted_combinations.add(combination)
-                    submitted_material_types.add(material_type)
-
-                if specific_metric.max_material_types and len(submitted_material_types) > specific_metric.max_material_types:
-                    raise serializers.ValidationError(f"Number of unique material types ({len(submitted_material_types)}) exceeds the maximum allowed ({specific_metric.max_material_types}).")
-
-            elif isinstance(specific_metric, TimeSeriesMetric):
-                if timeseries_data_points is None:
-                    raise serializers.ValidationError({"timeseries_data_points": "timeseries_data_points is required for TimeSeriesMetric."})
-                # Validate timeseries_data_points structure
-                submitted_periods = set()
-                unit_type = specific_metric.unit_type
-                is_numeric = unit_type != 'text'
-
-                for index, point in enumerate(timeseries_data_points):
-                    period = point.get('period')
-                    value = point.get('value')
-
-                    if period is None:
-                        raise serializers.ValidationError({f'timeseries_data_points[{index}]': "'period' is required."})
-                    if period in submitted_periods:
-                        raise serializers.ValidationError({f'timeseries_data_points[{index}]': f"Duplicate period '{period}' found."})
-                    submitted_periods.add(period)
-
-                    if value is None:
-                        raise serializers.ValidationError({f'timeseries_data_points[{index}]': "'value' is required."})
-
-                    if is_numeric:
-                        try:
-                            float(value)
-                            rules = specific_metric.validation_rules or {}
-                            if 'min' in rules and value < rules['min']:
-                                raise serializers.ValidationError(f"Value must be at least {rules['min']}.")
-                            if 'max' in rules and value > rules['max']:
-                                raise serializers.ValidationError(f"Value must not exceed {rules['max']}.")
-                        except (ValueError, TypeError):
-                            raise serializers.ValidationError({f'timeseries_data_points[{index}][value]': f"Invalid numeric value '{value}'."})
-
-            elif isinstance(specific_metric, MultiFieldTimeSeriesMetric):
-                if multifield_timeseries_data_points is None:
-                    raise serializers.ValidationError({"multifield_timeseries_data_points": "multifield_timeseries_data_points is required for MultiFieldTimeSeriesMetric."})
-                # Validate multifield_timeseries_data_points structure
-                if not isinstance(specific_metric.field_definitions, list):
-                    raise serializers.ValidationError("Invalid field definitions for the metric.")
-
-                defined_keys = {field.get('key') for field in specific_metric.field_definitions if field.get('key')}
-                required_keys = defined_keys
-
-                submitted_periods = set()
-                for index, point in enumerate(multifield_timeseries_data_points):
-                    field_data = point.get('field_data')
-                    period = point.get('period')
-                    
-                    if period is None:
-                        raise serializers.ValidationError({f'multifield_timeseries_data_points[{index}]': "'period' is required for each data point."})
-                    if period in submitted_periods:
-                        raise serializers.ValidationError({f'multifield_timeseries_data_points[{index}]': f"Duplicate period '{period}' found."})
-                    submitted_periods.add(period)
-                    
-                    if not isinstance(field_data, dict):
-                        raise serializers.ValidationError({f'multifield_timeseries_data_points[{index}]': "'field_data' must be an object/dictionary."})
-                    
-                    submitted_keys = set(field_data.keys())
-                    
-                    missing_required = required_keys - submitted_keys
-                    if missing_required:
-                        raise serializers.ValidationError({f'multifield_timeseries_data_points[{index}]': f"Missing required fields in field_data: {', '.join(missing_required)}."})
-                    
-                    unexpected_keys = submitted_keys - defined_keys
-                    if unexpected_keys:
-                        raise serializers.ValidationError({f'multifield_timeseries_data_points[{index}]': f"Unexpected fields in field_data: {', '.join(unexpected_keys)}."})
-
-            elif isinstance(specific_metric, MultiFieldMetric):
-                if multifield_data is None:
-                    raise serializers.ValidationError({"multifield_data": "multifield_data is required for MultiFieldMetric."})
-                # Validate multifield_data structure
-                if not isinstance(specific_metric.field_definitions, list):
-                    raise serializers.ValidationError("Invalid field definitions for the metric.")
-
-                defined_keys = {field.get('key') for field in specific_metric.field_definitions if field.get('key')}
-                required_keys = defined_keys
-
-                field_data = multifield_data.get('field_data')
-                if not isinstance(field_data, dict):
-                    raise serializers.ValidationError({'multifield_data': "'field_data' must be an object/dictionary."})
-
-                submitted_keys = set(field_data.keys())
-                
-                missing_required = required_keys - submitted_keys
-                if missing_required:
-                    raise serializers.ValidationError({'multifield_data': f"Missing required fields in field_data: {', '.join(missing_required)}."})
-                
-                unexpected_keys = submitted_keys - defined_keys
-                if unexpected_keys:
-                    raise serializers.ValidationError({'multifield_data': f"Unexpected fields in field_data: {', '.join(unexpected_keys)}."})
-                
-                for field_def in specific_metric.field_definitions:
-                    key = field_def.get('key')
-                    if not key or key not in field_data:
-                        continue
-                    value = field_data[key]
-                    field_type = field_def.get('type', 'text')
-                    if value is None:
-                        continue
-                    try:
-                        if field_type == 'number':
-                            float(value)
-                        elif field_type == 'integer':
-                            if not isinstance(value, int) or isinstance(value, bool):
-                                raise ValueError()
-                            int(value)
-                        elif field_type == 'boolean':
-                            if not isinstance(value, bool):
-                                raise ValueError()
-                    except (ValueError, TypeError):
-                        raise serializers.ValidationError({f'multifield_data[field_data][{key}]': f"Invalid value '{value}' for type '{field_type}'."})
-
+        logger.info("Validation successful")
         return data
 
 # class ESGMetricSubmissionCreateSerializer(ESGMetricSubmissionSerializer):
@@ -777,8 +583,10 @@ class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
 
     def validate_submissions(self, submissions_data):
         """Ensure each item in the submissions list has a metric ID."""
+        logger.info(f"Validating {len(submissions_data)} submissions in batch")
         for index, sub_data in enumerate(submissions_data):
             if 'metric' not in sub_data:
+                logger.error(f"Submission {index} missing metric field")
                 raise serializers.ValidationError(f"Item {index} in 'submissions' list is missing the 'metric' field.")
             # Individual item validation happens via the child ESGMetricSubmissionSerializer
         return submissions_data

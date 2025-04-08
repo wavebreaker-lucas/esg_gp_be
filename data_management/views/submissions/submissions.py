@@ -158,21 +158,27 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
     @transaction.atomic # Ensure all submissions succeed or fail together
     def batch_submit(self, request):
         """Handle batch submission of multiple metric inputs for a single assignment."""
+        logger.info(f"Received batch submission request: {request.data}")
+        
         batch_serializer = ESGMetricBatchSubmissionSerializer(data=request.data, context=self.get_serializer_context())
         if not batch_serializer.is_valid():
+            logger.error(f"Batch submission validation failed: {batch_serializer.errors}")
             return Response(batch_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         assignment = batch_serializer.validated_data['assignment_id']
         submissions_data = batch_serializer.validated_data['submissions']
+        logger.info(f"Processing {len(submissions_data)} submissions for assignment {assignment.pk}")
         
         # Check if user has access to the target assignment's layer
         if not has_layer_access(request.user, assignment.layer_id):
-             return Response({"detail": "You do not have permission for this assignment's layer."}, status=status.HTTP_403_FORBIDDEN)
+            logger.error(f"User {request.user} does not have access to layer {assignment.layer_id}")
+            return Response({"detail": "You do not have permission for this assignment's layer."}, status=status.HTTP_403_FORBIDDEN)
 
         results = []
         errors = []
 
         for index, sub_data in enumerate(submissions_data):
+            logger.info(f"Processing submission {index + 1}/{len(submissions_data)}: {sub_data}")
             # Add assignment and potentially user context to each individual submission data
             sub_data['assignment'] = assignment.pk # Pass assignment ID
             
@@ -184,20 +190,22 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
                 try:
                     # Perform create logic (no instance passed)
                     instance = item_serializer.save()
+                    logger.info(f"Successfully saved submission {index + 1}")
                     results.append(item_serializer.data) # Append serialized result of created object
                 except Exception as e:
                     # Catch potential errors during save (though validation should prevent most)
-                    logger.error(f"Error saving batch submission item {index}: {e}")
-                    errors.append({f"item_{index}": f"Error during save: {e}"})
+                    logger.error(f"Error saving batch submission item {index}: {str(e)}", exc_info=True)
+                    errors.append({f"item_{index}": f"Error during save: {str(e)}"})
             else:
+                logger.error(f"Validation failed for submission {index + 1}: {item_serializer.errors}")
                 errors.append({f"item_{index}": item_serializer.errors})
 
         if errors:
             # If any item failed, the transaction will be rolled back.
             # Return the collected errors.
-            # Note: Because of @transaction.atomic, partial success is not possible.
-            # Consider removing @transaction.atomic if partial success is desired.
+            logger.error(f"Batch submission failed with errors: {errors}")
             return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
         
         # If all items succeeded
+        logger.info(f"Successfully processed all {len(results)} submissions")
         return Response(results, status=status.HTTP_201_CREATED)
