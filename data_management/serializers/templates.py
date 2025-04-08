@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from accounts.models import CustomUser, LayerProfile
+from accounts.services import get_accessible_layers
 # Updated imports: Removed deleted models, added BaseESGMetric placeholder
 from ..models.templates import (
     ESGFormCategory, ESGForm,
@@ -843,15 +844,31 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
              pass # Or raise serializers.ValidationError("Submitting user context is required.")
             
         # --- Set layer from assignment if not provided --- 
-        if 'assignment' in validated_data and not validated_data.get('layer'):
-            validated_data['layer'] = validated_data['assignment'].layer
+        assignment = validated_data.get('assignment')
+        layer = validated_data.get('layer')
+        
+        if not layer and assignment:
+            # If no layer is provided, use the assignment's layer
+            validated_data['layer'] = assignment.layer
+        elif layer and assignment and layer != assignment.layer:
+            # If layer is provided and different from assignment's layer,
+            # validate that the user has access to this layer
+            request = self.context.get('request')
+            if request and hasattr(request, 'user'):
+                user = request.user
+                if not (user.is_staff or user.is_superuser or user.is_baker_tilly_admin):
+                    accessible_layers = get_accessible_layers(user)
+                    if layer.id not in accessible_layers:
+                        raise serializers.ValidationError({
+                            'layer': f"You do not have access to submit data for layer {layer.company_name}."
+                        })
             
         # Create the main submission header
         submission = ESGMetricSubmission.objects.create(**validated_data)
         
         # Get the specific metric instance
         # We use .get_real_instance() to ensure we have the subclass (BasicMetric, etc.)
-        metric = submission.metric.get_real_instance() 
+        metric = submission.metric.get_real_instance()
 
         # --- Create the associated specific data based on metric type --- 
         try:
