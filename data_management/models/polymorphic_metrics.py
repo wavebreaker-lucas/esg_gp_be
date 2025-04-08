@@ -4,7 +4,6 @@ from polymorphic.models import PolymorphicModel
 import datetime
 from django.db.models import QuerySet, Sum, Avg
 from django.utils import timezone # Needed for potential 'LAST' logic refinement
-from .submission_data import BasicMetricData, TimeSeriesDataPoint
 
 # Choices definitions (can be moved to a central location later if needed)
 LOCATION_CHOICES = [
@@ -141,6 +140,7 @@ class BasicMetric(BaseESGMetric):
     # --- Implement aggregation for BasicMetric ---
     def calculate_aggregate(self, relevant_submission_pks: QuerySet[int], target_start_date: datetime.date, target_end_date: datetime.date, level: str) -> dict | None:
         from .templates import ESGMetricSubmission # Local import to avoid circularity at module level
+        from .submission_data import BasicMetricData
 
         # Aggregate ALL linked data points, regardless of target_start/end_date for BasicMetric
         # The period/level defines WHEN the aggregate is stored, not WHICH basic inputs to sum/take last of.
@@ -282,6 +282,7 @@ class TimeSeriesMetric(BaseESGMetric):
     # --- Implement aggregation for TimeSeriesMetric ---
     def calculate_aggregate(self, relevant_submission_pks: QuerySet[int], target_start_date: datetime.date, target_end_date: datetime.date, level: str) -> dict | None:
         from .templates import ESGMetricSubmission # Local import
+        from .submission_data import TimeSeriesDataPoint
 
         # Fetch all potentially relevant data points
         all_data_points = TimeSeriesDataPoint.objects.filter(submission_id__in=relevant_submission_pks)
