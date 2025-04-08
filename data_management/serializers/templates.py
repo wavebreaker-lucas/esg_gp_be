@@ -436,10 +436,16 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                     logger.error("Assignment is required when creating a submission")
                     raise serializers.ValidationError({"assignment": "Assignment is required when creating a submission."})
 
+                # Get the layer from the submission data, or default to assignment's layer
+                submission_layer = data.get('layer')
+                if not submission_layer:
+                    submission_layer = assignment.layer
+                
                 existing_submission_qs = ESGMetricSubmission.objects.filter(
                     assignment=assignment,
                     metric=metric,
-                    reporting_period=reporting_period
+                    reporting_period=reporting_period,
+                    layer=submission_layer # Add layer to the uniqueness check
                 )
 
                 if existing_submission_qs.exists():
