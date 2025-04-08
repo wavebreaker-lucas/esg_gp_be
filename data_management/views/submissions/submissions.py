@@ -179,8 +179,8 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
 
         for index, sub_data in enumerate(submissions_data):
             logger.info(f"Processing submission {index + 1}/{len(submissions_data)}: {sub_data}")
-            # Add assignment and potentially user context to each individual submission data
-            sub_data['assignment'] = assignment.pk # Pass assignment ID
+            # Don't add assignment here - it should already be in the validated data
+            # The assignment field is now added in the validate_submissions method
             
             # Use ESGMetricSubmissionSerializer for validation and saving each item
             # Create a new serializer instance for each item

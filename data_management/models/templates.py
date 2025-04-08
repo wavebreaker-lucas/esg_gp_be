@@ -179,6 +179,13 @@ class ESGMetricSubmission(models.Model):
     verified_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='verified_submissions')
     verified_at = models.DateTimeField(null=True, blank=True)
     verification_notes = models.TextField(blank=True, help_text="Verification notes for this specific input")
+    
+    # Missing field that's required by database but not in model
+    contribution_verification_status = models.CharField(
+        max_length=20, 
+        default='UNVERIFIED',
+        help_text="Verification status for this contribution (UNVERIFIED, VERIFIED, REJECTED)"
+    )
 
     layer = models.ForeignKey(
         LayerProfile,

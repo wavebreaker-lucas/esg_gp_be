@@ -540,30 +540,153 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         logger.info("Validation successful")
         return data
 
-# class ESGMetricSubmissionCreateSerializer(ESGMetricSubmissionSerializer):
-#     """Serializer for creating ESG metric submissions - NEEDS REVISITING"""
-#     # This logic assumed specific fields - needs updating for polymorphic submissions
-#     class Meta(ESGMetricSubmissionSerializer.Meta):
-#         pass
-#     
-#     def create(self, validated_data):
-#         request = self.context.get('request')
-#         if request and hasattr(request, 'user'):
-#             validated_data['submitted_by'] = request.user
-#         
-#         # Update-or-create logic might need rethinking
-#         try:
-#             submission = ESGMetricSubmission.objects.get(
-#                 assignment=validated_data['assignment'],
-#                 metric=validated_data['metric']
-#                 # Need to consider reporting_period for time series?
-#             )
-#             for attr, value in validated_data.items():
-#                 setattr(submission, attr, value)
-#             submission.save()
-#             return submission
-#         except ESGMetricSubmission.DoesNotExist:
-#             return super().create(validated_data)
+    def create(self, validated_data):
+        """Create submission with related nested data based on the metric type."""
+        # Extract nested data
+        basic_data = validated_data.pop('basic_data', None)
+        tabular_rows = validated_data.pop('tabular_rows', None)
+        material_data_points = validated_data.pop('material_data_points', None)
+        timeseries_data_points = validated_data.pop('timeseries_data_points', None)
+        multifield_timeseries_data_points = validated_data.pop('multifield_timeseries_data_points', None)
+        multifield_data = validated_data.pop('multifield_data', None)
+        
+        # Set the submitted_by field from the request
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            validated_data['submitted_by'] = request.user
+        
+        # Create the submission header
+        submission = ESGMetricSubmission.objects.create(**validated_data)
+        
+        # Handle the specific data type based on what was provided
+        if basic_data:
+            from ..models.submission_data import BasicMetricData
+            BasicMetricData.objects.create(submission=submission, **basic_data)
+        
+        if tabular_rows:
+            from ..models.submission_data import TabularMetricRow
+            for index, row_data in enumerate(tabular_rows):
+                TabularMetricRow.objects.create(
+                    submission=submission,
+                    row_index=row_data.get('row_index', index),
+                    row_data=row_data.get('row_data', {})
+                )
+        
+        if material_data_points:
+            from ..models.submission_data import MaterialMatrixDataPoint
+            for point in material_data_points:
+                MaterialMatrixDataPoint.objects.create(
+                    submission=submission,
+                    material_type=point.get('material_type', ''),
+                    period=point.get('period'),
+                    value=point.get('value'),
+                    unit=point.get('unit', '')
+                )
+        
+        if timeseries_data_points:
+            from ..models.submission_data import TimeSeriesDataPoint
+            for point in timeseries_data_points:
+                TimeSeriesDataPoint.objects.create(
+                    submission=submission,
+                    period=point.get('period'),
+                    value=point.get('value')
+                )
+        
+        if multifield_timeseries_data_points:
+            from ..models.submission_data import MultiFieldTimeSeriesDataPoint
+            for point in multifield_timeseries_data_points:
+                MultiFieldTimeSeriesDataPoint.objects.create(
+                    submission=submission,
+                    period=point.get('period'),
+                    field_data=point.get('field_data', {})
+                )
+        
+        if multifield_data:
+            from ..models.submission_data import MultiFieldDataPoint
+            MultiFieldDataPoint.objects.create(
+                submission=submission,
+                field_data=multifield_data.get('field_data', {})
+            )
+        
+        return submission
+        
+    def update(self, instance, validated_data):
+        """Update submission with related nested data."""
+        # Extract nested data
+        basic_data = validated_data.pop('basic_data', None)
+        tabular_rows = validated_data.pop('tabular_rows', None)
+        material_data_points = validated_data.pop('material_data_points', None)
+        timeseries_data_points = validated_data.pop('timeseries_data_points', None)
+        multifield_timeseries_data_points = validated_data.pop('multifield_timeseries_data_points', None)
+        multifield_data = validated_data.pop('multifield_data', None)
+        
+        # Update the base fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Handle updating the specific data type
+        if basic_data:
+            from ..models.submission_data import BasicMetricData
+            BasicMetricData.objects.update_or_create(
+                submission=instance,
+                defaults=basic_data
+            )
+        
+        if tabular_rows:
+            from ..models.submission_data import TabularMetricRow
+            # Clear existing rows and create new ones
+            instance.tabular_rows.all().delete()
+            for index, row_data in enumerate(tabular_rows):
+                TabularMetricRow.objects.create(
+                    submission=instance,
+                    row_index=row_data.get('row_index', index),
+                    row_data=row_data.get('row_data', {})
+                )
+        
+        if material_data_points:
+            from ..models.submission_data import MaterialMatrixDataPoint
+            # Clear existing points and create new ones
+            instance.material_data_points.all().delete()
+            for point in material_data_points:
+                MaterialMatrixDataPoint.objects.create(
+                    submission=instance,
+                    material_type=point.get('material_type', ''),
+                    period=point.get('period'),
+                    value=point.get('value'),
+                    unit=point.get('unit', '')
+                )
+        
+        if timeseries_data_points:
+            from ..models.submission_data import TimeSeriesDataPoint
+            # Clear existing points and create new ones
+            instance.timeseries_data_points.all().delete()
+            for point in timeseries_data_points:
+                TimeSeriesDataPoint.objects.create(
+                    submission=instance,
+                    period=point.get('period'),
+                    value=point.get('value')
+                )
+        
+        if multifield_timeseries_data_points:
+            from ..models.submission_data import MultiFieldTimeSeriesDataPoint
+            # Clear existing points and create new ones
+            instance.multifield_timeseries_data_points.all().delete()
+            for point in multifield_timeseries_data_points:
+                MultiFieldTimeSeriesDataPoint.objects.create(
+                    submission=instance,
+                    period=point.get('period'),
+                    field_data=point.get('field_data', {})
+                )
+        
+        if multifield_data:
+            from ..models.submission_data import MultiFieldDataPoint
+            MultiFieldDataPoint.objects.update_or_create(
+                submission=instance,
+                defaults={'field_data': multifield_data.get('field_data', {})}
+            )
+        
+        return instance
 
 # --- Serializer for Batch Submissions ---
 
@@ -575,16 +698,19 @@ class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
         help_text="The ID of the TemplateAssignment this batch belongs to."
     )
     submissions = serializers.ListField(
-        child=ESGMetricSubmissionSerializer(),
-        allow_empty=False,
-        write_only=True,
-        help_text="List of individual metric submissions."
+        child=serializers.DictField(),
+        help_text="List of submission data dictionaries, each containing metric data for submission."
     )
-
+    
     def validate_submissions(self, submissions_data):
-        """Ensure each item in the submissions list has a metric ID."""
-        logger.info(f"Validating {len(submissions_data)} submissions in batch")
+        """Validate structure of submissions and add assignment_id to each submission."""
         for index, sub_data in enumerate(submissions_data):
+            # Add the assignment_id to each submission before validation
+            if 'assignment' not in sub_data:
+                assignment = self.initial_data.get('assignment_id')
+                if assignment:
+                    sub_data['assignment'] = assignment
+                
             if 'metric' not in sub_data:
                 logger.error(f"Submission {index} missing metric field")
                 raise serializers.ValidationError(f"Item {index} in 'submissions' list is missing the 'metric' field.")
