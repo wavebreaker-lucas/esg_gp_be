@@ -204,36 +204,53 @@ POST /api/metric-submissions/
 
 ### Batch Submission Input with Layers and Source Identifier
 When submitting multiple metric *input headers* at once, a default layer can be specified for all inputs, with individual layer overrides. You can also provide an optional `source_identifier` for each input.
+
+The batch submission endpoint now supports **both creating new submissions and updating existing ones**. To update an existing submission, include the `id` field in the submission data.
+
 ```json
 POST /api/metric-submissions/batch_submit/
 {
   "assignment_id": 1,
-  "default_layer_id": 3, // Default layer for inputs in this batch
   "submissions": [
     {
-      "metric_id": 5,
-      "value": 1234.56, // Will use default_layer_id 3
-      "source_identifier": "Meter A", // Optional source
-      "layer_id": 3, // Overrides default_layer_id for this specific input
-      "reporting_period": "2024-06-30"
+      "metric": 5,
+      "reporting_period": "2024-06-30",
+      "layer_id": 3,
+      "source_identifier": "Meter A",
+      "basic_data": {
+        "value_numeric": 1234.56
+      }
     },
     {
-      "metric_id": 6,
-      "value": 789.01,
-      "layer_id": 4,  // Overrides default_layer_id for this specific input
+      "id": 42, // Include ID to update an existing submission
+      "metric": 6,
+      "reporting_period": "2024-06-30",
+      "layer_id": 4,
       "source_identifier": "Meter B",
-      "reporting_period": "2024-06-30"
+      "basic_data": {
+        "value_numeric": 789.01
+      }
     },
     {
-        "metric_id": 7,
-        "value": 100,
-        "layer_id": 3,
-        "reporting_period": "2024-06-30",
-        "source_identifier": null
+      "metric": 7,
+      "reporting_period": "2024-06-30",
+      "layer_id": 3,
+      "basic_data": {
+        "value_numeric": 100
+      }
     }
   ]
 }
 ```
+
+**Key Batch Submission Features:**
+- **Create and Update Mode**: Submissions without an `id` are created as new, while those with an `id` will update existing records.
+- **Layer Validation**: Each submission's `layer_id` is checked against user permissions to ensure they have access.
+- **Duplicate Prevention**: System prevents duplicate submissions for the same assignment/metric/period/layer combination unless the metric allows multiple submissions per period.
+- **Layer-Specific**: Each submission can target a different layer even within the same batch.
+- **Source Identification**: Optional `source_identifier` can tag each submission (e.g., with meter ID, facility name).
+- **Transaction Safety**: All submissions are handled in a single database transaction - either all succeed or none are applied.
+- **Error Reporting**: Detailed error messages are provided for each submission that fails validation.
 
 ## Data Model: Polymorphic Metrics, Submissions, and Reported Values
 

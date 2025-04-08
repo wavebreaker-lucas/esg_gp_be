@@ -179,19 +179,47 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
 
         for index, sub_data in enumerate(submissions_data):
             logger.info(f"Processing submission {index + 1}/{len(submissions_data)}: {sub_data}")
-            # Don't add assignment here - it should already be in the validated data
-            # The assignment field is now added in the validate_submissions method
+            
+            # Check if this is an update (has id) or a create (no id)
+            submission_id = sub_data.get('id')
+            instance = None
+            
+            if submission_id:
+                # This is an update - get the existing instance
+                try:
+                    instance = ESGMetricSubmission.objects.get(pk=submission_id)
+                    logger.info(f"Found existing submission with ID {submission_id} - updating")
+                    
+                    # Check if user has permission to update this submission
+                    if not has_layer_access(request.user, instance.layer_id):
+                        error_msg = f"You do not have permission to update submission {submission_id}"
+                        logger.error(error_msg)
+                        errors.append({f"item_{index}": error_msg})
+                        continue
+                        
+                except ESGMetricSubmission.DoesNotExist:
+                    error_msg = f"Submission with ID {submission_id} not found"
+                    logger.error(error_msg)
+                    errors.append({f"item_{index}": error_msg})
+                    continue
+            else:
+                logger.info("No ID provided - creating new submission")
             
             # Use ESGMetricSubmissionSerializer for validation and saving each item
-            # Create a new serializer instance for each item
-            item_serializer = ESGMetricSubmissionSerializer(data=sub_data, context=self.get_serializer_context())
+            # Create a new serializer instance - pass instance if it's an update
+            item_serializer = ESGMetricSubmissionSerializer(
+                instance=instance,
+                data=sub_data, 
+                context=self.get_serializer_context()
+            )
             
             if item_serializer.is_valid():
                 try:
-                    # Perform create logic (no instance passed)
-                    instance = item_serializer.save()
-                    logger.info(f"Successfully saved submission {index + 1}")
-                    results.append(item_serializer.data) # Append serialized result of created object
+                    # Save will call update() if instance is provided, create() otherwise
+                    saved_instance = item_serializer.save()
+                    action_type = "updated" if instance else "created"
+                    logger.info(f"Successfully {action_type} submission {index + 1}")
+                    results.append(item_serializer.data) # Append serialized result
                 except Exception as e:
                     # Catch potential errors during save (though validation should prevent most)
                     logger.error(f"Error saving batch submission item {index}: {str(e)}", exc_info=True)
