@@ -1,6 +1,10 @@
 # Polymorphic models for ESG Metrics will be defined here. 
 from django.db import models
 from polymorphic.models import PolymorphicModel
+import datetime
+from django.db.models import QuerySet, Sum, Avg
+from django.utils import timezone # Needed for potential 'LAST' logic refinement
+from .submission_data import BasicMetricData, TimeSeriesDataPoint
 
 # Choices definitions (can be moved to a central location later if needed)
 LOCATION_CHOICES = [
@@ -76,6 +80,34 @@ class BaseESGMetric(PolymorphicModel):
     def __str__(self):
         return f"{self.form.code} - {self.name}"
 
+    # --- Add the abstract aggregation method ---
+    def calculate_aggregate(self, relevant_submission_pks: QuerySet[int], target_start_date: datetime.date, target_end_date: datetime.date, level: str) -> dict | None:
+        """
+        Calculates the aggregated value for this metric based on relevant submissions
+        within the specified date range and aggregation level.
+
+        Args:
+            relevant_submission_pks: A QuerySet of primary keys for ESGMetricSubmission
+                                     headers relevant to the overall context (assignment, layer).
+                                     NOTE: This represents *potentially* relevant submissions. The method
+                                     needs to filter the actual data points based on dates if applicable.
+            target_start_date: The start date of the aggregation period.
+            target_end_date: The end date of the aggregation period.
+            level: The aggregation level ('M', 'A', etc.).
+
+        Returns:
+            A dictionary containing:
+                {
+                    'aggregated_numeric_value': float | None,
+                    'aggregated_text_value': str | None,
+                    'aggregation_method': str, # e.g., 'SUM', 'AVG', 'LAST', 'COUNT'
+                    'contributing_submissions_count': int # Count of distinct submission headers whose data was *used*
+                }
+            Returns None if no relevant data is found or aggregation is not applicable.
+        """
+        # Default implementation for subclasses that don't override
+        raise NotImplementedError(f"Aggregation logic not implemented for metric type: {self.__class__.__name__}")
+
 # --- Specialized Metric Types ---
 
 class BasicMetric(BaseESGMetric):
@@ -105,6 +137,47 @@ class BasicMetric(BaseESGMetric):
         elif self.unit_type != 'text': # Don't show unit for plain text
             unit_display = f" ({self.get_unit_type_display()})"
         return f"[Basic] {super().__str__()}{unit_display}"
+
+    # --- Implement aggregation for BasicMetric ---
+    def calculate_aggregate(self, relevant_submission_pks: QuerySet[int], target_start_date: datetime.date, target_end_date: datetime.date, level: str) -> dict | None:
+        from .templates import ESGMetricSubmission # Local import to avoid circularity at module level
+
+        # Aggregate ALL linked data points, regardless of target_start/end_date for BasicMetric
+        # The period/level defines WHEN the aggregate is stored, not WHICH basic inputs to sum/take last of.
+        data_points = BasicMetricData.objects.filter(submission_id__in=relevant_submission_pks)
+        count = data_points.count()
+
+        if count == 0:
+            return None
+
+        aggregated_numeric = None
+        aggregated_text = None
+        agg_method = 'UNKNOWN'
+        contributing_submissions_count = data_points.values('submission_id').distinct().count()
+
+        if self.unit_type == 'text':
+            # Get the data point associated with the most recent submission among the relevant ones
+            last_submission_pk = ESGMetricSubmission.objects.filter(
+                pk__in=relevant_submission_pks
+            ).order_by('-submitted_at', '-pk').values_list('pk', flat=True).first()
+
+            if last_submission_pk:
+                last_data = data_points.filter(submission_id=last_submission_pk).first()
+                if last_data:
+                    aggregated_text = last_data.value_text
+            agg_method = 'LAST'
+        else: # Numeric types
+            # TODO: Allow configuration of SUM/AVG on BasicMetric itself? Defaulting to SUM.
+            result = data_points.aggregate(total=Sum('value_numeric'))
+            aggregated_numeric = result.get('total')
+            agg_method = 'SUM'
+
+        return {
+            'aggregated_numeric_value': aggregated_numeric,
+            'aggregated_text_value': aggregated_text,
+            'aggregation_method': agg_method,
+            'contributing_submissions_count': contributing_submissions_count
+        }
 
 class TabularMetric(BaseESGMetric):
     """Metrics representing tabular data where users can add/edit rows based on defined columns."""
@@ -205,6 +278,73 @@ class TimeSeriesMetric(BaseESGMetric):
 
     def __str__(self):
         return f"[Time Series - {self.get_frequency_display()}] {super().__str__()}"
+
+    # --- Implement aggregation for TimeSeriesMetric ---
+    def calculate_aggregate(self, relevant_submission_pks: QuerySet[int], target_start_date: datetime.date, target_end_date: datetime.date, level: str) -> dict | None:
+        from .templates import ESGMetricSubmission # Local import
+
+        # Fetch all potentially relevant data points
+        all_data_points = TimeSeriesDataPoint.objects.filter(submission_id__in=relevant_submission_pks)
+
+        # Filter by the data point's own period matching the target aggregation window
+        points_in_period = all_data_points.filter(
+            period__gte=target_start_date,
+            period__lte=target_end_date
+        )
+
+        count = points_in_period.count()
+        if count == 0:
+            return None
+
+        aggregated_numeric = None
+        aggregated_text = None # Assuming TimeSeries is numeric for now
+        agg_method = self.aggregation_method
+        # Count distinct submissions contributing data points *within this period*
+        contributing_submissions_count = points_in_period.values('submission_id').distinct().count()
+
+        if agg_method == 'SUM':
+            result = points_in_period.aggregate(total=Sum('value'))
+            aggregated_numeric = result.get('total')
+        elif agg_method == 'AVG':
+            result = points_in_period.aggregate(avg=Avg('value'))
+            aggregated_numeric = result.get('avg')
+        elif agg_method == 'LAST':
+            # Find the latest submission *among those that have points in this period*
+            relevant_pks_in_period = points_in_period.values_list('submission_id', flat=True).distinct()
+            last_submission_in_period_pk = ESGMetricSubmission.objects.filter(
+                pk__in=relevant_pks_in_period
+            ).order_by('-submitted_at', '-pk').values_list('pk', flat=True).first()
+
+            if last_submission_in_period_pk:
+                # Get the data point associated with that latest submission (should only be one per period per submission typically for TimeSeries)
+                last_data = points_in_period.filter(submission_id=last_submission_in_period_pk).order_by('-period').first()
+                if last_data:
+                    aggregated_numeric = last_data.value
+            else:
+                # Should not happen if count > 0, but safety check
+                aggregated_numeric = None
+        else:
+            # Should not happen if choices are enforced, but handle unexpected method
+            agg_method = 'UNKNOWN'
+            aggregated_numeric = None
+            contributing_submissions_count = 0 # Mark as unknown contribution
+            # Maybe log a warning here?
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Unsupported aggregation method '{self.aggregation_method}' for TimeSeriesMetric {self.pk}")
+
+        # Return None if the chosen method didn't produce a value (e.g., LAST found no submission)
+        if aggregated_numeric is None and aggregated_text is None:
+            # Ensure count is zero if no value was produced, otherwise could be misleading
+            contributing_submissions_count = 0
+            return None
+
+        return {
+            'aggregated_numeric_value': aggregated_numeric,
+            'aggregated_text_value': aggregated_text,
+            'aggregation_method': agg_method,
+            'contributing_submissions_count': contributing_submissions_count
+        }
 
 class MultiFieldTimeSeriesMetric(BaseESGMetric):
     """Metrics tracking multiple predefined fields over time, potentially with calculations."""
