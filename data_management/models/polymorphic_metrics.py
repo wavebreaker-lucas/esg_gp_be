@@ -71,6 +71,36 @@ class BaseESGMetric(PolymorphicModel):
         help_text="Allow multiple submission records for the same assignment, metric, and reporting period? (Set True for metrics expecting data from multiple sources per period, like TimeSeries from different facilities)"
     )
 
+    # --- NEW Fields for Emission Calculation Link ---
+    emission_category = models.CharField(
+        max_length=100, blank=True, null=True, db_index=True,
+        help_text="Category used to lookup GHG Emission Factors (e.g., Energy, Waste)"
+    )
+    emission_sub_category = models.CharField(
+        max_length=255, blank=True, null=True, db_index=True,
+        help_text="Sub-category used to lookup GHG Emission Factors (e.g., Grid Electricity, Landfill Waste)"
+    )
+
+    # --- NEW Fields for Pollutant Calculation Link ---
+    pollutant_category = models.CharField(
+        max_length=100, blank=True, null=True, db_index=True,
+        help_text="Category used to lookup Pollutant Factors (e.g., Vehicles, Gaseous Fuel Consumption)"
+    )
+    pollutant_sub_category = models.CharField(
+        max_length=255, blank=True, null=True, db_index=True,
+        help_text="Sub-category used to lookup Pollutant Factors (e.g., Private cars, Towngas)"
+    )
+
+    # --- NEW Fields for Energy Conversion Link ---
+    energy_category = models.CharField(
+        max_length=100, blank=True, null=True, db_index=True,
+        help_text="Category used to lookup Energy Conversion Factors (e.g., Petroleum products, Natural gas)"
+    )
+    energy_sub_category = models.CharField(
+        max_length=255, blank=True, null=True, db_index=True,
+        help_text="Sub-category used to lookup Energy Conversion Factors (e.g., Gas/ Diesel oil, Towngas)"
+    )
+
     class Meta:
         ordering = ['form', 'order']
         verbose_name = "ESG Metric (Base)"
