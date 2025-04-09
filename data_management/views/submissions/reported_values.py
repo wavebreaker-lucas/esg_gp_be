@@ -40,12 +40,8 @@ class ReportedMetricValueViewSet(viewsets.ReadOnlyModelViewSet):
         """Ensure users only see reported values for layers they have access to."""
         user = self.request.user
         # Select related fields on the parent record
-        # Prefetch related fields for nested serializers (aggregated_fields)
         queryset = ReportedMetricValue.objects.select_related(
             'metric', 'layer', 'assignment' # Removed 'verified_by'
-        ).prefetch_related(
-            'aggregated_fields', # Prefetch the child fields
-            'aggregated_fields__field' # Also prefetch the field definition within the child
         )
 
         if user.is_staff or user.is_superuser or user.is_baker_tilly_admin:
