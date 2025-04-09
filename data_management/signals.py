@@ -6,7 +6,7 @@ from dateutil.relativedelta import relativedelta
 from django.db import transaction
 
 from .models import ESGMetricSubmission, BaseESGMetric
-from .models.polymorphic_metrics import BasicMetric
+from .models.polymorphic_metrics import BasicMetric, TimeSeriesMetric
 from .services.aggregation import calculate_report_value
 
 logger = logging.getLogger(__name__)
@@ -66,13 +66,59 @@ def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
                  return
 
             periods_to_recalculate = set()
-            if submission_period:
-                 if not isinstance(metric, BasicMetric):
-                     periods_to_recalculate.add((submission_period, 'M'))
-                 else:
-                     logger.info(f"Skipping Monthly recalculation trigger (post-commit) for BasicMetric {metric.pk}")
-                     print(f"[DEBUG] Skipping Monthly recalculation trigger (post-commit) for BasicMetric")
+            
+            # For time series metrics, handle monthly aggregations differently
+            if isinstance(metric, TimeSeriesMetric):
+                try:
+                    # Find all the unique month periods from the time series data points
+                    from .models.submission_data import TimeSeriesDataPoint
+                    
+                    # Get data points for this submission
+                    if kwargs.get('created', False) or ('created' not in kwargs): # For new or updated submissions
+                        print(f"[DEBUG] Finding time series data points for submission {instance_pk}")
+                        data_points = TimeSeriesDataPoint.objects.filter(submission_id=instance_pk)
+                        
+                        # Extract unique month periods from the data points
+                        unique_months = set()
+                        for point in data_points:
+                            # For each point, set the day to the last day of its month to use as the reporting period
+                            if point.period:
+                                # Calculate the last day of the month
+                                next_month = point.period.replace(day=28) + datetime.timedelta(days=4)  # This will never be the last day of the month
+                                month_end = next_month - datetime.timedelta(days=next_month.day)  # Subtract the extra days to get the last day
+                                unique_months.add(month_end)
+                        
+                        print(f"[DEBUG] Found {len(unique_months)} unique months in time series data")
+                        
+                        # Add each unique month period with 'M' level to periods_to_recalculate
+                        for month_end in unique_months:
+                            if assignment_start <= month_end <= assignment_end:
+                                periods_to_recalculate.add((month_end, 'M'))
+                            else:
+                                print(f"[DEBUG] Skipping month {month_end} as it's outside assignment range")
+                    
+                    # Also include the submission period with 'M' level as a fallback
+                    if submission_period:
+                        periods_to_recalculate.add((submission_period, 'M'))
+                
+                except Exception as e:
+                    logger.error(f"Error finding time series periods: {e}")
+                    print(f"[DEBUG] Error processing time series periods: {e}")
+                    # Fallback to standard method
+                    if submission_period:
+                        periods_to_recalculate.add((submission_period, 'M'))
+            
+            # For non-time series, non-basic metrics:
+            elif not isinstance(metric, BasicMetric):
+                # Standard monthly aggregation for other metric types
+                if submission_period:
+                    periods_to_recalculate.add((submission_period, 'M'))
+            else:
+                # For BasicMetric
+                logger.info(f"Skipping Monthly recalculation trigger (post-commit) for BasicMetric {metric.pk}")
+                print(f"[DEBUG] Skipping Monthly recalculation trigger (post-commit) for BasicMetric")
 
+            # Always calculate Annual aggregation
             periods_to_recalculate.add((assignment_end, 'A'))
 
             logger.info(f"Submission change committed for Metric {metric.pk}, Assignment {assignment.pk}, Layer {layer.pk}. Triggering recalculation for: {periods_to_recalculate}")

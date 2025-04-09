@@ -12,6 +12,10 @@ from .models.polymorphic_metrics import (
     BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
     TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric
 )
+from .models.submission_data import (
+    BasicMetricData, TimeSeriesDataPoint, TabularMetricRow,
+    MaterialMatrixDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint
+)
 
 # Initialize the logger
 logger = logging.getLogger(__name__)
@@ -82,6 +86,24 @@ class TemplateAssignmentAdmin(admin.ModelAdmin):
     search_fields = ['template__name', 'layer__company_name']
     ordering = ['-assigned_at']
 
+# --- Admin Inlines for Submission Data Models ---
+class TimeSeriesDataPointInline(admin.TabularInline):
+    model = TimeSeriesDataPoint
+    extra = 1
+    fields = ('period', 'value')
+    ordering = ('period',)
+
+class BasicMetricDataInline(admin.StackedInline):
+    model = BasicMetricData
+    extra = 0
+    fields = ('value_numeric', 'value_text')
+
+class TabularMetricRowInline(admin.TabularInline):
+    model = TabularMetricRow
+    extra = 1
+    fields = ('row_index', 'row_data')
+    ordering = ('row_index',)
+
 @admin.register(ESGMetricSubmission)
 class ESGMetricSubmissionAdmin(admin.ModelAdmin):
     list_display = (
@@ -101,6 +123,26 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
     raw_id_fields = ['metric', 'assignment', 'submitted_by', 'verified_by']
     list_select_related = ('metric', 'assignment', 'layer', 'submitted_by', 'verified_by')
     inlines = []
+    
+    def get_inlines(self, request, obj=None):
+        """Dynamically determine which inline(s) to include based on the metric type."""
+        if obj is None:
+            return []  # No inlines when creating a new submission
+            
+        try:
+            metric = obj.metric.get_real_instance()
+            if isinstance(metric, BasicMetric):
+                return [BasicMetricDataInline]
+            elif isinstance(metric, TimeSeriesMetric):
+                return [TimeSeriesDataPointInline]
+            elif isinstance(metric, TabularMetric):
+                return [TabularMetricRowInline]
+            # Add cases for other metric types as needed
+            
+        except Exception as e:
+            logger.error(f"Error determining inlines for submission {obj.pk}: {e}")
+        
+        return []  # Fallback to no inlines
 
     def metric_display(self, obj):
         return obj.metric.name if obj.metric else "No Metric"
