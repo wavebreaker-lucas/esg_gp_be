@@ -121,8 +121,14 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
                 except obj._meta.get_field('basic_data').related_model.DoesNotExist:
                     return "(No basic data)"
             elif isinstance(metric, TimeSeriesMetric):
-                # For time series, maybe show count or last value? Showing count for now.
-                return f"{obj.timeseries_data_points.count()} points"
+                # Show all time series data points, regardless of count
+                points = obj.timeseries_data_points.all().order_by('period')
+                count = points.count()
+                if count == 0:
+                    return "(No data points)"
+                else:
+                    # Always show all points with dates and values
+                    return "<br>".join([f"{p.period.strftime('%Y-%m-%d')}: {p.value}" for p in points])
             elif isinstance(metric, TabularMetric):
                 return f"{obj.tabular_rows.count()} rows"
             # Add checks for other metric types (Material, MultiField, etc.) here
