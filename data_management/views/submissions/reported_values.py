@@ -32,6 +32,7 @@ class ReportedMetricValueViewSet(viewsets.ReadOnlyModelViewSet):
         'metric', # Filters by the input metric ID
         'layer',
         'reporting_period',
+        'level', # Added level filtering
         # REMOVED: 'is_verified' as verification is not on this model anymore
     ]
 
