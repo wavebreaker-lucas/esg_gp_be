@@ -198,20 +198,18 @@ class ESGMetricEvidenceAdmin(admin.ModelAdmin):
     list_filter = ['file_type', 'is_processed_by_ocr']
     search_fields = ['filename', 'description']
     date_hierarchy = 'uploaded_at'
-    raw_id_fields = ['submission', 'uploaded_by']
+    raw_id_fields = ['uploaded_by']
     
     def get_submission_display(self, obj):
-        """Safely display submission information"""
-        if obj.submission:
-            return f"{obj.submission.metric.name} ({obj.submission.id})"
-        elif obj.intended_metric:
+        """Safely display metric information"""
+        if obj.intended_metric:
             return f"Intended: {obj.intended_metric.name}"
         return "Standalone"
-    get_submission_display.short_description = 'Submission/Metric'
+    get_submission_display.short_description = 'Metric'
     
     def is_standalone(self, obj):
-        """Display if evidence is standalone (not attached to a submission)"""
-        return obj.submission is None
+        """Display if evidence is standalone (not attached to a specific metric)"""
+        return obj.intended_metric is None
     is_standalone.boolean = True
     is_standalone.short_description = "Standalone"
 

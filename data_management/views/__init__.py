@@ -19,7 +19,7 @@ from .submissions import (
 from .templates import TemplateViewSet, TemplateAssignmentView, UserTemplateAssignmentView, UserTemplateAssignmentStructureView
 
 # Import utilities
-from .utils import get_required_submission_count, attach_evidence_to_submissions
+from .utils import get_required_submission_count, attach_evidence_to_submissions  # attach_evidence_to_submissions is kept for backward compatibility
 
 # Import from aggregation package
 # from .aggregation import AggregatedMetricDataView # Commented out as it doesn't exist yet

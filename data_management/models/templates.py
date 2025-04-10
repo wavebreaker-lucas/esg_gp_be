@@ -219,11 +219,20 @@ class ESGMetricSubmission(models.Model):
         # Reverted change: Access metric name correctly
         # Accessing metric.name should still work due to polymorphism
         return f"{self.metric.name}{period_str}{source_str} - {self.assignment.layer.company_name} (Input ID: {self.pk})"
+        
+    def get_evidence(self):
+        """
+        Get evidence files relevant to this submission based on metadata matching.
+        This maintains compatibility with code that previously used submission.evidence.all()
+        """
+        from ..services.evidence import find_relevant_evidence
+        return find_relevant_evidence(self)
 
 class ESGMetricEvidence(models.Model):
-    """Supporting documentation for ESG metric submission inputs"""
-    submission = models.ForeignKey(ESGMetricSubmission, on_delete=models.CASCADE, related_name='evidence', null=True, blank=True,
-                                 help_text="The specific submission input this evidence supports")
+    """
+    Supporting documentation for ESG metrics.
+    Evidence is associated with metrics, layers, and sources via metadata rather than direct attachment.
+    """
     file = models.FileField(upload_to='esg_evidence/%Y/%m/')
     filename = models.CharField(max_length=255)
     file_type = models.CharField(max_length=50)
@@ -243,7 +252,7 @@ class ESGMetricEvidence(models.Model):
         max_length=100,
         blank=True,
         null=True,
-        help_text="Identifier for the source of this evidence when metric allows multiple submissions (e.g., facility name)"
+        help_text="Identifier for the source of this evidence (e.g., facility name)"
     )
     
     # New field for explicit metric relationship - updated FK
@@ -253,7 +262,7 @@ class ESGMetricEvidence(models.Model):
         null=True, 
         blank=True, 
         related_name='intended_evidence',
-        help_text="The metric this evidence is intended for, before being attached to a submission input"
+        help_text="The metric this evidence is for"
     )
     
     # OCR-related fields remain the same, relate to the evidence file itself
@@ -268,6 +277,4 @@ class ESGMetricEvidence(models.Model):
     edited_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='edited_evidence', help_text="Who edited the OCR result")
 
     def __str__(self):
-        if self.submission:
-            return f"Evidence for Input ID: {self.submission.pk}"
-        return f"Standalone evidence: {self.filename}"
+        return f"Evidence for Input ID: {self.pk}"

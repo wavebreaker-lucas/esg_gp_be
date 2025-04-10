@@ -123,7 +123,7 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def by_submission(self, request):
         """
-        Get evidence files for a specific submission.
+        Get evidence files relevant to a specific submission based on metadata.
         
         Parameters:
             submission_id: ID of the submission to get evidence for
@@ -144,8 +144,21 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                 LayerProfile.objects.filter(id=submission.assignment.layer.id, app_users__user=request.user).exists()):
             return Response({'error': 'You do not have permission to view this submission'}, status=403)
         
-        # Get evidence for this submission
-        evidence = ESGMetricEvidence.objects.filter(submission=submission).select_related('layer')
+        # Get evidence for this submission based on metadata matching
+        evidence = ESGMetricEvidence.objects.filter(
+            intended_metric=submission.metric,
+            layer=submission.layer
+        )
+        
+        # If submission has a source_identifier, filter by that too
+        if submission.source_identifier:
+            evidence = evidence.filter(source_identifier=submission.source_identifier)
+            
+        # For time-based metrics, filter by period if available
+        if submission.reporting_period:
+            evidence = evidence.filter(period=submission.reporting_period)
+            
+        evidence = evidence.select_related('layer', 'intended_metric')
         serializer = self.get_serializer(evidence, many=True)
         return Response(serializer.data)
 
@@ -179,6 +192,109 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             'extracted_value': evidence.extracted_value,
             'period': evidence.period
         }, status=200)
+
+    @action(detail=True, methods=['post'])
+    def apply_ocr(self, request, pk=None):
+        """
+        Apply OCR data from evidence to a submission.
+        
+        Parameters:
+            submission_id: ID of the submission to apply OCR data to
+        """
+        evidence = self.get_object()
+        
+        # Check if OCR has been processed
+        if not evidence.is_processed_by_ocr:
+            return Response({'error': 'This evidence has not been processed with OCR'}, status=400)
+        
+        # Get required submission_id
+        submission_id = request.data.get('submission_id')
+        if not submission_id:
+            return Response({'error': 'submission_id is required'}, status=400)
+        
+        # Verify submission exists and user has access
+        try:
+            submission = ESGMetricSubmission.objects.get(id=submission_id)
+            
+            # Check permissions
+            if not (request.user.is_staff or request.user.is_superuser or 
+                    request.user.is_baker_tilly_admin or 
+                    request.user == submission.submitted_by or
+                    LayerProfile.objects.filter(id=submission.assignment.layer.id, app_users__user=request.user).exists()):
+                return Response({'error': 'You do not have permission to modify this submission'}, status=403)
+                
+        except ESGMetricSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=404)
+        
+        # Apply OCR data if available
+        value_updated = False
+        period_updated = False
+        new_value = None
+        new_period = submission.reporting_period # Default to existing
+        warning = None
+        message = 'OCR data applied successfully'
+        
+        if evidence.extracted_value is not None:
+            try:
+                # Get the specific metric instance to check its type
+                specific_metric = submission.metric.get_real_instance()
+                
+                # Only apply OCR numeric value if it's a BasicMetric and not a 'text' type
+                if isinstance(specific_metric, BasicMetric) and specific_metric.unit_type != 'text':
+                    # Get or create the associated BasicMetricData record
+                    basic_data, created = BasicMetricData.objects.get_or_create(submission=submission)
+                    
+                    # Check for existing value to warn about override
+                    existing_value = basic_data.value_numeric
+                    if existing_value == 0 and evidence.extracted_value != 0: # Check for overriding zero
+                        warning = "Overriding an explicit zero value with OCR data"
+                    elif existing_value is not None and existing_value != evidence.extracted_value:
+                        warning = f"Overriding existing value {existing_value} with OCR data"
+                    
+                    # Update BasicMetricData value
+                    basic_data.value_numeric = evidence.extracted_value
+                    basic_data.value_text = None # Clear text value if setting numeric
+                    basic_data.save()
+                    value_updated = True
+                    new_value = basic_data.value_numeric
+                    message = 'OCR numeric data applied to submission'
+
+                    # Update submission's reporting period if evidence period is available
+                    evidence_period = evidence.period or evidence.ocr_period
+                    if evidence_period:
+                        if submission.reporting_period != evidence_period:
+                            submission.reporting_period = evidence_period
+                            submission.save() # Save submission only if period changes
+                            period_updated = True
+                        new_period = submission.reporting_period # Update new_period regardless
+                        message += ' and submission period updated' if period_updated else ' (submission period already matched)'
+                    
+                else:
+                    # Metric type is not compatible for applying numeric OCR value
+                    warning = f"OCR value not applied: Metric type ({type(specific_metric).__name__}) is not a non-text BasicMetric."
+                    message = 'OCR numeric value could not be applied due to incompatible metric type.'
+
+            except BaseESGMetric.DoesNotExist:
+                warning = "Could not find the metric associated with the submission."
+                message = 'Could not verify metric type to apply OCR data.'
+            except AttributeError:
+                warning = "Could not determine the specific type of the metric."
+                message = 'Could not determine specific metric type to apply OCR data.'
+            except Exception as e:
+                # Catch unexpected errors during OCR application
+                warning = f"An unexpected error occurred while trying to apply OCR data: {str(e)}"
+                message = 'An error occurred during OCR data application.'
+
+        # Return the response    
+        return Response({
+            'message': message,
+            'submission_id': submission.id,
+            'value_updated': value_updated,
+            'new_value': new_value,
+            'period_updated': period_updated,
+            'new_period': new_period,
+            'warning': warning
+        })
 
     @action(detail=True, methods=['get'])
     def ocr_results(self, request, pk=None):
@@ -259,121 +375,17 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         
         return Response(result)
 
-    @action(detail=True, methods=['post'])
-    def attach_to_submission(self, request, pk=None):
-        """
-        Attach a standalone evidence file to a submission.
-        Optionally applies OCR data to the submission values.
-        """
-        evidence = self.get_object()
-        
-        # Check if already attached
-        if evidence.submission is not None:
-            return Response({'error': 'This evidence is already attached to a submission'}, status=400)
-        
-        # Get required submission_id
-        submission_id = request.data.get('submission_id')
-        if not submission_id:
-            return Response({'error': 'submission_id is required'}, status=400)
-        
-        # Verify submission exists and user has access
-        try:
-            submission = ESGMetricSubmission.objects.get(id=submission_id)
-            
-            # Check permissions
-            if not (request.user.is_staff or request.user.is_superuser or 
-                    request.user.is_baker_tilly_admin or 
-                    request.user == submission.submitted_by or
-                    LayerProfile.objects.filter(id=submission.assignment.layer.id, app_users__user=request.user).exists()):
-                return Response({'error': 'You do not have permission to modify this submission'}, status=403)
-                
-        except ESGMetricSubmission.DoesNotExist:
-            return Response({'error': 'Submission not found'}, status=404)
-        
-        # Attach evidence to submission
-        evidence.submission = submission
-        evidence.save()
-        
-        # Apply OCR data if requested and available
-        apply_ocr = request.data.get('apply_ocr_data') == 'true'
-        value_updated = False
-        period_updated = False
-        new_value = None
-        new_period = submission.reporting_period # Default to existing
-        warning = None
-        message = 'Evidence attached to submission successfully'
-        
-        if apply_ocr and evidence.is_processed_by_ocr and evidence.extracted_value is not None:
-            try:
-                # Get the specific metric instance to check its type
-                specific_metric = submission.metric.get_real_instance()
-                
-                # Only apply OCR numeric value if it's a BasicMetric and not a 'text' type
-                if isinstance(specific_metric, BasicMetric) and specific_metric.unit_type != 'text':
-                    # Get or create the associated BasicMetricData record
-                    basic_data, created = BasicMetricData.objects.get_or_create(submission=submission)
-                    
-                    # Check for existing value to warn about override
-                    existing_value = basic_data.value_numeric
-                    if existing_value == 0 and evidence.extracted_value != 0: # Check for overriding zero
-                        warning = "Overriding an explicit zero value with OCR data"
-                    elif existing_value is not None and existing_value != evidence.extracted_value:
-                        warning = f"Overriding existing value {existing_value} with OCR data"
-                    
-                    # Update BasicMetricData value
-                    basic_data.value_numeric = evidence.extracted_value
-                    basic_data.value_text = None # Clear text value if setting numeric
-                    basic_data.save()
-                    value_updated = True
-                    new_value = basic_data.value_numeric
-                    message = 'Evidence attached and OCR numeric data applied to BasicMetricData'
-
-                    # Update submission's reporting period if evidence period is available
-                    evidence_period = evidence.period or evidence.ocr_period
-                    if evidence_period:
-                        if submission.reporting_period != evidence_period:
-                            submission.reporting_period = evidence_period
-                            submission.save() # Save submission only if period changes
-                            period_updated = True
-                        new_period = submission.reporting_period # Update new_period regardless
-                        message += ' and submission period updated' if period_updated else ' (submission period already matched)'
-                    
-                else:
-                    # Metric type is not compatible for applying numeric OCR value
-                    warning = f"OCR value not applied: Metric type ({type(specific_metric).__name__}) is not a non-text BasicMetric."
-                    message = 'Evidence attached, but OCR numeric value could not be applied due to incompatible metric type.'
-
-            except BaseESGMetric.DoesNotExist:
-                warning = "Could not find the metric associated with the submission."
-                message = 'Evidence attached, but could not verify metric type to apply OCR data.'
-            except AttributeError:
-                warning = "Could not determine the specific type of the metric."
-                message = 'Evidence attached, but could not determine specific metric type to apply OCR data.'
-            except Exception as e:
-                # Catch unexpected errors during OCR application
-                warning = f"An unexpected error occurred while trying to apply OCR data: {str(e)}"
-                message = 'Evidence attached, but an error occurred during OCR data application.'
-
-        # Return the response    
-        return Response({
-            'message': message,
-            'submission_id': submission.id,
-            'value_updated': value_updated,
-            'new_value': new_value,
-            'period_updated': period_updated,
-            'new_period': new_period,
-            'warning': warning
-        })
-
     @action(detail=False, methods=['get'])
     def by_metric(self, request):
         """
-        Get standalone evidence files for a specific metric.
+        Get evidence files for a specific metric.
         Useful for showing available evidence when filling out a form.
         
         Parameters:
             metric_id: ID of the metric to get evidence for
             layer_id: (Optional) Filter evidence by specific layer
+            source_identifier: (Optional) Filter evidence by source
+            period: (Optional) Filter evidence by period
         """
         metric_id = request.query_params.get('metric_id')
         if not metric_id:
@@ -385,22 +397,20 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         except BaseESGMetric.DoesNotExist: # Update exception type
             return Response({'error': 'Metric not found'}, status=404)
         
-        # Find evidence for this metric (both directly attached and standalone with intended_metric)
+        # Check user access to layers
         user_layers = LayerProfile.objects.filter(app_users__user=request.user)
         
         # Base query
         evidence_query = ESGMetricEvidence.objects.filter(
-            models.Q(submission__metric=metric) |
-            models.Q(
-                submission__isnull=True,
-                intended_metric=metric
-            )
+            intended_metric=metric
         ).filter(
             models.Q(uploaded_by=request.user) | 
-            models.Q(submission__assignment__layer__in=user_layers)
+            models.Q(layer__in=user_layers)
         )
         
-        # Apply layer filter if provided
+        # Apply optional filters
+        
+        # Layer filter
         layer_id = request.query_params.get('layer_id')
         if layer_id:
             try:
@@ -415,6 +425,21 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
                 evidence_query = evidence_query.filter(layer=layer)
             except LayerProfile.DoesNotExist:
                 return Response({'error': f'Layer with ID {layer_id} not found'}, status=404)
+                
+        # Source identifier filter
+        source_identifier = request.query_params.get('source_identifier')
+        if source_identifier:
+            evidence_query = evidence_query.filter(source_identifier=source_identifier)
+            
+        # Period filter
+        period = request.query_params.get('period')
+        if period:
+            try:
+                from datetime import datetime
+                period_date = datetime.strptime(period, '%Y-%m-%d').date()
+                evidence_query = evidence_query.filter(period=period_date)
+            except ValueError:
+                return Response({'error': 'Invalid period format. Use YYYY-MM-DD'}, status=400)
         
         # Execute query and serialize results
         evidence = evidence_query.select_related('layer', 'intended_metric')
@@ -445,11 +470,10 @@ class BatchEvidenceView(views.APIView):
         if not submission_ids:
             return Response({"error": "No valid submission IDs provided"}, status=400)
         
-        # Get all submissions and evidence items for these IDs
+        # Get all submissions for these IDs
         submissions = ESGMetricSubmission.objects.filter(id__in=submission_ids).select_related(
             'metric', 'assignment', 'submitted_by'
         )
-        evidence_items = ESGMetricEvidence.objects.filter(submission_id__in=submission_ids)
         
         # Check permissions
         user = request.user
@@ -461,27 +485,32 @@ class BatchEvidenceView(views.APIView):
             ).values_list('id', flat=True)
             
             submissions = submissions.filter(id__in=accessible_submissions)
-            evidence_items = evidence_items.filter(submission_id__in=accessible_submissions)
         
-        # Group evidence by submission ID
-        evidence_by_submission = {}
+        # Find relevant evidence for each submission
         evidence_serializer = ESGMetricEvidenceSerializer
-        
-        for evidence in evidence_items:
-            submission_id = str(evidence.submission_id)
-            if submission_id not in evidence_by_submission:
-                evidence_by_submission[submission_id] = []
-            
-            evidence_by_submission[submission_id].append(evidence_serializer(evidence).data)
-        
-        # Create response with submission data and evidence
         response_data = {}
         submission_serializer = ESGMetricSubmissionSerializer
         
         for submission in submissions:
             submission_id = str(submission.id)
+            
+            # Find evidence based on metadata matching
+            matching_evidence = ESGMetricEvidence.objects.filter(
+                intended_metric=submission.metric,
+                layer=submission.layer
+            )
+            
+            # If submission has a source_identifier, filter by that too
+            if submission.source_identifier:
+                matching_evidence = matching_evidence.filter(source_identifier=submission.source_identifier)
+                
+            # For time-based metrics, filter by period if available
+            if submission.reporting_period:
+                matching_evidence = matching_evidence.filter(period=submission.reporting_period)
+            
+            # Serialize submission and evidence
             submission_data = submission_serializer(submission).data
-            submission_data['evidence'] = evidence_by_submission.get(submission_id, [])
+            submission_data['evidence'] = [evidence_serializer(e).data for e in matching_evidence]
             response_data[submission_id] = submission_data
         
         return Response(response_data) 

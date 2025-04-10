@@ -34,15 +34,20 @@ def get_required_submission_count(metric, assignment):
 
 def attach_evidence_to_submissions(submissions, user):
     """
-    Attach evidence files to submissions.
-    This is a placeholder for the actual implementation, which should be moved here.
+    Compatibility wrapper for find_relevant_evidence.
+    This preserves the API for code that calls this function.
     
     Args:
-        submissions: List of ESGMetricSubmission instances
-        user: The user requesting the attachment
+        submissions: List of ESGMetricSubmission objects
+        user: The user who is finding evidence
         
     Returns:
-        int: Number of evidence items attached
+        int: Placeholder count (0) - no attachment happens anymore
     """
-    from data_management.services import attach_evidence_to_submissions
-    return attach_evidence_to_submissions(submissions, user) 
+    from data_management.services import find_relevant_evidence
+    
+    # This function no longer attaches evidence, but returns a constant
+    # to maintain backwards compatibility
+    # Code should be updated to use find_relevant_evidence instead
+    
+    return 0 
