@@ -246,7 +246,7 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
             'uploaded_by', 'uploaded_by_name', 'uploaded_at', 'description',
             'enable_ocr_processing', 'is_processed_by_ocr', 'extracted_value', 
             'period', 'was_manually_edited', 'edited_at', 
-            'edited_by', 'edited_by_name', 'submission', 'intended_metric', # Added intended_metric
+            'edited_by', 'edited_by_name', 'intended_metric', # Removed submission
             'layer_id', 'layer_name', 'source_identifier' # Added source_identifier
         ]
         read_only_fields = [
@@ -272,7 +272,7 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
 
 class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     """Serializer for ESG metric submission inputs (header + specific data)."""
-    evidence = ESGMetricEvidenceSerializer(many=True, read_only=True)
+    evidence = serializers.SerializerMethodField(read_only=True)
     metric_name = serializers.SerializerMethodField()
     # metric_unit = serializers.SerializerMethodField() # Commented out: Unit info is now on specialized metrics
     submitted_by_name = serializers.SerializerMethodField(read_only=True)
@@ -404,6 +404,13 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             return serializer.data
         
         return None # Return None if no data found or metric type unhandled
+
+    def get_evidence(self, obj):
+        """
+        Get related evidence using metadata-based matching via the get_evidence method.
+        """
+        evidence = obj.get_evidence()
+        return ESGMetricEvidenceSerializer(evidence, many=True, context=self.context).data
 
     def validate_basic_data(self, basic_data):
         """Validate basic structure of basic_data."""

@@ -33,11 +33,11 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         if user.is_staff or user.is_superuser or user.is_baker_tilly_admin:
             return queryset
         
-        # Other users can only see their own evidence or evidence for their group's submissions
+        # Other users can only see their own evidence or evidence for their layers
         user_layers = LayerProfile.objects.filter(app_users__user=user)
         return queryset.filter(
             models.Q(uploaded_by=user) | 
-            models.Q(submission__assignment__layer__in=user_layers)
+            models.Q(layer__in=user_layers)
         )
 
     def create(self, request, *args, **kwargs):

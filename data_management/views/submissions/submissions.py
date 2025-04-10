@@ -69,7 +69,7 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         user = self.request.user
         queryset = ESGMetricSubmission.objects.select_related(
             'metric', 'assignment', 'submitted_by', 'verified_by', 'layer'
-        ).prefetch_related('evidence') # Removed multi_values prefetch
+        ) # Removed 'evidence' prefetch since we now use metadata-based linking
 
         if user.is_staff or user.is_superuser or user.is_baker_tilly_admin:
             return queryset
@@ -118,22 +118,13 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def attach_evidence(self, request, pk=None):
         """
-        Attach an existing evidence file (by ID) to this submission input.
+        This method is deprecated since we now use metadata-based linking.
+        Evidence is now linked to submissions via matching metadata fields.
         """
-        # This might still work, needs testing
-        submission = self.get_object()
-        evidence_id = request.data.get('evidence_id')
-        if not evidence_id:
-            return Response({'error': 'evidence_id is required'}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            evidence = ESGMetricEvidence.objects.get(id=evidence_id, submission=None) # Only attach standalone evidence
-            # TODO: Check permissions? Does user own evidence or have access?
-            evidence.submission = submission
-            evidence.save()
-            serializer = ESGMetricEvidenceSerializer(evidence)
-            return Response(serializer.data)
-        except ESGMetricEvidence.DoesNotExist:
-            return Response({'error': 'Standalone evidence not found or already attached'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            'error': 'This endpoint is deprecated. Evidence is now linked via metadata matching.', 
+            'hint': 'Use GET /api/metric-evidence/by_submission/?submission_id={id} to find related evidence.'
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
     def verify_submission(self, request, pk=None):
