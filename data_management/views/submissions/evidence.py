@@ -100,6 +100,9 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return Response({'error': 'Invalid period format. Use YYYY-MM-DD'}, status=400)
         
+        # Handle optional source_identifier parameter
+        source_identifier = request.data.get('source_identifier')
+        
         # Create standalone evidence record
         evidence = ESGMetricEvidence.objects.create(
             file=file_obj,
@@ -109,7 +112,8 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             description=request.data.get('description', ''),
             period=period,  # Set the user-provided period
             intended_metric=metric,  # Use the new field for metric relationship
-            layer=layer  # Set the layer
+            layer=layer,  # Set the layer
+            source_identifier=source_identifier  # Set the source identifier
         )
         
         # Prepare response - use serializer to include layer_id and layer_name

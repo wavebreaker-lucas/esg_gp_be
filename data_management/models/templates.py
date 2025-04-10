@@ -245,6 +245,14 @@ class ESGMetricEvidence(models.Model):
         help_text="The layer this evidence is from"
     )
     
+    # Add source identifier field
+    source_identifier = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Identifier for the source of this evidence when metric allows multiple submissions (e.g., facility name)"
+    )
+    
     # New field for explicit metric relationship - updated FK
     intended_metric = models.ForeignKey(
         'data_management.BaseESGMetric', # Changed to string reference

@@ -20,8 +20,8 @@ def attach_evidence_to_submissions(submissions, user):
     This is called during form completion and batch submission to link any pending evidence files.
     Note: This only attaches the evidence files, it does NOT apply OCR data automatically.
     
-    Uses layer and period to improve the matching process:
-    - For time-based metrics: Matches on both layer AND period
+    Uses layer and source_identifier to improve the matching process:
+    - For time-based metrics: Matches on layer and source_identifier (if available)
     - For non-time-based metrics: Matches primarily on layer
     
     Args:
@@ -53,7 +53,7 @@ def attach_evidence_to_submissions(submissions, user):
         logger.info(f"Processing submissions for metric {metric_id}, layer {layer_id}")
         logger.info(f"Number of submissions: {len(subs)}")
         
-        # Get the metric to check if it's time-based
+        # Get the metric to check if it's time-based and if it allows multiple submissions
         try:
             # Use the new BaseESGMetric model
             base_metric = BaseESGMetric.objects.get(id=metric_id)
@@ -65,13 +65,19 @@ def attach_evidence_to_submissions(submissions, user):
                 MaterialTrackingMatrixMetric,
                 MultiFieldTimeSeriesMetric
             ))
+            # Check if multiple submissions per period are allowed
+            allows_multiple_submissions = getattr(specific_metric, 'allow_multiple_submissions_per_period', False)
+            
             logger.info(f"Metric {metric_id} is type {type(specific_metric).__name__}. Is time-based: {is_time_based}")
+            logger.info(f"Allows multiple submissions per period: {allows_multiple_submissions}")
         except BaseESGMetric.DoesNotExist: # Use the correct exception
             logger.warning(f"BaseESGMetric {metric_id} not found, assuming not time-based for evidence matching.")
             is_time_based = False
+            allows_multiple_submissions = False
         except AttributeError: # Handle cases where get_real_instance might fail (shouldn't normally)
              logger.error(f"Could not determine specific type for BaseESGMetric {metric_id}. Assuming not time-based.")
              is_time_based = False
+             allows_multiple_submissions = False
         
         # Get standalone evidence for this metric (intended_metric points to BaseESGMetric, so this is OK)
         evidence_query = ESGMetricEvidence.objects.filter(
@@ -99,47 +105,28 @@ def attach_evidence_to_submissions(submissions, user):
         
         # Process each evidence file
         for evidence in evidence_files:
-            if is_time_based:
-                # For time-based metrics, match on both layer and period
-                evidence_period = evidence.period or evidence.ocr_period
-                
-                if not evidence_period:
-                    # Skip evidence without a period for time-based metrics
-                    logger.info(f"Evidence {evidence.id} has no period, skipping for time-based metric")
-                    continue
-                
-                # Find matching submission by period and layer
-                best_match = None
-                for sub in subs:
-                    # Convert submission period to date if it's a string
-                    sub_period = sub.reporting_period
-                    if isinstance(sub_period, str):
-                        try:
-                            sub_period = datetime.strptime(sub_period, '%Y-%m-%d').date()
-                        except ValueError:
-                            logger.warning(f"Could not parse submission period {sub_period}")
-                            continue
+            # SIMPLIFIED LOGIC: No longer matching on period for time-based metrics
+            best_match = None
+            
+            # For metrics that allow multiple submissions per period, match on source_identifier
+            if allows_multiple_submissions:
+                # Only these metrics need to strictly match on source_identifier
+                if hasattr(evidence, 'source_identifier') and evidence.source_identifier:
+                    # Try to find submission with matching source_identifier
+                    for sub in subs:
+                        if hasattr(sub, 'source_identifier') and sub.source_identifier == evidence.source_identifier:
+                            best_match = sub
+                            logger.info(f"Found source_identifier match for evidence {evidence.id}")
+                            break
                     
-                    # Perfect match: same period and layer
-                    if sub_period == evidence_period and sub.layer and evidence.layer and sub.layer.id == evidence.layer.id:
-                        best_match = sub
-                        logger.info(f"Found perfect match (period+layer) for evidence {evidence.id}")
-                        break
-                    # Period match only
-                    elif sub_period == evidence_period:
-                        best_match = sub
-                        logger.info(f"Found period match for evidence {evidence.id}")
-                        # Keep looking for better match with matching layer
-                
-                # If no period match found, skip this evidence for time-based metrics
-                if not best_match:
-                    logger.info(f"No period match found for evidence {evidence.id}, skipping")
-                    continue
-            else:
-                # For non-time-based metrics, match primarily on layer
-                best_match = None
-                
-                # First try to find a submission with matching layer
+                    # If no match by source_identifier, skip - don't attach
+                    if not best_match:
+                        logger.info(f"No source_identifier match found for evidence {evidence.id}, skipping as metric allows multiple submissions")
+                        continue
+            
+            # If no match yet (either not multiple submissions metric or no source_identifier match needed)
+            # match by layer
+            if not best_match:
                 for sub in subs:
                     if sub.layer and evidence.layer and sub.layer.id == evidence.layer.id:
                         best_match = sub

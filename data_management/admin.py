@@ -130,19 +130,29 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
             return []  # No inlines when creating a new submission
             
         try:
+            logger.info(f"Getting inlines for submission {obj.pk}, metric ID: {obj.metric.pk}")
             metric = obj.metric.get_real_instance()
+            logger.info(f"Metric type: {type(metric).__name__}")
+            
+            inlines = []
+            
             if isinstance(metric, BasicMetric):
-                return [BasicMetricDataInline]
+                logger.info(f"Adding BasicMetricDataInline for submission {obj.pk}")
+                inlines.append(BasicMetricDataInline)
             elif isinstance(metric, TimeSeriesMetric):
-                return [TimeSeriesDataPointInline]
+                logger.info(f"Adding TimeSeriesDataPointInline for submission {obj.pk}")
+                inlines.append(TimeSeriesDataPointInline)
             elif isinstance(metric, TabularMetric):
-                return [TabularMetricRowInline]
+                logger.info(f"Adding TabularMetricRowInline for submission {obj.pk}")
+                inlines.append(TabularMetricRowInline)
             # Add cases for other metric types as needed
             
+            logger.info(f"Returning inlines: {[i.__name__ for i in inlines]}")
+            return inlines
+            
         except Exception as e:
-            logger.error(f"Error determining inlines for submission {obj.pk}: {e}")
-        
-        return []  # Fallback to no inlines
+            logger.error(f"Error determining inlines for submission {obj.pk}: {e}", exc_info=True)
+            return []  # Fallback to no inlines
 
     def metric_display(self, obj):
         return obj.metric.name if obj.metric else "No Metric"
@@ -279,3 +289,27 @@ class BaseESGMetricAdmin(PolymorphicParentModelAdmin):
     search_fields = ('name', 'description', 'form__name', 'form__code')
     ordering = ('form', 'order')
     # Common fields for the list view and edit view of the base model itself
+
+# --- Register submission data models with admin ---
+@admin.register(TimeSeriesDataPoint)
+class TimeSeriesDataPointAdmin(admin.ModelAdmin):
+    list_display = ['submission', 'period', 'value']
+    list_filter = ['period', 'submission__metric']
+    search_fields = ['submission__id', 'value']
+    ordering = ['period']
+    date_hierarchy = 'period'
+    raw_id_fields = ['submission']
+
+@admin.register(BasicMetricData)
+class BasicMetricDataAdmin(admin.ModelAdmin):
+    list_display = ['submission', 'value_numeric', 'value_text']
+    search_fields = ['submission__id', 'value_numeric', 'value_text']
+    raw_id_fields = ['submission']
+
+@admin.register(TabularMetricRow)
+class TabularMetricRowAdmin(admin.ModelAdmin):
+    list_display = ['submission', 'row_index']
+    list_filter = ['submission__metric']
+    search_fields = ['submission__id']
+    ordering = ['submission', 'row_index']
+    raw_id_fields = ['submission']

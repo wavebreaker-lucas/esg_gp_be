@@ -247,7 +247,7 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
             'enable_ocr_processing', 'is_processed_by_ocr', 'extracted_value', 
             'period', 'was_manually_edited', 'edited_at', 
             'edited_by', 'edited_by_name', 'submission', 'intended_metric', # Added intended_metric
-            'layer_id', 'layer_name'
+            'layer_id', 'layer_name', 'source_identifier' # Added source_identifier
         ]
         read_only_fields = [
             'uploaded_by', 'uploaded_at', 'is_processed_by_ocr', 
