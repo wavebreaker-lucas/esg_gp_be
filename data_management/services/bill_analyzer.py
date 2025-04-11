@@ -105,7 +105,7 @@ class UtilityBillAnalyzer:
                 # #    analyzer_id = evidence.submission.metric.ocr_analyzer_id
                 # #    logger.info(f"Using metric-specific analyzer: {analyzer_id}")
                 # Check standalone evidence using intended_metric field
-                elif not evidence.submission and evidence.intended_metric_id:
+                elif evidence.intended_metric_id:
                     try:
                         # We need to get the metric using the new BaseESGMetric
                         metric = BaseESGMetric.objects.get(id=evidence.intended_metric_id)
