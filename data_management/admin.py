@@ -16,6 +16,7 @@ from .models.submission_data import (
     BasicMetricData, TimeSeriesDataPoint, TabularMetricRow,
     MaterialMatrixDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint
 )
+from .models.factors import GHGEmissionFactor, PollutantFactor, EnergyConversionFactor
 
 # Initialize the logger
 logger = logging.getLogger(__name__)
@@ -311,3 +312,40 @@ class TabularMetricRowAdmin(admin.ModelAdmin):
     search_fields = ['submission__id']
     ordering = ['submission', 'row_index']
     raw_id_fields = ['submission']
+
+@admin.register(GHGEmissionFactor)
+class GHGEmissionFactorAdmin(admin.ModelAdmin):
+    list_display = ('name', 'category', 'sub_category', 'activity_unit', 'region', 'year', 'scope', 'value', 'factor_unit', 'source')
+    list_filter = ('year', 'category', 'region', 'scope')
+    search_fields = ('name', 'category', 'sub_category', 'source')
+    ordering = ('-year', 'category', 'sub_category')
+    
+    fieldsets = (
+        ('Identification', {
+            'fields': ('name', 'source', 'source_url')
+        }),
+        ('Classification', {
+            'fields': ('category', 'sub_category', 'scope', 'region', 'year')
+        }),
+        ('Factor Value', {
+            'fields': ('value', 'factor_unit', 'activity_unit')
+        }),
+    )
+    
+    def has_delete_permission(self, request, obj=None):
+        # Only superusers can delete factors to prevent accidental data loss
+        return request.user.is_superuser
+
+@admin.register(PollutantFactor)
+class PollutantFactorAdmin(admin.ModelAdmin):
+    list_display = ('category', 'sub_category', 'activity_unit', 'region', 'year', 'nox_factor', 'sox_factor', 'pm_factor')
+    list_filter = ('year', 'category', 'region')
+    search_fields = ('category', 'sub_category', 'source')
+    ordering = ('-year', 'category', 'sub_category')
+
+@admin.register(EnergyConversionFactor)
+class EnergyConversionFactorAdmin(admin.ModelAdmin):
+    list_display = ('category', 'sub_category', 'activity_unit', 'target_unit', 'region', 'year', 'conversion_factor')
+    list_filter = ('year', 'category', 'region')
+    search_fields = ('category', 'sub_category', 'source')
+    ordering = ('-year', 'category', 'sub_category')
