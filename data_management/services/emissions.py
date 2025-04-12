@@ -37,7 +37,7 @@ def find_matching_emission_factor(
         sub_category: The emission sub-category from metric configuration
         activity_unit: The unit of the activity data
         region: The region code from the metric's location field
-        scope: Optional scope specification (Scope 1, 2, or 3)
+        scope: Optional scope specification (Scope 1, 2, or 3) - not used in automatic lookup
         
     Returns:
         The best matching GHGEmissionFactor or None if no match found
@@ -50,7 +50,7 @@ def find_matching_emission_factor(
         activity_unit=activity_unit
     )
     
-    # Add scope filter if provided
+    # Add scope filter if explicitly provided (but we don't infer it anymore)
     if scope:
         query &= Q(scope=scope)
     
@@ -210,23 +210,14 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> Optional
     # Get region from the metric's location field
     region = metric.location
     
-    # Determine scope based on emission category (simple logic, expand as needed)
-    scope = None
-    if metric.emission_category.lower() == 'electricity':
-        scope = '2'
-    elif metric.emission_category.lower() in ['transport', 'refrigerants', 'fuel']:
-        scope = '1'
-    elif metric.emission_category.lower() in ['water', 'waste', 'travel']:
-        scope = '3'
-    
-    # Find matching emission factor
+    # Remove scope inference logic - rely entirely on factor database
+    # Find matching emission factor (without scope parameter)
     factor = find_matching_emission_factor(
         year=year,
         category=metric.emission_category,
         sub_category=metric.emission_sub_category,
         activity_unit=activity_unit,
-        region=region,
-        scope=scope
+        region=region
     )
     
     if not factor:

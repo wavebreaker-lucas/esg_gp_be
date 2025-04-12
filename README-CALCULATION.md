@@ -75,6 +75,7 @@ These models store the output of the calculations, providing traceability back t
         *   `year` from the `ReportedMetricValue.reporting_period`
         *   `region` from the `BaseESGMetric.location` field (NOT from the layer)
     *   Factors are queried with robust fallback logic (exact match → combined regions → universal regions → earlier years).
+    *   Emission scope is determined by the matched factor in the database, not inferred from categories.
 4.  **Perform Calculation:** When a matching factor is found:
     *   The activity amount is retrieved from `ReportedMetricValue.aggregated_numeric_value`.
     *   Unit conversion is performed if needed, with common conversions handled automatically.
@@ -85,6 +86,8 @@ These models store the output of the calculations, providing traceability back t
 ## Implementation Status
 
 *   **Emissions Calculation:** Fully implemented in `data_management/services/emissions.py`.
+    *   Relies on metric configuration (`emission_category`, `emission_sub_category`, `location`) and factor database.
+    *   Scope is determined by the factor database, not inferred by the system.
 *   **Pollutant Calculation:** To be implemented in `data_management/services/pollutants.py`.
 *   **Energy Conversion Calculation:** To be implemented in `data_management/services/energy.py`.
 
