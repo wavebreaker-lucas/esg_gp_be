@@ -8,7 +8,7 @@ The framework relies on a separation of concerns:
 1.  **Activity Data:** Aggregated input data (e.g., total annual litres of diesel consumed) stored in `ReportedMetricValue`.
 2.  **Factor Data:** Reference data (emission factors, pollutant factors, energy conversion factors) stored in dedicated models.
 3.  **Metric Linking:** Configuration on the `BaseESGMetric` definition to link specific activity metrics to the relevant factors.
-4.  **Calculation Logic:** (To be implemented in service functions) Performs lookups and calculations.
+4.  **Calculation Logic:** Service functions implementing lookups and calculations for emissions (implemented) and other metrics (to be implemented).
 5.  **Calculated Results:** Stores the output of calculations in dedicated models for traceability and reporting.
 
 ## Core Components
@@ -64,27 +64,34 @@ These models store the output of the calculations, providing traceability back t
     *   Links to the `EnergyConversionFactor` used.
     *   Includes copied context.
 
-## Calculation Flow (Conceptual)
+## Calculation Flow (Implemented for Emissions)
 
-1.  **Trigger:** A calculation process is initiated (e.g., by a scheduled task, manual action, or potentially a signal *after* `ReportedMetricValue` is updated).
-2.  **Select Activity Data:** The process identifies `ReportedMetricValue` records that require calculation (e.g., those for metrics configured with linking fields).
+1.  **Trigger:** A calculation process is initiated (available via the functions `calculate_emissions_for_activity_value`, `calculate_emissions_for_assignment`, or `recalculate_all_emissions`).
+2.  **Select Activity Data:** The process identifies `ReportedMetricValue` records that require calculation (filtering on `metric__emission_category` and `metric__emission_sub_category`).
 3.  **Lookup Factor:** For a given `ReportedMetricValue`:
-    *   Get the linked `BaseESGMetric` instance.
-    *   Extract the relevant linking keys (`emission_category`, `pollutant_sub_category`, `activity_unit`, etc.) from the metric definition.
-    *   Extract context (year, region) from the `ReportedMetricValue` or its related `LayerProfile`.
-    *   Query the appropriate factor model (`GHGEmissionFactor`, `PollutantFactor`, `EnergyConversionFactor`) using these keys and context. Implement robust logic for region matching and potential fallbacks.
-4.  **Perform Calculation:** If a matching factor is found:
-    *   Retrieve the activity amount from `ReportedMetricValue.aggregated_numeric_value`.
-    *   **Perform Unit Conversion (Crucial TODO):** Ensure the activity amount unit matches the unit expected by the factor. Convert if necessary.
-    *   Multiply the (potentially converted) activity amount by the factor value(s).
-5.  **Store Result:** Save the calculated value(s) into the corresponding result model (`CalculatedEmissionValue`, `CalculatedPollutantValue`, `CalculatedEnergyValue`), linking back to the source `ReportedMetricValue` and the factor used.
-6.  **Cleanup:** Handle cases where factors change or are removed, potentially deleting stale calculated results.
+    *   The linked `BaseESGMetric` instance is retrieved.
+    *   Relevant linking keys (`emission_category`, `emission_sub_category`) are extracted from the metric definition.
+    *   Context is extracted:
+        *   `year` from the `ReportedMetricValue.reporting_period`
+        *   `region` from the `BaseESGMetric.location` field (NOT from the layer)
+    *   Factors are queried with robust fallback logic (exact match → combined regions → universal regions → earlier years).
+4.  **Perform Calculation:** When a matching factor is found:
+    *   The activity amount is retrieved from `ReportedMetricValue.aggregated_numeric_value`.
+    *   Unit conversion is performed if needed, with common conversions handled automatically.
+    *   The (potentially converted) activity amount is multiplied by the factor value.
+5.  **Store Result:** The calculated value is saved into the `CalculatedEmissionValue` model, linking back to the source `ReportedMetricValue` and the factor used.
+6.  **Cleanup:** Orphaned calculations (those with no valid source RPVs) are automatically removed during recalculation.
 
-## Implementation Notes (Future Work)
+## Implementation Status
 
-*   **Calculation Services:** Dedicated functions (e.g., in `data_management/services/emissions.py`, `data_management/services/pollutants.py`) need to be implemented to contain the logic described in the "Calculation Flow".
-*   **Triggering Mechanism:** A reliable method for initiating calculations needs to be chosen and implemented (Scheduled tasks are generally preferred for decoupling and performance).
-*   **Factor Management:** Tools or scripts are needed to populate and maintain the data in the factor tables.
-*   **Unit Conversion Utility:** A robust utility function or library is required to handle conversions between different units (e.g., litres to kg, MJ to kWh).
-*   **Region Matching:** The factor lookup logic needs careful implementation to handle different regional specificities (e.g., matching "HK" to "HK / PRC" or falling back to "ALL").
-*   **Testing:** Thorough testing is required for factor lookups, unit conversions, and calculation logic. 
+*   **Emissions Calculation:** Fully implemented in `data_management/services/emissions.py`.
+*   **Pollutant Calculation:** To be implemented in `data_management/services/pollutants.py`.
+*   **Energy Conversion Calculation:** To be implemented in `data_management/services/energy.py`.
+
+## Future Work
+
+*   **Triggering Mechanism:** Implement a reliable method for initiating calculations automatically (scheduled tasks recommended for decoupling and performance).
+*   **Factor Management:** Create tools or scripts to populate and maintain the data in the factor tables.
+*   **Unit Conversion Expansion:** Enhance the current unit conversion system to handle a wider range of units and conversions.
+*   **Testing:** Implement thorough testing for factor lookups, unit conversions, and calculation logic.
+*   **Admin Interface:** Develop admin interfaces for monitoring and triggering emissions calculations. 
