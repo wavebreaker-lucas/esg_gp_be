@@ -275,25 +275,54 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> Optional
     
     return emission_result
 
-def calculate_emissions_for_assignment(assignment_id: int) -> Dict:
+def calculate_emissions_for_assignment(
+    assignment_id: int,
+    year: int = None,
+    month: int = None,
+    period_date: datetime.date = None,
+    level: str = None
+) -> Dict:
     """
     Calculate emissions for all relevant metrics in a specific assignment.
     
     Args:
         assignment_id: The ID of the TemplateAssignment to process
+        year: Optional year to filter by 
+        month: Optional month to filter by (requires year)
+        period_date: Optional exact reporting period date (takes precedence over year/month)
+        level: Optional aggregation level ('M' for monthly, 'A' for annual)
         
     Returns:
         Dictionary with summary statistics of calculations performed
     """
     logger.info(f"Starting emissions calculations for assignment {assignment_id}")
     
-    # Find all ReportedMetricValue records for the assignment that have relevant metrics
-    rpvs = ReportedMetricValue.objects.filter(
+    # Build base query
+    query = Q(
         assignment_id=assignment_id,
         metric__emission_category__isnull=False,
         metric__emission_sub_category__isnull=False,
         aggregated_numeric_value__isnull=False
     )
+    
+    # Apply period filters if specified
+    if period_date:
+        logger.info(f"Filtering by exact reporting period: {period_date}")
+        query &= Q(reporting_period=period_date)
+    elif year:
+        logger.info(f"Filtering by year: {year}")
+        query &= Q(reporting_period__year=year)
+        if month:
+            logger.info(f"Filtering by month: {month}")
+            query &= Q(reporting_period__month=month)
+            
+    # Apply level filter if specified
+    if level:
+        logger.info(f"Filtering by aggregation level: {level}")
+        query &= Q(level=level)
+    
+    # Execute the query
+    rpvs = ReportedMetricValue.objects.filter(query)
     
     stats = {
         'total_processed': 0,
@@ -313,7 +342,18 @@ def calculate_emissions_for_assignment(assignment_id: int) -> Dict:
             logger.error(f"Error calculating emissions for RPV {rpv.pk}: {e}", exc_info=True)
             stats['failed_calculations'] += 1
     
-    logger.info(f"Completed emissions calculations for assignment {assignment_id}. Stats: {stats}")
+    log_msg = f"Completed emissions calculations for assignment {assignment_id}"
+    if period_date:
+        log_msg += f" for period {period_date}"
+    elif year:
+        log_msg += f" for year {year}"
+        if month:
+            log_msg += f" month {month}"
+    if level:
+        log_msg += f" level {level}"
+    log_msg += f". Stats: {stats}"
+    
+    logger.info(log_msg)
     return stats
 
 def recalculate_all_emissions() -> Dict:
