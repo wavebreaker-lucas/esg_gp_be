@@ -1,6 +1,10 @@
 from django.db import models
 from .templates import ESGMetricSubmission
-from .polymorphic_metrics import BasicMetric, TabularMetric, MaterialTrackingMatrixMetric, TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric
+from .polymorphic_metrics import (
+    BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
+    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric,
+    VehicleTrackingMetric
+)
 
 # --- Submission Data Models ---
 # These models store the actual data values submitted for different metric types.
@@ -119,4 +123,156 @@ class MultiFieldDataPoint(models.Model):
         verbose_name_plural = "Multi-Field Data Points"
 
     def __str__(self):
-        return f"Multi-field Data for Submission {self.submission.pk}" 
+        return f"Multi-field Data for Submission {self.submission.pk}"
+
+class VehicleRecord(models.Model):
+    """Stores metadata for a single vehicle in a VehicleTrackingMetric submission."""
+    submission = models.ForeignKey(
+        ESGMetricSubmission,
+        on_delete=models.CASCADE,
+        related_name='vehicle_records'
+    )
+    
+    # Basic vehicle information
+    brand = models.CharField(max_length=100, help_text="Vehicle brand/make")
+    model = models.CharField(max_length=100, help_text="Vehicle model")
+    registration_number = models.CharField(max_length=50, help_text="Vehicle registration/license plate number")
+    
+    # Type information (matched against the parent metric's choices)
+    vehicle_type = models.CharField(max_length=50, help_text="Type of vehicle (e.g., private car, truck)")
+    fuel_type = models.CharField(max_length=50, help_text="Type of fuel used (e.g., petrol, diesel)")
+    
+    # Additional information
+    notes = models.TextField(blank=True, help_text="Additional notes about this vehicle")
+    is_active = models.BooleanField(default=True, help_text="Whether this vehicle is currently active")
+    
+    class Meta:
+        ordering = ['submission', 'brand', 'model', 'registration_number']
+        verbose_name = "Vehicle Record"
+        verbose_name_plural = "Vehicle Records"
+        # No unique constraint since one submission can have multiple vehicles
+    
+    def __str__(self):
+        return f"{self.brand} {self.model} ({self.registration_number}) - Submission {self.submission.pk}"
+
+class VehicleMonthlyData(models.Model):
+    """Stores monthly data for a vehicle in a VehicleTrackingMetric submission."""
+    vehicle = models.ForeignKey(
+        VehicleRecord,
+        on_delete=models.CASCADE,
+        related_name='monthly_data'
+    )
+    
+    # Time period information
+    period = models.DateField(help_text="The month-end date this data represents")
+    
+    # Performance metrics
+    kilometers = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Distance traveled in kilometers during this period"
+    )
+    
+    fuel_consumed = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Amount of fuel consumed in liters during this period"
+    )
+    
+    # Emission calculation fields
+    emission_calculated = models.BooleanField(
+        default=False,
+        help_text="Whether emissions have been calculated for this data point"
+    )
+    
+    emission_value = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Calculated emissions value (typically in kgCO2e)"
+    )
+    
+    emission_unit = models.CharField(
+        max_length=20,
+        default="kgCO2e",
+        help_text="Unit of emission calculation"
+    )
+    
+    class Meta:
+        ordering = ['vehicle', 'period']
+        # Removed unique_together constraint to allow multiple entries per vehicle/period
+        verbose_name = "Vehicle Monthly Data"
+        verbose_name_plural = "Vehicle Monthly Data"
+    
+    def __str__(self):
+        fuel_str = f"{self.fuel_consumed} L" if self.fuel_consumed is not None else "N/A"
+        km_str = f"{self.kilometers} km" if self.kilometers is not None else "N/A"
+        return f"{self.vehicle.brand} {self.vehicle.model} - {self.period.strftime('%b %Y')}: {km_str}, {fuel_str}"
+
+class VehicleDataSource(models.Model):
+    """Stores individual data sources for vehicles (from receipts, fuel logs, etc.)."""
+    vehicle_monthly_data = models.ForeignKey(
+        VehicleMonthlyData,
+        on_delete=models.CASCADE,
+        related_name='data_sources',
+        help_text="The monthly summary record this data source contributes to"
+    )
+    
+    # Source information
+    source_date = models.DateField(help_text="Date of the data source (e.g., receipt date)")
+    source_reference = models.CharField(
+        max_length=100, 
+        blank=True, 
+        help_text="Reference number or identifier for this data source"
+    )
+    
+    # Values from this specific source
+    kilometers = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Distance traveled in kilometers from this source"
+    )
+    
+    fuel_consumed = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Amount of fuel consumed in liters from this source"
+    )
+    
+    # Additional fields
+    location = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Location where data was collected"
+    )
+    
+    notes = models.TextField(
+        blank=True,
+        help_text="Additional notes about this data source"
+    )
+    
+    # For file attachments (optional - assuming ESGMetricEvidence handles this)
+    # evidence = models.ForeignKey(
+    #     'ESGMetricEvidence',
+    #     on_delete=models.SET_NULL,
+    #     null=True,
+    #     blank=True,
+    #     related_name='vehicle_data_sources'
+    # )
+    
+    class Meta:
+        ordering = ['vehicle_monthly_data', 'source_date']
+        verbose_name = "Vehicle Data Source"
+        verbose_name_plural = "Vehicle Data Sources"
+    
+    def __str__(self):
+        return f"Source {self.source_reference} - {self.source_date} for {self.vehicle_monthly_data.vehicle}" 

@@ -10,6 +10,72 @@ The ESG Data Management System is designed to handle ESG (Environmental, Social,
 - **Aggregation & Reported Values:** An aggregation service (`aggregation.py`) orchestrates the calculation of final values, but the core calculation logic now resides within a `calculate_aggregate` method on each specific polymorphic metric model. These calculated results are stored in the `ReportedMetricValue` model, which includes an aggregation `level` (e.g., Monthly, Annual).
 - **Completion Logic:** Form and template completion status is determined by checking for the existence of the final, annual (`level='A'`) `ReportedMetricValue` records for all required metrics.
 
+## Specialized Metric Types
+
+### VehicleTrackingMetric
+
+The VehicleTrackingMetric is a specialized metric designed for tracking vehicle-related data including distance traveled and fuel consumption, with support for emissions calculations.
+
+#### Key Features
+
+- **Multiple Vehicle Support**: Tracks from 1 to 100+ vehicles within a single metric
+- **Vehicle Metadata**: Records vehicle brand, model, registration number, vehicle type, and fuel type
+- **Monthly Data Tracking**: Captures kilometers traveled and fuel consumed on a monthly basis
+- **Multi-level Data Structure**: Organizes data hierarchically:
+  - VehicleRecord: Stores static vehicle information
+  - VehicleMonthlyData: Aggregates data for each month
+  - VehicleDataSource: Tracks individual data sources (receipts, logs) contributing to monthly totals
+- **Flexible Data Sources**: Supports multiple data sources per vehicle per month for accurate tracking
+- **Emissions Calculation**: Integrates with the emissions calculation system using appropriate factors based on vehicle and fuel type
+
+#### Data Model Structure
+
+1. **VehicleTrackingMetric**: Configuration and settings
+   - Predefined vehicle types (private cars, light/heavy goods vehicles, etc.)
+   - Predefined fuel types (diesel oil, LPG, petrol, unleaded petrol)
+   - Reporting frequency (monthly, quarterly, annual)
+   - Emission calculation configuration
+
+2. **VehicleRecord**: Individual vehicle information
+   - Basic data (brand, model, registration number)
+   - Classification (vehicle type, fuel type)
+   - Status tracking (active/inactive)
+
+3. **VehicleMonthlyData**: Monthly performance data
+   - Time period (month)
+   - Performance metrics (kilometers traveled, fuel consumed)
+   - Calculated emissions data (value, unit)
+
+4. **VehicleDataSource**: Individual source records
+   - Source information (date, reference number)
+   - Specific metrics from source (kilometers, fuel)
+   - Additional context (location, notes)
+
+#### Example Use Cases
+
+- **Transport GHG Emissions**: Track and calculate Scope 1 emissions from company vehicle fleets
+- **Logistics Efficiency**: Monitor fuel efficiency across different vehicle types
+- **Delivery Services**: Track performance of delivery vehicles over time
+- **Regulatory Compliance**: Generate reports for transport-related emissions reporting
+- **Cost Allocation**: Attribute fuel costs to specific vehicles and departments
+
+#### Admin Interface Integration
+
+The system includes specialized admin interfaces for each component:
+- VehicleTrackingMetric admin with appropriate fieldsets
+- VehicleRecord admin with inline monthly data display
+- VehicleMonthlyData admin with inline data sources
+- VehicleDataSource admin with contextual information
+
+#### Data Submission and Aggregation
+
+When using VehicleTrackingMetric:
+1. Create a submission with the appropriate metric
+2. Add multiple vehicles as needed
+3. For each vehicle, add monthly data
+4. Optionally, add multiple data sources per month
+5. System will calculate aggregated emissions based on distance and fuel consumption
+
 ## Layer Support
 
 (This section remains largely the same, as layer support applies to both inputs and reported values)

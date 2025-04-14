@@ -438,5 +438,96 @@ class MultiFieldMetric(BaseESGMetric):
         fields = len(self.field_definitions) if isinstance(self.field_definitions, list) else 0
         return f"[Multi-Field ({fields} fields)] {super().__str__()}"
 
-# class VehicleTrackingMetric(BaseESGMetric): ...
+class VehicleTrackingMetric(BaseESGMetric):
+    """Metrics for tracking multiple vehicles with monthly fuel consumption and distance data."""
+    
+    # Default vehicle type choices - can be extended through admin
+    DEFAULT_VEHICLE_TYPES = [
+        {"value": "private_cars", "label": "Private cars"},
+        {"value": "light_goods_lte_2_5", "label": "Light goods vehicles (<=2.5tonnes)"},
+        {"value": "light_goods_2_5_3_5", "label": "Light goods vehicles (2.5-3.5tonnes)"},
+        {"value": "light_goods_3_5_5_5", "label": "Light goods vehicles (3.5-5.5tonnes)"},
+        {"value": "medium_heavy_goods_5_5_15", "label": "Medium & Heavy goods vehicles (5.5-15tonnes)"},
+        {"value": "medium_heavy_goods_gte_15", "label": "Medium & Heavy goods vehicles (>=15tonnes)"},
+    ]
+    
+    # Default fuel type choices - can be extended through admin
+    DEFAULT_FUEL_TYPES = [
+        {"value": "diesel_oil", "label": "Diesel oil"},
+        {"value": "lpg", "label": "LPG"},
+        {"value": "petrol", "label": "Petrol"},
+        {"value": "unleaded_petrol", "label": "Unleaded petrol"},
+    ]
+    
+    # Configuration fields
+    vehicle_type_choices = models.JSONField(
+        default=DEFAULT_VEHICLE_TYPES,
+        help_text="List of vehicle types available for selection"
+    )
+    
+    fuel_type_choices = models.JSONField(
+        default=DEFAULT_FUEL_TYPES,
+        help_text="List of fuel types available for selection"
+    )
+    
+    reporting_year = models.PositiveIntegerField(
+        default=lambda: timezone.now().year,
+        help_text="Default reporting year for vehicle data"
+    )
+    
+    REPORTING_FREQUENCY_CHOICES = [
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('annual', 'Annual'),
+    ]
+    
+    frequency = models.CharField(
+        max_length=20,
+        choices=REPORTING_FREQUENCY_CHOICES,
+        default='monthly',
+        help_text="Frequency of data collection for vehicles"
+    )
+    
+    # Default to transport category for emissions calculations
+    emission_category = models.CharField(
+        max_length=100,
+        default="transport",
+        help_text="Emission category for calculation (default: transport)"
+    )
+    
+    # Optionally include default sub-category, or leave this to be set based on fuel type
+    emission_sub_category = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Default sub-category. If blank, derived from fuel type."
+    )
+    
+    # Additional configuration
+    show_registration_number = models.BooleanField(
+        default=True,
+        help_text="Whether to display and require vehicle registration number"
+    )
+    
+    class Meta:
+        verbose_name = "Vehicle Tracking Metric"
+        verbose_name_plural = "Vehicle Tracking Metrics"
+        
+    def __str__(self):
+        return f"[Vehicle Tracking - {self.get_frequency_display()}] {super().__str__()}"
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set this instance to allow multiple submissions as vehicles are tracked separately
+        self.allow_multiple_submissions_per_period = True
+        
+    def calculate_aggregate(self, relevant_submission_pks: QuerySet[int], target_start_date: datetime.date, target_end_date: datetime.date, level: str) -> dict | None:
+        """Calculate aggregate for vehicle tracking metrics."""
+        # Import here to avoid circular imports
+        from ..models.submission_data import VehicleRecord, VehicleMonthlyData
+        
+        # Implementation will aggregate all vehicles' data across the target period
+        # This is a placeholder - the full implementation will be added in Phase 3
+        return None
+
 # class NarrativeMetric(BaseESGMetric): ...

@@ -10,11 +10,13 @@ from .models.templates import (
 from polymorphic.admin import PolymorphicParentModelAdmin, PolymorphicChildModelAdmin, PolymorphicChildModelFilter
 from .models.polymorphic_metrics import (
     BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
-    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric
+    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric,
+    VehicleTrackingMetric
 )
 from .models.submission_data import (
     BasicMetricData, TimeSeriesDataPoint, TabularMetricRow,
-    MaterialMatrixDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint
+    MaterialMatrixDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint,
+    VehicleRecord, VehicleMonthlyData, VehicleDataSource
 )
 from .models.factors import GHGEmissionFactor, PollutantFactor, EnergyConversionFactor
 from .models.results import CalculatedEmissionValue
@@ -106,6 +108,23 @@ class TabularMetricRowInline(admin.TabularInline):
     fields = ('row_index', 'row_data')
     ordering = ('row_index',)
 
+class VehicleRecordInline(admin.StackedInline):
+    model = VehicleRecord
+    extra = 1
+    fields = ('brand', 'model', 'registration_number', 'vehicle_type', 'fuel_type', 'notes', 'is_active')
+
+class VehicleMonthlyDataInline(admin.TabularInline):
+    model = VehicleMonthlyData
+    extra = 1
+    fields = ('period', 'kilometers', 'fuel_consumed', 'emission_calculated', 'emission_value', 'emission_unit')
+    ordering = ('period',)
+
+class VehicleDataSourceInline(admin.TabularInline):
+    model = VehicleDataSource
+    extra = 1
+    fields = ('source_date', 'source_reference', 'kilometers', 'fuel_consumed', 'location', 'notes')
+    ordering = ('source_date',)
+
 @admin.register(ESGMetricSubmission)
 class ESGMetricSubmissionAdmin(admin.ModelAdmin):
     list_display = (
@@ -147,6 +166,9 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
             elif isinstance(metric, TabularMetric):
                 logger.info(f"Adding TabularMetricRowInline for submission {obj.pk}")
                 inlines.append(TabularMetricRowInline)
+            elif isinstance(metric, VehicleTrackingMetric):
+                logger.info(f"Adding VehicleRecordInline for submission {obj.pk}")
+                inlines.append(VehicleRecordInline)
             # Add cases for other metric types as needed
             
             logger.info(f"Returning inlines: {[i.__name__ for i in inlines]}")
@@ -185,6 +207,11 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
                     return "<br>".join([f"{p.period.strftime('%Y-%m-%d')}: {p.value}" for p in points])
             elif isinstance(metric, TabularMetric):
                 return f"{obj.tabular_rows.count()} rows"
+            elif isinstance(metric, VehicleTrackingMetric):
+                vehicle_count = obj.vehicle_records.count()
+                if vehicle_count == 0:
+                    return "(No vehicles)"
+                return f"{vehicle_count} vehicle(s)"
             # Add checks for other metric types (Material, MultiField, etc.) here
             else:
                 return "(Data type not shown)"
@@ -271,6 +298,22 @@ class MultiFieldMetricAdmin(PolymorphicChildModelAdmin):
     base_model = MultiFieldMetric
     # Optional: Customize
 
+@admin.register(VehicleTrackingMetric)
+class VehicleTrackingMetricAdmin(PolymorphicChildModelAdmin):
+    base_model = VehicleTrackingMetric
+    # Custom fieldsets for better organization
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'description', 'form', 'order', 'is_required', 'help_text')
+        }),
+        ('Configuration', {
+            'fields': ('vehicle_type_choices', 'fuel_type_choices', 'reporting_year', 'frequency', 'show_registration_number')
+        }),
+        ('Emission Calculation', {
+            'fields': ('emission_category', 'emission_sub_category', 'requires_evidence')
+        }),
+    )
+
 @admin.register(BaseESGMetric)
 class BaseESGMetricAdmin(PolymorphicParentModelAdmin):
     base_model = BaseESGMetric
@@ -282,6 +325,7 @@ class BaseESGMetricAdmin(PolymorphicParentModelAdmin):
         TimeSeriesMetric,
         MultiFieldTimeSeriesMetric,
         MultiFieldMetric,
+        VehicleTrackingMetric,
         # Add other metric types here if they are created and registered
     )
     list_display = ('name', 'form', 'polymorphic_ctype', 'order', 'location', 'is_required')
@@ -403,3 +447,34 @@ class CalculatedEmissionValueAdmin(admin.ModelAdmin):
             return f"{metric.emission_category}/{metric.emission_sub_category}"
         return "N/A"
     get_category_subcategory.short_description = "Category/Subcategory"
+
+@admin.register(VehicleRecord)
+class VehicleRecordAdmin(admin.ModelAdmin):
+    list_display = ['brand', 'model', 'registration_number', 'vehicle_type', 'fuel_type', 'submission', 'is_active']
+    list_filter = ['vehicle_type', 'fuel_type', 'is_active', 'submission__metric']
+    search_fields = ['brand', 'model', 'registration_number', 'notes']
+    raw_id_fields = ['submission']
+    inlines = [VehicleMonthlyDataInline]
+
+@admin.register(VehicleMonthlyData)
+class VehicleMonthlyDataAdmin(admin.ModelAdmin):
+    list_display = ['vehicle', 'period', 'kilometers', 'fuel_consumed', 'emission_calculated', 'emission_value']
+    list_filter = ['period', 'emission_calculated', 'vehicle__vehicle_type', 'vehicle__fuel_type']
+    search_fields = ['vehicle__brand', 'vehicle__model', 'vehicle__registration_number']
+    ordering = ['vehicle', 'period']
+    date_hierarchy = 'period'
+    raw_id_fields = ['vehicle']
+    inlines = [VehicleDataSourceInline]
+
+@admin.register(VehicleDataSource)
+class VehicleDataSourceAdmin(admin.ModelAdmin):
+    list_display = ['source_reference', 'source_date', 'get_vehicle', 'kilometers', 'fuel_consumed', 'location']
+    list_filter = ['source_date', 'vehicle_monthly_data__vehicle__vehicle_type', 'vehicle_monthly_data__vehicle__fuel_type']
+    search_fields = ['source_reference', 'location', 'notes', 'vehicle_monthly_data__vehicle__registration_number']
+    date_hierarchy = 'source_date'
+    raw_id_fields = ['vehicle_monthly_data']
+    
+    def get_vehicle(self, obj):
+        return obj.vehicle_monthly_data.vehicle if obj.vehicle_monthly_data else None
+    get_vehicle.short_description = "Vehicle"
+    get_vehicle.admin_order_field = "vehicle_monthly_data__vehicle"
