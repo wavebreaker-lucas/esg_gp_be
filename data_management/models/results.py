@@ -73,7 +73,7 @@ class CalculatedEmissionValue(models.Model):
 
     class Meta:
         # Update unique_together to include related_group_id and is_primary_record
-        unique_together = [['source_activity_value', 'emission_factor', 'related_group_id']] 
+        unique_together = [['source_activity_value', 'emission_factor', 'related_group_id', 'is_primary_record']]
         ordering = ['-reporting_period', 'assignment', 'layer', 'emission_scope', '-is_primary_record']
         indexes = [
             models.Index(fields=['reporting_period', 'level', 'layer']), # Index for common filtering

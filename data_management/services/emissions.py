@@ -255,29 +255,27 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
     
     # Create new calculation records
     created_records = []
-    is_primary = True  # First record is the primary one
     
-    # Create a record for each calculation result
+    # Create a record for each calculation result (as components initially)
     for calc in calculation_results:
         factor = calc['factor']
         emission_value = calc['emission_value']
         proportion = calc.get('proportion', Decimal('1.0'))
         metadata = calc.get('metadata', {})
         
-        # Create the emission record
+        # Create the emission record - always as a component first
         record = CalculatedEmissionValue.objects.create(
             source_activity_value=rpv,
             emission_factor=factor,
             calculated_value=emission_value,
             emission_unit=factor.get_emission_unit(),
             related_group_id=group_id,
-            is_primary_record=is_primary,
+            is_primary_record=False, # Hardcoded to False for components
             proportion=proportion,
             calculation_metadata=metadata
         )
         
         created_records.append(record)
-        is_primary = False  # Only the first record is primary
     
     # If we have multiple records, create a primary record with the total
     if len(created_records) > 1:
@@ -304,11 +302,6 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
             }
         )
         
-        # Make the components not primary
-        for record in created_records:
-            record.is_primary_record = False
-            record.save()
-            
         # Add the primary record to the beginning of the list
         created_records.insert(0, primary_record)
     
