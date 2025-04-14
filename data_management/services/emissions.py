@@ -24,8 +24,8 @@ def find_matching_emission_factor(
     year: int,
     category: str,
     sub_category: str,
-    activity_unit: str,
-    region: str,
+    activity_unit: str = None,
+    region: str = None,
     scope: str = None
 ) -> Optional[GHGEmissionFactor]:
     """
@@ -35,72 +35,96 @@ def find_matching_emission_factor(
         year: The reporting year
         category: The emission category from metric configuration
         sub_category: The emission sub-category from metric configuration
-        activity_unit: The unit of the activity data
-        region: The region code from the metric's location field
+        activity_unit: Optional unit of the activity data (used as secondary matching criterion)
+        region: Optional region code from the metric's location field
         scope: Optional scope specification (Scope 1, 2, or 3) - not used in automatic lookup
         
     Returns:
         The best matching GHGEmissionFactor or None if no match found
     """
-    # Start with exact match query including region
+    # Start with the base category/subcategory match
     query = Q(
         year=year,
         category=category,
-        sub_category=sub_category,
-        activity_unit=activity_unit
+        sub_category=sub_category
     )
     
-    # Add scope filter if explicitly provided (but we don't infer it anymore)
+    # Add additional filters if provided
+    if activity_unit:
+        activity_unit_query = query & Q(activity_unit=activity_unit)
+    else:
+        activity_unit_query = query
+        
     if scope:
-        query &= Q(scope=scope)
+        activity_unit_query &= Q(scope=scope)
     
-    # Try exact region match first
-    region_query = query & Q(region=region)
-    factor = GHGEmissionFactor.objects.filter(region_query).first()
-    if factor:
-        logger.debug(f"Found exact region match for {category}/{sub_category} in {region}")
-        return factor
-    
-    # Try region fallback: "HK / PRC" for either "HK" or "PRC"
-    if region in ['HK', 'PRC']:
-        combined_region_query = query & Q(region='HK / PRC')
-        factor = GHGEmissionFactor.objects.filter(combined_region_query).first()
+    # Try exact region match first (with unit if specified)
+    if region:
+        region_query = activity_unit_query & Q(region=region)
+        factor = GHGEmissionFactor.objects.filter(region_query).first()
         if factor:
-            logger.debug(f"Found combined region match 'HK / PRC' for {category}/{sub_category}")
+            logger.debug(f"Found exact region match for {category}/{sub_category} in {region}")
             return factor
+        
+        # Try region fallback: "HK / PRC" for either "HK" or "PRC"
+        if region in ['HK', 'PRC']:
+            combined_region_query = activity_unit_query & Q(region='HK / PRC')
+            factor = GHGEmissionFactor.objects.filter(combined_region_query).first()
+            if factor:
+                logger.debug(f"Found combined region match 'HK / PRC' for {category}/{sub_category}")
+                return factor
     
     # Try universal region ("ALL") 
-    universal_region_query = query & (Q(region='ALL') | Q(region='') | Q(region__isnull=True))
+    universal_region_query = activity_unit_query & (Q(region='ALL') | Q(region='') | Q(region__isnull=True))
     factor = GHGEmissionFactor.objects.filter(universal_region_query).first()
     if factor:
         logger.debug(f"Found universal region match for {category}/{sub_category}")
         return factor
     
-    # Try year fallback - get the closest earlier year with a matching factor
-    # First try with the specific region
-    earlier_year_query = Q(
-        category=category,
-        sub_category=sub_category,
-        activity_unit=activity_unit,
-        region=region,
-        year__lt=year
-    )
-    if scope:
-        earlier_year_query &= Q(scope=scope)
+    # If we got this far with a unit specified and didn't find a match, 
+    # try again WITHOUT the unit constraint
+    if activity_unit and activity_unit_query != query:
+        logger.debug(f"Trying factor lookup without unit constraint for {category}/{sub_category}")
+        return find_matching_emission_factor(
+            year=year,
+            category=category,
+            sub_category=sub_category,
+            activity_unit=None,
+            region=region,
+            scope=scope
+        )
     
-    earlier_factor = GHGEmissionFactor.objects.filter(earlier_year_query).order_by('-year').first()
-    if earlier_factor:
-        logger.debug(f"Found earlier year ({earlier_factor.year}) match for {category}/{sub_category} in {region}")
-        return earlier_factor
+    # Try year fallback - get the closest earlier year
+    # Only if we have a region specified
+    if region:
+        earlier_year_query = Q(
+            category=category,
+            sub_category=sub_category,
+            year__lt=year,
+            region=region
+        )
+        
+        if activity_unit:
+            earlier_year_query &= Q(activity_unit=activity_unit)
+            
+        if scope:
+            earlier_year_query &= Q(scope=scope)
+        
+        earlier_factor = GHGEmissionFactor.objects.filter(earlier_year_query).order_by('-year').first()
+        if earlier_factor:
+            logger.debug(f"Found earlier year ({earlier_factor.year}) match for {category}/{sub_category} in {region}")
+            return earlier_factor
     
     # Finally, try universal region with earlier year
     universal_earlier_query = Q(
         category=category,
         sub_category=sub_category,
-        activity_unit=activity_unit,
         year__lt=year
     ) & (Q(region='ALL') | Q(region='') | Q(region__isnull=True))
     
+    if activity_unit:
+        universal_earlier_query &= Q(activity_unit=activity_unit)
+        
     if scope:
         universal_earlier_query &= Q(scope=scope)
     
@@ -109,8 +133,20 @@ def find_matching_emission_factor(
         logger.debug(f"Found universal earlier year ({universal_earlier_factor.year}) match for {category}/{sub_category}")
         return universal_earlier_factor
     
+    # Try earlier year without unit constraint as last resort
+    if activity_unit:
+        logger.debug(f"Trying earlier year lookup without unit constraint for {category}/{sub_category}")
+        return find_matching_emission_factor(
+            year=year,
+            category=category,
+            sub_category=sub_category,
+            activity_unit=None,
+            region=region,
+            scope=scope
+        )
+    
     # No match found after all fallbacks
-    logger.warning(f"No emission factor found for {category}/{sub_category}, {activity_unit}, {region}, {year}")
+    logger.warning(f"No emission factor found for {category}/{sub_category}, region={region}, year={year}")
     return None
 
 def convert_unit_if_needed(value: Decimal, source_unit: str, target_unit: str) -> Tuple[Decimal, bool]:
@@ -210,8 +246,7 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> Optional
     # Get region from the metric's location field
     region = metric.location
     
-    # Remove scope inference logic - rely entirely on factor database
-    # Find matching emission factor (without scope parameter)
+    # Find matching emission factor (with unit as optional matching criterion)
     factor = find_matching_emission_factor(
         year=year,
         category=metric.emission_category,
