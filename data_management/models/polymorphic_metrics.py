@@ -4,6 +4,7 @@ from polymorphic.models import PolymorphicModel
 import datetime
 from django.db.models import QuerySet, Sum, Avg
 from django.utils import timezone # Needed for potential 'LAST' logic refinement
+import json
 
 # Choices definitions (can be moved to a central location later if needed)
 LOCATION_CHOICES = [
@@ -610,7 +611,7 @@ class VehicleTrackingMetric(BaseESGMetric):
         # For monthly, we would filter by the specific month
         
         # Create a JSON structure with the aggregated data
-        aggregated_text_value = {
+        aggregated_data_dict = {
             'total_fuel_consumed_liters': float(total_fuel),
             'total_kilometers': float(total_km),
             'vehicle_count': vehicle_records.count()
@@ -620,7 +621,8 @@ class VehicleTrackingMetric(BaseESGMetric):
         # This will be used for emissions calculations
         return {
             'aggregated_numeric_value': float(total_fuel),
-            'aggregated_text_value': str(aggregated_text_value),
+            # Correctly serialize the dictionary to a JSON string
+            'aggregated_text_value': json.dumps(aggregated_data_dict),
             'aggregation_method': 'SUM',
             'contributing_submissions_count': contributing_submissions_count
         }
