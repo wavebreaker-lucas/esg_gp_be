@@ -14,7 +14,7 @@ from .views import (
 # Import the metrics view separately (or adjust above import)
 from .views.form_definition import metrics as metric_views
 # Import dashboard API views
-from .views.dashboard_api import total_emissions_api, emissions_time_series_api
+from .views.dashboard_api import total_emissions_api, emissions_time_series_api, vehicle_emissions_breakdown_api
 
 # Create a router for ViewSets
 router = DefaultRouter()
@@ -48,4 +48,5 @@ urlpatterns += [
     # Dashboard API endpoints
     path('dashboard/total-emissions/', total_emissions_api, name='dashboard-total-emissions'),
     path('dashboard/emissions-time-series/', emissions_time_series_api, name='dashboard-emissions-time-series'),
+    path('dashboard/vehicle-emissions/', vehicle_emissions_breakdown_api, name='dashboard-vehicle-emissions'),
 ] 

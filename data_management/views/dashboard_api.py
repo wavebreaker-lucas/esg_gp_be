@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 from django.contrib.auth.decorators import login_required
 
-from ..services.dashboard import get_total_emissions, get_emissions_time_series
+from ..services.dashboard import get_total_emissions, get_emissions_time_series, get_vehicle_emissions_breakdown
 
 logger = logging.getLogger(__name__)
 
@@ -137,5 +137,56 @@ def emissions_time_series_api(request):
         logger.error(f"Error generating emissions time series data: {e}", exc_info=True)
         return JsonResponse({
             'error': 'An error occurred while generating emissions time series data',
+            'message': str(e)
+        }, status=500)
+
+@require_GET
+@login_required
+def vehicle_emissions_breakdown_api(request):
+    """
+    API endpoint for vehicle emissions breakdown data.
+    
+    Query parameters:
+    - assignment_id: Filter by template assignment
+    - layer_id: Filter by organization/layer
+    - year: Filter by year
+    - period_date: Filter by specific date (YYYY-MM-DD)
+    - level: Filter by aggregation level (M=monthly, A=annual)
+    """
+    try:
+        # Extract query parameters
+        assignment_id = request.GET.get('assignment_id')
+        if assignment_id:
+            assignment_id = int(assignment_id)
+            
+        layer_id = request.GET.get('layer_id')
+        if layer_id:
+            layer_id = int(layer_id)
+            
+        year = request.GET.get('year')
+        if year:
+            year = int(year)
+            
+        period_date = request.GET.get('period_date')
+        if period_date:
+            period_date = datetime.strptime(period_date, '%Y-%m-%d').date()
+            
+        level = request.GET.get('level')
+        
+        # Call the service function
+        result = get_vehicle_emissions_breakdown(
+            assignment_id=assignment_id,
+            layer_id=layer_id,
+            year=year,
+            period_date=period_date,
+            level=level
+        )
+        
+        return JsonResponse(result, safe=True)
+        
+    except Exception as e:
+        logger.error(f"Error generating vehicle emissions breakdown data: {e}", exc_info=True)
+        return JsonResponse({
+            'error': 'An error occurred while generating vehicle emissions breakdown data',
             'message': str(e)
         }, status=500) 
