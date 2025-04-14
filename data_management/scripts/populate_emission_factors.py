@@ -97,7 +97,7 @@ def populate_electricity_factors():
         year=2023,
         region="PRC",
         scope="2",
-        source="关于做好2023—2025年部分重点行业企业温室气体排放报告与核查工作的通知",
+        source="China Ministry of Environment 2023-2025 Greenhouse Gas Emission Report",
         source_url="https://www.mee.gov.cn/xxgk2018/xxgk/xxgk06/202310/t20231018_1043427.html"
     )
     
