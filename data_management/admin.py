@@ -367,7 +367,7 @@ class CalculatedEmissionValueAdmin(admin.ModelAdmin):
     list_filter = (
         'emission_scope', 
         'emission_unit', 
-        'reporting_period__year',
+        'reporting_period',
         'source_activity_value__metric__emission_category',
         'source_activity_value__metric__emission_sub_category',
         'layer',
