@@ -607,14 +607,34 @@ class VehicleTrackingMetric(BaseESGMetric):
         # Count distinct submissions that contributed data
         contributing_submissions_count = vehicle_records.values('submission_id').distinct().count()
         
-        # For annual aggregation, we return the total fuel and kilometers
-        # For monthly, we would filter by the specific month
+        # Fetch vehicle details with their aggregated values
+        vehicle_details = []
+        for vehicle in vehicle_records:
+            vehicle_monthly_data = vehicle.monthly_data.filter(
+                period__gte=target_start_date,
+                period__lte=target_end_date
+            )
+            
+            if vehicle_monthly_data.exists():
+                total_vehicle_fuel = vehicle_monthly_data.aggregate(total=Sum('fuel_consumed'))['total'] or 0
+                total_vehicle_km = vehicle_monthly_data.aggregate(total=Sum('kilometers'))['total'] or 0
+                
+                vehicle_details.append({
+                    'vehicle_type': vehicle.vehicle_type,
+                    'fuel_type': vehicle.fuel_type,
+                    'registration': vehicle.registration_number,
+                    'fuel_consumed': float(total_vehicle_fuel),
+                    'kilometers': float(total_vehicle_km),
+                    'brand': vehicle.brand,
+                    'model': vehicle.model
+                })
         
         # Create a JSON structure with the aggregated data
         aggregated_data_dict = {
             'total_fuel_consumed_liters': float(total_fuel),
             'total_kilometers': float(total_km),
-            'vehicle_count': vehicle_records.count()
+            'vehicle_count': vehicle_records.count(),
+            'vehicles': vehicle_details  # Add detailed vehicle information
         }
         
         # For numeric value, use the total fuel consumption as the primary metric
