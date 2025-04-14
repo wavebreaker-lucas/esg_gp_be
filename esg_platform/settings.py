@@ -56,7 +56,7 @@ INSTALLED_APPS = [
     # Local
     'accounts',
     'data_management',
-    'dashboard',
+    # 'dashboard',  # Removed - app has been deleted
     'utils',
 ]
 
