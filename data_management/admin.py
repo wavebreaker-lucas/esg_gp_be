@@ -17,6 +17,7 @@ from .models.submission_data import (
     MaterialMatrixDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint
 )
 from .models.factors import GHGEmissionFactor, PollutantFactor, EnergyConversionFactor
+from .models.results import CalculatedEmissionValue
 
 # Initialize the logger
 logger = logging.getLogger(__name__)
@@ -349,3 +350,56 @@ class EnergyConversionFactorAdmin(admin.ModelAdmin):
     list_filter = ('year', 'category', 'region')
     search_fields = ('category', 'sub_category', 'source')
     ordering = ('-year', 'category', 'sub_category')
+
+@admin.register(CalculatedEmissionValue)
+class CalculatedEmissionValueAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 
+        'calculated_value', 
+        'emission_unit', 
+        'emission_scope',
+        'get_metric_name',
+        'get_category_subcategory',
+        'reporting_period', 
+        'layer', 
+        'calculation_timestamp'
+    )
+    list_filter = (
+        'emission_scope', 
+        'emission_unit', 
+        'reporting_period__year',
+        'source_activity_value__metric__emission_category',
+        'source_activity_value__metric__emission_sub_category',
+        'layer',
+        'level'
+    )
+    search_fields = (
+        'calculated_value', 
+        'source_activity_value__metric__name', 
+        'layer__company_name'
+    )
+    readonly_fields = (
+        'source_activity_value', 
+        'emission_factor',
+        'calculated_value', 
+        'emission_unit', 
+        'emission_scope',
+        'assignment', 
+        'layer', 
+        'reporting_period',
+        'level',
+        'calculation_timestamp'
+    )
+    date_hierarchy = 'reporting_period'
+    
+    def get_metric_name(self, obj):
+        return obj.source_activity_value.metric.name if obj.source_activity_value and obj.source_activity_value.metric else "N/A"
+    get_metric_name.short_description = "Metric"
+    get_metric_name.admin_order_field = 'source_activity_value__metric__name'
+    
+    def get_category_subcategory(self, obj):
+        if obj.source_activity_value and obj.source_activity_value.metric:
+            metric = obj.source_activity_value.metric
+            return f"{metric.emission_category}/{metric.emission_sub_category}"
+        return "N/A"
+    get_category_subcategory.short_description = "Category/Subcategory"
