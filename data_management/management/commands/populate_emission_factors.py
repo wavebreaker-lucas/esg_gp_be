@@ -166,31 +166,538 @@ class Command(BaseCommand):
         )
 
     def populate_transport_factors(self):
-        """Populate transport emission factors with both scope 1 and scope 3 examples"""
-        # Company vehicles (Scope 1)
+        """Populate transport emission factors"""
+        # HKEX Vehicle Emission Factors - Diesel vehicles
         self.create_factor(
-            name="Gasoline - Mobile Combustion - Company Vehicles - 2023",
+            name="Diesel - Passenger Car",
             category="transport",
-            sub_category="company_gasoline",
+            sub_category="transport_cars_diesel",
             activity_unit="liters",
-            value=2.33,
+            value=2.6460,
             factor_unit="kgCO2e/liter",
             year=2023,
-            region="ALL",
+            region="HK / PRC",
             scope="1",
-            source="HKEX Reporting Guidance"
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         )
         
-        # Employee commuting (Scope 3)
         self.create_factor(
-            name="Gasoline - Mobile Combustion - Employee Commuting - 2023",
+            name="Diesel - Private Van",
             category="transport",
-            sub_category="employee_commuting_gasoline",
+            sub_category="transport_vans_diesel",
             activity_unit="liters",
-            value=2.94,
+            value=2.7541,
             factor_unit="kgCO2e/liter",
             year=2023,
-            region="ALL",
-            scope="3",
-            source="HKEX Reporting Guidance"
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="Diesel - Public Light Bus",
+            category="transport",
+            sub_category="transport_bus_diesel",
+            activity_unit="liters",
+            value=2.7722,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="Diesel - Light Goods Vehicle",
+            category="transport",
+            sub_category="transport_light_goods_diesel",
+            activity_unit="liters",
+            value=2.7541,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # Add light commercial diesel factor to match VehicleTrackingMetric mapping
+        self.create_factor(
+            name="Diesel - Light Commercial Vehicle",
+            category="transport",
+            sub_category="transport_light_commercial_diesel",
+            activity_unit="liters",
+            value=2.7541,  # Same as light goods diesel
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="Diesel - Medium Goods Vehicle",
+            category="transport",
+            sub_category="transport_medium_goods_diesel",
+            activity_unit="liters",
+            value=2.6377,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="Diesel - Heavy Goods Vehicle",
+            category="transport",
+            sub_category="transport_heavy_goods_diesel",
+            activity_unit="liters",
+            value=2.6377,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="Diesel - Other Mobile Machinery",
+            category="transport",
+            sub_category="transport_mobile_machinery_diesel",
+            activity_unit="liters",
+            value=2.6166,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # HKEX Vehicle Emission Factors - Petrol/Unleaded vehicles
+        self.create_factor(
+            name="Petrol - Motorcycle",
+            category="transport",
+            sub_category="transport_motorcycle_petrol",
+            activity_unit="liters",
+            value=2.4122,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="Petrol/Unleaded - Passenger Car",
+            category="transport",
+            sub_category="transport_cars_petrol",
+            activity_unit="liters",
+            value=2.6687,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="Petrol/Unleaded - Private Van",
+            category="transport",
+            sub_category="transport_vans_petrol",
+            activity_unit="liters",
+            value=2.6769,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="Petrol/Unleaded - Light Goods Vehicle",
+            category="transport",
+            sub_category="transport_light_goods_petrol",
+            activity_unit="liters",
+            value=2.6673,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # HKEX Vehicle Emission Factors - LPG vehicles
+        self.create_factor(
+            name="LPG - Private Van",
+            category="transport",
+            sub_category="transport_vans_lpg",
+            activity_unit="liters",
+            value=1.6859,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="LPG - Public Light Bus",
+            category="transport",
+            sub_category="transport_bus_lpg",
+            activity_unit="liters",
+            value=1.6859,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="LPG - Other Mobile Machinery",
+            category="transport",
+            sub_category="transport_mobile_machinery_lpg",
+            activity_unit="liters",
+            value=1.6791,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="LPG - Passenger Car",
+            category="transport",
+            sub_category="transport_cars_lpg",
+            activity_unit="liters",
+            value=1.6859,  # Using the same value as LPG vans/buses
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # Fallback factors for generic vehicle types
+        self.create_factor(
+            name="Diesel - General Mobile",
+            category="transport",
+            sub_category="transport_general_diesel",
+            activity_unit="liters",
+            value=2.6166,  # Using mobile machinery as default
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="Petrol - General Mobile",
+            category="transport",
+            sub_category="transport_general_petrol",
+            activity_unit="liters",
+            value=2.6687,  # Using passenger car as default
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        self.create_factor(
+            name="LPG - General Mobile",
+            category="transport",
+            sub_category="transport_lpg",
+            activity_unit="liters",
+            value=1.6859,  # Using van/bus as default
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # Additional ship/vessel factors
+        self.create_factor(
+            name="Gas Oil - Ship",
+            category="transport",
+            sub_category="transport_ship_gas_oil",
+            activity_unit="liters",
+            value=2.9480,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # Aviation factors
+        self.create_factor(
+            name="Jet Kerosene - Aviation",
+            category="transport",
+            sub_category="transport_aviation_kerosene",
+            activity_unit="liters",
+            value=2.4309,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # Additional factors to match the DEFAULT_EMISSION_MAPPING in VehicleTrackingMetric
+        
+        # For private_cars with different fuel types
+        # (Already have diesel, petrol, and LPG above)
+        
+        # For light_goods_lte_2_5 with different fuel types
+        # For diesel_oil - using transport_light_commercial_diesel
+        # This is already mapped in the emission_factor_mapping
+        
+        # For light_goods_lte_2_5 with petrol
+        self.create_factor(
+            name="Petrol - Light Goods Vehicle (<=2.5tonnes)",
+            category="transport",
+            sub_category="transport_light_goods_lte_2_5_petrol",
+            activity_unit="liters",
+            value=2.6673,  # Using standard Light Goods Vehicle petrol value
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For light_goods_lte_2_5 with unleaded_petrol
+        self.create_factor(
+            name="Unleaded Petrol - Light Goods Vehicle (<=2.5tonnes)",
+            category="transport",
+            sub_category="transport_light_goods_lte_2_5_unleaded_petrol",
+            activity_unit="liters",
+            value=2.6673,  # Using standard Light Goods Vehicle petrol value
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For light_goods_lte_2_5 with LPG
+        self.create_factor(
+            name="LPG - Light Goods Vehicle (<=2.5tonnes)",
+            category="transport",
+            sub_category="transport_light_goods_lte_2_5_lpg",
+            activity_unit="liters",
+            value=1.6859,  # Using LPG van/bus value
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For light_goods_2_5_3_5 with petrol
+        self.create_factor(
+            name="Petrol - Light Goods Vehicle (2.5-3.5tonnes)",
+            category="transport",
+            sub_category="transport_light_goods_2_5_3_5_petrol",
+            activity_unit="liters",
+            value=2.6673,  # Using standard Light Goods Vehicle petrol value
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For light_goods_2_5_3_5 with unleaded_petrol
+        self.create_factor(
+            name="Unleaded Petrol - Light Goods Vehicle (2.5-3.5tonnes)",
+            category="transport",
+            sub_category="transport_light_goods_2_5_3_5_unleaded_petrol",
+            activity_unit="liters",
+            value=2.6673,  # Using standard Light Goods Vehicle petrol value
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For light_goods_2_5_3_5 with LPG
+        self.create_factor(
+            name="LPG - Light Goods Vehicle (2.5-3.5tonnes)",
+            category="transport",
+            sub_category="transport_light_goods_2_5_3_5_lpg",
+            activity_unit="liters",
+            value=1.6859,  # Using LPG van/bus value
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For light_goods_3_5_5_5 with petrol
+        self.create_factor(
+            name="Petrol - Light Goods Vehicle (3.5-5.5tonnes)",
+            category="transport",
+            sub_category="transport_light_goods_3_5_5_5_petrol",
+            activity_unit="liters",
+            value=2.6673,  # Using standard Light Goods Vehicle petrol value
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For light_goods_3_5_5_5 with unleaded_petrol
+        self.create_factor(
+            name="Unleaded Petrol - Light Goods Vehicle (3.5-5.5tonnes)",
+            category="transport",
+            sub_category="transport_light_goods_3_5_5_5_unleaded_petrol",
+            activity_unit="liters",
+            value=2.6673,  # Using standard Light Goods Vehicle petrol value
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For light_goods_3_5_5_5 with LPG
+        self.create_factor(
+            name="LPG - Light Goods Vehicle (3.5-5.5tonnes)",
+            category="transport",
+            sub_category="transport_light_goods_3_5_5_5_lpg",
+            activity_unit="liters",
+            value=1.6859,  # Using LPG van/bus value
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For medium_heavy_goods_5_5_15 with petrol
+        self.create_factor(
+            name="Petrol - Medium/Heavy Goods Vehicle (5.5-15tonnes)",
+            category="transport",
+            sub_category="transport_medium_heavy_goods_5_5_15_petrol",
+            activity_unit="liters",
+            value=2.6673,  # Using Light Goods Vehicle petrol value as approximation
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For medium_heavy_goods_5_5_15 with unleaded_petrol
+        self.create_factor(
+            name="Unleaded Petrol - Medium/Heavy Goods Vehicle (5.5-15tonnes)",
+            category="transport",
+            sub_category="transport_medium_heavy_goods_5_5_15_unleaded_petrol",
+            activity_unit="liters",
+            value=2.6673,  # Using Light Goods Vehicle petrol value as approximation
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For medium_heavy_goods_5_5_15 with LPG
+        self.create_factor(
+            name="LPG - Medium/Heavy Goods Vehicle (5.5-15tonnes)",
+            category="transport",
+            sub_category="transport_medium_heavy_goods_5_5_15_lpg",
+            activity_unit="liters",
+            value=1.6859,  # Using LPG van/bus value
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For medium_heavy_goods_gte_15 with petrol
+        self.create_factor(
+            name="Petrol - Medium/Heavy Goods Vehicle (>=15tonnes)",
+            category="transport",
+            sub_category="transport_medium_heavy_goods_gte_15_petrol",
+            activity_unit="liters",
+            value=2.6673,  # Using Light Goods Vehicle petrol value as approximation
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For medium_heavy_goods_gte_15 with unleaded_petrol
+        self.create_factor(
+            name="Unleaded Petrol - Medium/Heavy Goods Vehicle (>=15tonnes)",
+            category="transport",
+            sub_category="transport_medium_heavy_goods_gte_15_unleaded_petrol",
+            activity_unit="liters",
+            value=2.6673,  # Using Light Goods Vehicle petrol value as approximation
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # For medium_heavy_goods_gte_15 with LPG
+        self.create_factor(
+            name="LPG - Medium/Heavy Goods Vehicle (>=15tonnes)",
+            category="transport",
+            sub_category="transport_medium_heavy_goods_gte_15_lpg",
+            activity_unit="liters",
+            value=1.6859,  # Using LPG van/bus value
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         ) 
