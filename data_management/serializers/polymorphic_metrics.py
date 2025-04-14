@@ -4,7 +4,8 @@ from rest_polymorphic.serializers import PolymorphicSerializer
 from rest_framework import serializers
 from ..models.polymorphic_metrics import (
     BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
-    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric
+    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric,
+    VehicleTrackingMetric
 )
 from ..models.templates import ESGForm # Needed for form_id write
 
@@ -66,6 +67,15 @@ class MultiFieldMetricSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('form',)
 
+class VehicleTrackingMetricSerializer(serializers.ModelSerializer):
+    form_id = serializers.PrimaryKeyRelatedField(
+        queryset=ESGForm.objects.all(), source='form', write_only=True
+    )
+    class Meta:
+        model = VehicleTrackingMetric
+        fields = '__all__'
+        read_only_fields = ('form',)
+
 # --- Polymorphic Base Serializer ---
 
 class ESGMetricPolymorphicSerializer(PolymorphicSerializer):
@@ -76,7 +86,8 @@ class ESGMetricPolymorphicSerializer(PolymorphicSerializer):
         MaterialTrackingMatrixMetric: MaterialTrackingMatrixMetricSerializer,
         TimeSeriesMetric: TimeSeriesMetricSerializer,
         MultiFieldTimeSeriesMetric: MultiFieldTimeSeriesMetricSerializer,
-        MultiFieldMetric: MultiFieldMetricSerializer
+        MultiFieldMetric: MultiFieldMetricSerializer,
+        VehicleTrackingMetric: VehicleTrackingMetricSerializer
     }
     # The 'polymorphic_ctype' field is automatically added by the library 
     # to identify the model type in the JSON output.

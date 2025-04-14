@@ -459,6 +459,30 @@ class VehicleTrackingMetric(BaseESGMetric):
         {"value": "unleaded_petrol", "label": "Unleaded petrol"},
     ]
     
+    # Default emission factor mapping
+    DEFAULT_EMISSION_MAPPING = {
+        # Vehicle type + fuel type combinations
+        "private_cars_diesel_oil": "transport_cars_diesel",
+        "private_cars_petrol": "transport_cars_petrol", 
+        "private_cars_unleaded_petrol": "transport_cars_petrol",
+        "private_cars_lpg": "transport_cars_lpg",
+        
+        # Light goods vehicles
+        "light_goods_lte_2_5_diesel_oil": "transport_light_commercial_diesel",
+        "light_goods_2_5_3_5_diesel_oil": "transport_light_commercial_diesel",
+        "light_goods_3_5_5_5_diesel_oil": "transport_light_commercial_diesel",
+        
+        # Medium & heavy goods vehicles
+        "medium_heavy_goods_5_5_15_diesel_oil": "transport_heavy_goods_diesel",
+        "medium_heavy_goods_gte_15_diesel_oil": "transport_heavy_goods_diesel",
+        
+        # Fallbacks by fuel type only
+        "diesel_oil": "transport_general_diesel",
+        "petrol": "transport_general_petrol",
+        "unleaded_petrol": "transport_general_petrol",
+        "lpg": "transport_lpg"
+    }
+    
     # Configuration fields
     vehicle_type_choices = models.JSONField(
         default=DEFAULT_VEHICLE_TYPES,
@@ -468,6 +492,11 @@ class VehicleTrackingMetric(BaseESGMetric):
     fuel_type_choices = models.JSONField(
         default=DEFAULT_FUEL_TYPES,
         help_text="List of fuel types available for selection"
+    )
+    
+    emission_factor_mapping = models.JSONField(
+        default=DEFAULT_EMISSION_MAPPING,
+        help_text="Mapping of vehicle_type + fuel_type combinations to emission subcategories"
     )
     
     reporting_year = models.PositiveIntegerField(
@@ -488,21 +517,6 @@ class VehicleTrackingMetric(BaseESGMetric):
         help_text="Frequency of data collection for vehicles"
     )
     
-    # Default to transport category for emissions calculations
-    emission_category = models.CharField(
-        max_length=100,
-        default="transport",
-        help_text="Emission category for calculation (default: transport)"
-    )
-    
-    # Optionally include default sub-category, or leave this to be set based on fuel type
-    emission_sub_category = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        help_text="Default sub-category. If blank, derived from fuel type."
-    )
-    
     # Additional configuration
     show_registration_number = models.BooleanField(
         default=True,
@@ -521,13 +535,84 @@ class VehicleTrackingMetric(BaseESGMetric):
         # Set this instance to allow multiple submissions as vehicles are tracked separately
         self.allow_multiple_submissions_per_period = True
         
+        # Set default emission category for vehicle tracking
+        if not self.emission_category:
+            self.emission_category = "transport"
+            
+    def get_emission_subcategory(self, vehicle_type, fuel_type):
+        """
+        Dynamically determine the appropriate emission subcategory based on
+        vehicle type and fuel type.
+        
+        Args:
+            vehicle_type: The vehicle type code (e.g., 'private_cars')
+            fuel_type: The fuel type code (e.g., 'diesel_oil')
+            
+        Returns:
+            The appropriate emission subcategory code for lookup
+        """
+        # Try the specific vehicle_type + fuel_type combination
+        specific_key = f"{vehicle_type}_{fuel_type}"
+        if specific_key in self.emission_factor_mapping:
+            return self.emission_factor_mapping[specific_key]
+            
+        # Try just the fuel type (more general)
+        if fuel_type in self.emission_factor_mapping:
+            return self.emission_factor_mapping[fuel_type]
+            
+        # Fall back to a constructed key if nothing else matched
+        return f"transport_{vehicle_type}_{fuel_type}"
+        
     def calculate_aggregate(self, relevant_submission_pks: QuerySet[int], target_start_date: datetime.date, target_end_date: datetime.date, level: str) -> dict | None:
         """Calculate aggregate for vehicle tracking metrics."""
         # Import here to avoid circular imports
-        from ..models.submission_data import VehicleRecord, VehicleMonthlyData
+        from ..models.submission_data import VehicleRecord, VehicleMonthlyData, VehicleDataSource
+        from .templates import ESGMetricSubmission
+        from django.db.models import Sum
         
-        # Implementation will aggregate all vehicles' data across the target period
-        # This is a placeholder - the full implementation will be added in Phase 3
-        return None
+        # Get all vehicle records for these submissions
+        vehicle_records = VehicleRecord.objects.filter(
+            submission_id__in=relevant_submission_pks
+        )
+        
+        if not vehicle_records.exists():
+            return None
+            
+        # Get vehicle monthly data for the target period
+        monthly_data = VehicleMonthlyData.objects.filter(
+            vehicle__in=vehicle_records,
+            period__gte=target_start_date,
+            period__lte=target_end_date
+        )
+        
+        if not monthly_data.exists():
+            return None
+            
+        # Aggregate fuel consumption across all vehicles in the period
+        total_fuel = monthly_data.aggregate(total=Sum('fuel_consumed'))['total'] or 0
+        # Aggregate kilometers across all vehicles in the period
+        total_km = monthly_data.aggregate(total=Sum('kilometers'))['total'] or 0
+        
+        # Count distinct submissions that contributed data
+        contributing_submissions_count = vehicle_records.values('submission_id').distinct().count()
+        
+        # For annual aggregation, we return the total fuel and kilometers
+        # For monthly, we would filter by the specific month
+        
+        # Create a JSON structure with the aggregated data
+        aggregated_text_value = {
+            'total_fuel_consumed_liters': float(total_fuel),
+            'total_kilometers': float(total_km),
+            'vehicle_count': vehicle_records.count()
+        }
+        
+        # For numeric value, use the total fuel consumption as the primary metric
+        # This will be used for emissions calculations
+        return {
+            'aggregated_numeric_value': float(total_fuel),
+            'aggregated_text_value': str(aggregated_text_value),
+            'aggregation_method': 'SUM',
+            'contributing_submissions_count': contributing_submissions_count
+        }
 
 # class NarrativeMetric(BaseESGMetric): ...

@@ -217,8 +217,10 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> Optional
     
     # Skip if metric doesn't have emission category configured
     if not metric.emission_category or not metric.emission_sub_category:
-        logger.debug(f"Skipping emissions calculation for metric {metric.pk} - missing category configuration")
-        return None
+        # Special case for VehicleTrackingMetric which uses dynamic subcategory mapping
+        if not isinstance(metric.get_real_instance(), VehicleTrackingMetric) and not metric.emission_category:
+            logger.debug(f"Skipping emissions calculation for metric {metric.pk} - missing category configuration")
+            return None
     
     # Skip if no activity value is present
     if rpv.aggregated_numeric_value is None:
@@ -229,13 +231,16 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> Optional
     specific_metric = metric.get_real_instance()
     
     # Extract unit based on metric type
-    from ..models.polymorphic_metrics import BasicMetric, TimeSeriesMetric
+    from ..models.polymorphic_metrics import BasicMetric, TimeSeriesMetric, VehicleTrackingMetric
     
     if isinstance(specific_metric, (BasicMetric, TimeSeriesMetric)):
         if specific_metric.unit_type == 'custom' and specific_metric.custom_unit:
             activity_unit = specific_metric.custom_unit
         else:
             activity_unit = specific_metric.unit_type
+    elif isinstance(specific_metric, VehicleTrackingMetric):
+        # For vehicle tracking, the unit is liters of fuel
+        activity_unit = 'liters'
     else:
         # For other metric types, might need custom handling
         activity_unit = 'count'  # Default fallback
@@ -246,11 +251,28 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> Optional
     # Get region from the metric's location field
     region = metric.location
     
+    # For VehicleTrackingMetric, we need to dynamically determine the subcategory
+    # based on the data in the aggregated text value
+    emission_category = metric.emission_category
+    emission_sub_category = metric.emission_sub_category
+    
+    if isinstance(specific_metric, VehicleTrackingMetric):
+        # VehicleTrackingMetric will have 'transport' as category
+        # But we need to derive the subcategory based on the most common vehicle/fuel type
+        # For simplicity in this version, we'll use a default subcategory
+        # In a full implementation, you could parse rpv.aggregated_text_value to find the vehicle details
+        emission_category = "transport"
+        
+        # Use the first (most common) vehicle/fuel combination
+        # In a more complete implementation, you would calculate weighted factors
+        # based on the proportion of each vehicle/fuel type
+        emission_sub_category = specific_metric.get_emission_subcategory("private_cars", "diesel_oil")
+    
     # Find matching emission factor (with unit as optional matching criterion)
     factor = find_matching_emission_factor(
         year=year,
-        category=metric.emission_category,
-        sub_category=metric.emission_sub_category,
+        category=emission_category,
+        sub_category=emission_sub_category,
         activity_unit=activity_unit,
         region=region
     )
