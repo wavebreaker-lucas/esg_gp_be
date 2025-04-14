@@ -28,53 +28,79 @@ The VehicleTrackingMetric is a specialized metric designed for tracking vehicle-
 - **Flexible Data Sources**: Supports multiple data sources per vehicle per month for accurate tracking
 - **Emissions Calculation**: Integrates with the emissions calculation system using appropriate factors based on vehicle and fuel type
 
-#### Data Model Structure
+#### Implementation Details
 
-1. **VehicleTrackingMetric**: Configuration and settings
-   - Predefined vehicle types (private cars, light/heavy goods vehicles, etc.)
-   - Predefined fuel types (diesel oil, LPG, petrol, unleaded petrol)
-   - Reporting frequency (monthly, quarterly, annual)
-   - Emission calculation configuration
+##### Data Structure
 
-2. **VehicleRecord**: Individual vehicle information
-   - Basic data (brand, model, registration number)
-   - Classification (vehicle type, fuel type)
-   - Status tracking (active/inactive)
+The VehicleTrackingMetric uses a hierarchical data structure to organize vehicle information:
 
-3. **VehicleMonthlyData**: Monthly performance data
-   - Time period (month)
-   - Performance metrics (kilometers traveled, fuel consumed)
-   - Calculated emissions data (value, unit)
+1. **VehicleTrackingMetric** (`polymorphic_metrics.py`)
+   - Configures available vehicle types (e.g., private cars, light/heavy goods vehicles)
+   - Configures available fuel types (e.g., diesel oil, petrol, LPG)
+   - Defines the emission factor mapping between vehicle/fuel combinations and emission subcategories
+   - Provides dynamic subcategory selection via `get_emission_subcategory(vehicle_type, fuel_type)`
+   - Implements `calculate_aggregate()` to sum fuel consumption and kilometers across vehicles
 
-4. **VehicleDataSource**: Individual source records
-   - Source information (date, reference number)
-   - Specific metrics from source (kilometers, fuel)
-   - Additional context (location, notes)
+2. **VehicleRecord** (`submission_data.py`)
+   - Stores per-vehicle metadata (brand, model, registration number)
+   - Links to its parent ESGMetricSubmission
+   - Stores vehicle classification (vehicle type, fuel type)
+   - Enables active/inactive status tracking
 
-#### Example Use Cases
+3. **VehicleMonthlyData** (`submission_data.py`)
+   - Links to a parent VehicleRecord
+   - Stores monthly performance data (period, kilometers, fuel consumed)
+   - Stores emission calculation results (value, unit, calculated status)
+   - Can have multiple entries per vehicle (no unique constraint on period)
 
-- **Transport GHG Emissions**: Track and calculate Scope 1 emissions from company vehicle fleets
-- **Logistics Efficiency**: Monitor fuel efficiency across different vehicle types
-- **Delivery Services**: Track performance of delivery vehicles over time
-- **Regulatory Compliance**: Generate reports for transport-related emissions reporting
-- **Cost Allocation**: Attribute fuel costs to specific vehicles and departments
+4. **VehicleDataSource** (`submission_data.py`)
+   - Links to parent VehicleMonthlyData
+   - Stores individual data points (e.g., from receipts, logs)
+   - Records source information (date, reference, location)
+   - Enables detailed auditing and data traceability
 
-#### Admin Interface Integration
+##### Emissions Calculation Integration
 
-The system includes specialized admin interfaces for each component:
-- VehicleTrackingMetric admin with appropriate fieldsets
-- VehicleRecord admin with inline monthly data display
-- VehicleMonthlyData admin with inline data sources
-- VehicleDataSource admin with contextual information
+VehicleTrackingMetric integrates with the emissions calculation system through:
 
-#### Data Submission and Aggregation
+1. **Dynamic Emission Category Mapping**
+   ```json
+   {
+     "private_cars_diesel_oil": "transport_cars_diesel",
+     "private_cars_petrol": "transport_cars_petrol",
+     "light_goods_lte_2_5_diesel_oil": "transport_light_commercial_diesel",
+     "diesel_oil": "transport_general_diesel"
+   }
+   ```
 
-When using VehicleTrackingMetric:
-1. Create a submission with the appropriate metric
-2. Add multiple vehicles as needed
-3. For each vehicle, add monthly data
-4. Optionally, add multiple data sources per month
-5. System will calculate aggregated emissions based on distance and fuel consumption
+2. **Specialized Handling in Emissions Calculation Service**
+   - Detects VehicleTrackingMetric type during calculation
+   - Uses the metric's `get_emission_subcategory` to determine appropriate emission factor
+   - Assumes 'liters' as activity unit for fuel consumption
+
+##### Admin Interface Integration
+
+The system provides:
+- Admin interfaces for all vehicle-related models
+- Inline editing for hierarchical data (e.g., monthly data within vehicle records)
+- Appropriate list displays and filters
+
+##### Example Data Flow
+
+1. **Data Entry**:
+   - Create a VehicleRecord for "Toyota HiAce" with type "light_goods_lte_2_5" and fuel "diesel_oil"
+   - Add VehicleMonthlyData for each month (Jan-Dec)
+   - Optionally add individual VehicleDataSource records (receipts) for each month
+
+2. **Aggregation**:
+   - VehicleTrackingMetric's `calculate_aggregate` sums fuel consumption and kilometers
+   - Result stored in ReportedMetricValue
+
+3. **Emissions Calculation**:
+   - Dynamic subcategory lookup: "light_goods_lte_2_5_diesel_oil" → "transport_light_commercial_diesel"
+   - Find appropriate emission factor (e.g., 2.67 kgCO2e/liter)
+   - Calculate: fuel_consumed * emission_factor
+   - Store in CalculatedEmissionValue
 
 ## Layer Support
 

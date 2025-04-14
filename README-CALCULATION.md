@@ -43,6 +43,31 @@ To connect activity data to the correct factors, specific fields have been added
 
 The `activity_unit` for lookup is derived from the metric's `unit_type` or `custom_unit` field.
 
+#### 2.1 Dynamic Factor Mapping for Vehicle Tracking
+
+For the `VehicleTrackingMetric`, a more dynamic approach is implemented due to the variable nature of vehicle fleets:
+
+* The **base emission category** is set to "transport"
+* A configurable **`emission_factor_mapping`** field (JSONField) maps vehicle type + fuel type combinations to emission subcategories:
+  ```json
+  {
+    "private_cars_diesel_oil": "transport_cars_diesel",
+    "private_cars_petrol": "transport_cars_petrol",
+    "light_goods_lte_2_5_diesel_oil": "transport_light_commercial_diesel",
+    "diesel_oil": "transport_general_diesel"
+  }
+  ```
+* The `get_emission_subcategory(vehicle_type, fuel_type)` method dynamically selects the appropriate emission subcategory based on the vehicle's characteristics
+* The lookup follows a fallback pattern:
+  1. Try the specific vehicle_type + fuel_type combination
+  2. Try just the fuel_type
+  3. Fall back to a constructed key
+
+This approach allows:
+* A single metric definition to handle different emission factors for different vehicles
+* Updates to emission factor mappings without code changes
+* Flexible configuration to match available emission factors in the database
+
 ### 3. Calculated Result Models (`data_management/models/results.py`)
 
 These models store the output of the calculations, providing traceability back to the source data and the factor used.
@@ -74,6 +99,7 @@ These models store the output of the calculations, providing traceability back t
 3.  **Lookup Factor:** For a given `ReportedMetricValue`:
     *   The linked `BaseESGMetric` instance is retrieved.
     *   Relevant linking keys (`emission_category`, `emission_sub_category`) are extracted from the metric definition.
+    *   **For VehicleTrackingMetric**: The emission_subcategory is dynamically determined using the `get_emission_subcategory` method
     *   Context is extracted:
         *   `year` from the `ReportedMetricValue.reporting_period`
         *   `region` from the `BaseESGMetric.location` field (NOT from the layer)
@@ -92,6 +118,7 @@ These models store the output of the calculations, providing traceability back t
     *   Relies on metric configuration (`emission_category`, `emission_sub_category`, `location`) and factor database.
     *   Scope is determined by the factor database, not inferred by the system.
     *   **Automatic triggering** implemented via Django signals in `data_management/signals.py`.
+    *   **Special handling for VehicleTrackingMetric** with dynamic emission subcategory mapping.
 *   **Pollutant Calculation:** To be implemented in `data_management/services/pollutants.py`.
 *   **Energy Conversion Calculation:** To be implemented in `data_management/services/energy.py`.
 
