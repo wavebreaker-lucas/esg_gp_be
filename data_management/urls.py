@@ -13,6 +13,8 @@ from .views import (
 )
 # Import the metrics view separately (or adjust above import)
 from .views.form_definition import metrics as metric_views
+# Import dashboard API views
+from .views.dashboard_api import total_emissions_api, emissions_time_series_api
 
 # Create a router for ViewSets
 router = DefaultRouter()
@@ -42,4 +44,8 @@ urlpatterns += [
     path('metric-evidence/batch/', BatchEvidenceView.as_view(), name='batch-evidence'),
     path('submissions/available-layers/', AvailableLayersView.as_view(), name='submission-available-layers'),
     path('submissions/sum-by-layer/', SumSubmissionsByLayerView.as_view(), name='submission-sum-by-layer'),
+    
+    # Dashboard API endpoints
+    path('dashboard/total-emissions/', total_emissions_api, name='dashboard-total-emissions'),
+    path('dashboard/emissions-time-series/', emissions_time_series_api, name='dashboard-emissions-time-series'),
 ] 
