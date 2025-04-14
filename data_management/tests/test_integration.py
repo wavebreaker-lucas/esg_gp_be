@@ -192,17 +192,134 @@ class VehicleEmissionsIntegrationTest(TransactionTestCase):
         self.assertEqual(CalculatedEmissionValue.objects.count(), previous_count)
 
 
-class VehicleAggregationTest(TestCase):
+class VehicleAggregationTest(TransactionTestCase):
     """
     Tests the aggregation of vehicle data from individual submissions.
     Focuses on the calculate_aggregate method of VehicleTrackingMetric.
     """
     
     def setUp(self):
-        # Would set up multiple VehicleRecord and VehicleMonthlyData instances 
-        # and then test the aggregation method
-        pass
+        """Set up test data for aggregation test"""
+        # Basic setup (Layer, Category, Form, Template, Assignment)
+        self.layer = LayerProfile.objects.create(company_name="AggTest Co")
+        self.category = ESGFormCategory.objects.create(code="AGG-CAT", name="Agg Category")
+        self.form = ESGForm.objects.create(category=self.category, code="AGG-FORM", name="Agg Form")
+        self.template = Template.objects.create(name="Agg Template")
+        self.template.selected_forms.add(self.form)
+        self.assignment = TemplateAssignment.objects.create(
+            template=self.template,
+            layer=self.layer,
+            reporting_period_start=datetime.date(2024, 1, 1),
+            reporting_period_end=datetime.date(2024, 12, 31),
+            reporting_year=2024
+        )
+        
+        # Create the VehicleTrackingMetric
+        self.metric = VehicleTrackingMetric.objects.create(
+            form=self.form,
+            name="Vehicle Aggregation Test Metric",
+            frequency='monthly' # Matches the data we'll create
+        )
+        
+        # Create a single submission header
+        # In a real scenario, data might come from multiple submissions, 
+        # but for testing aggregation logic, one header is sufficient.
+        self.submission = self.assignment.submissions.create(
+            metric=self.metric,
+            # submitted_by= # Optional: assign a user if needed
+        )
+        
+        # --- Vehicle 1 Data --- 
+        self.vehicle1 = VehicleRecord.objects.create(
+            submission=self.submission,
+            brand="Toyota", model="Camry", registration_number="V1",
+            vehicle_type="private_cars", fuel_type="petrol"
+        )
+        # Create 12 months of data for Vehicle 1
+        self.v1_total_fuel = Decimal('0')
+        self.v1_total_km = Decimal('0')
+        for month in range(1, 13):
+            fuel = Decimal(f'{100 + month * 5:.2f}') # e.g., 105.00, 110.00, ...
+            km = Decimal(f'{1000 + month * 50:.2f}') # e.g., 1050.00, 1100.00, ...
+            VehicleMonthlyData.objects.create(
+                vehicle=self.vehicle1,
+                period=datetime.date(2024, month, 28), # Use end-of-month approx
+                fuel_consumed=fuel,
+                kilometers=km
+            )
+            self.v1_total_fuel += fuel
+            self.v1_total_km += km
+            
+        # --- Vehicle 2 Data --- 
+        self.vehicle2 = VehicleRecord.objects.create(
+            submission=self.submission,
+            brand="Ford", model="Transit", registration_number="V2",
+            vehicle_type="light_goods_lte_2_5", fuel_type="diesel_oil"
+        )
+        # Create 12 months of data for Vehicle 2
+        self.v2_total_fuel = Decimal('0')
+        self.v2_total_km = Decimal('0')
+        for month in range(1, 13):
+            fuel = Decimal(f'{200 - month * 3:.2f}') # e.g., 197.00, 194.00, ...
+            km = Decimal(f'{1500 - month * 20:.2f}') # e.g., 1480.00, 1460.00, ...
+            VehicleMonthlyData.objects.create(
+                vehicle=self.vehicle2,
+                period=datetime.date(2024, month, 28),
+                fuel_consumed=fuel,
+                kilometers=km
+            )
+            self.v2_total_fuel += fuel
+            self.v2_total_km += km
     
-    def test_aggregate_method(self):
-        # Would test the calculate_aggregate method of VehicleTrackingMetric
-        pass 
+    def test_calculate_aggregate_annual(self):
+        """Test the calculate_aggregate method for an annual level."""
+        
+        # Define the target aggregation period (full year 2024)
+        start_date = datetime.date(2024, 1, 1)
+        end_date = datetime.date(2024, 12, 31)
+        
+        # Get the PKs of relevant submissions (just one in this test)
+        submission_pks = self.assignment.submissions.filter(metric=self.metric).values_list('pk', flat=True)
+        
+        # Call the aggregation method
+        result = self.metric.calculate_aggregate(
+            relevant_submission_pks=submission_pks,
+            target_start_date=start_date,
+            target_end_date=end_date,
+            level='A' # Annual level
+        )
+        
+        # --- Assertions --- 
+        self.assertIsNotNone(result, "calculate_aggregate should return a result dictionary")
+        
+        # Check aggregation method and contribution count
+        self.assertEqual(result.get('aggregation_method'), 'SUM')
+        # Should count distinct submission headers contributing data
+        self.assertEqual(result.get('contributing_submissions_count'), 1) 
+        
+        # Check aggregated numeric value (should be total fuel)
+        expected_total_fuel = self.v1_total_fuel + self.v2_total_fuel
+        self.assertAlmostEqual(
+            Decimal(str(result.get('aggregated_numeric_value'))), 
+            expected_total_fuel, 
+            places=2
+        )
+        
+        # Check aggregated text value (JSON string)
+        aggregated_text = result.get('aggregated_text_value')
+        self.assertIsNotNone(aggregated_text)
+        try:
+            agg_data = json.loads(aggregated_text)
+        except json.JSONDecodeError:
+            self.fail("aggregated_text_value is not valid JSON")
+            
+        expected_total_km = self.v1_total_km + self.v2_total_km
+        
+        self.assertIn('total_fuel_consumed_liters', agg_data)
+        self.assertAlmostEqual(Decimal(str(agg_data['total_fuel_consumed_liters'])), expected_total_fuel, places=2)
+        
+        self.assertIn('total_kilometers', agg_data)
+        self.assertAlmostEqual(Decimal(str(agg_data['total_kilometers'])), expected_total_km, places=2)
+        
+        self.assertIn('vehicle_count', agg_data)
+        self.assertEqual(agg_data['vehicle_count'], 2) # We created 2 vehicles 
