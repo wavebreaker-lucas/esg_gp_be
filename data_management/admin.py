@@ -247,12 +247,14 @@ class ReportedMetricValueAdmin(admin.ModelAdmin):
     list_display = (
         'metric', 'assignment', 'layer', 'reporting_period', 
         'aggregated_numeric_value', 'aggregated_text_value',
-        'source_submission_count', 'last_updated_at'
+        'source_submission_count', 'last_updated_at',
+        'has_emissions_calculation'
     )
     list_filter = (
         'metric__polymorphic_ctype__model',
         'metric', 'assignment__template', 
-        'assignment__reporting_year', 'reporting_period', 'layer'
+        'assignment__reporting_year', 'reporting_period', 'layer',
+        'level'
     )
     search_fields = (
         'metric__name', 'assignment__template__name', 'layer__company_name', 
@@ -262,10 +264,91 @@ class ReportedMetricValueAdmin(admin.ModelAdmin):
         'assignment', 'metric', 'layer', 'reporting_period', 
         'aggregated_numeric_value', 'aggregated_text_value',
         'calculated_at', 'last_updated_at',
-        'source_submission_count', 'first_submission_at', 'last_submission_at'
+        'source_submission_count', 'first_submission_at', 'last_submission_at',
+        'emission_calculation_summary'
     )
     list_select_related = ('metric', 'assignment', 'layer')
     inlines = []
+    actions = ['recalculate_emissions']
+    
+    def has_emissions_calculation(self, obj):
+        """Check if this RPV has associated emission calculations"""
+        return obj.derived_ghg_emissions.filter(is_primary_record=True).exists()
+    has_emissions_calculation.boolean = True
+    has_emissions_calculation.short_description = "Has Emissions"
+    
+    def emission_calculation_summary(self, obj):
+        """Show a summary of emission calculations for this RPV"""
+        from django.utils.safestring import mark_safe
+        
+        emissions = obj.derived_ghg_emissions.filter(is_primary_record=True)
+        if not emissions.exists():
+            return "No emission calculations found"
+        
+        # Get the primary record
+        primary = emissions.first()
+        
+        # Check if it has related records
+        related_records = []
+        if primary.related_group_id:
+            related_records = obj.derived_ghg_emissions.filter(
+                related_group_id=primary.related_group_id,
+                is_primary_record=False
+            )
+        
+        # Build the summary HTML
+        html = f"<div style='margin: 10px 0;'>"
+        html += f"<p><strong>Primary Calculation:</strong> {primary.calculated_value} {primary.emission_unit} ({primary.emission_scope})</p>"
+        html += f"<p><strong>Factor:</strong> {primary.emission_factor}</p>"
+        
+        # Show related records if any
+        if related_records:
+            html += f"<p><strong>Component Calculations ({related_records.count()}):</strong></p>"
+            html += "<ul>"
+            for record in related_records:
+                vehicle_info = ""
+                if record.calculation_metadata:
+                    vehicle_type = record.calculation_metadata.get('vehicle_label', '')
+                    fuel_type = record.calculation_metadata.get('fuel_label', '')
+                    if vehicle_type and fuel_type:
+                        vehicle_info = f" - {vehicle_type} / {fuel_type}"
+                html += f"<li>{record.calculated_value} {record.emission_unit} ({float(record.proportion)*100:.1f}%){vehicle_info}</li>"
+            html += "</ul>"
+            
+        html += "</div>"
+        return mark_safe(html)
+    emission_calculation_summary.short_description = "Emission Calculations"
+    
+    def recalculate_emissions(self, request, queryset):
+        """Admin action to recalculate emissions for selected ReportedMetricValues"""
+        from .services.emissions import calculate_emissions_for_activity_value
+        
+        success_count = 0
+        error_count = 0
+        record_count = 0
+        
+        for rpv in queryset:
+            try:
+                results = calculate_emissions_for_activity_value(rpv)
+                if results:
+                    success_count += 1
+                    record_count += len(results)
+                else:
+                    error_count += 1
+            except Exception as e:
+                self.message_user(
+                    request, 
+                    f"Error calculating emissions for RPV {rpv.pk}: {str(e)}",
+                    level='ERROR'
+                )
+                error_count += 1
+                
+        self.message_user(
+            request,
+            f"Recalculated emissions for {success_count} values ({record_count} calculation records created). {error_count} errors.",
+            level='SUCCESS' if error_count == 0 else 'WARNING'
+        )
+    recalculate_emissions.short_description = "Recalculate emissions for selected items"
 
 @admin.register(BasicMetric)
 class BasicMetricAdmin(PolymorphicChildModelAdmin):
@@ -406,6 +489,9 @@ class CalculatedEmissionValueAdmin(admin.ModelAdmin):
         'get_category_subcategory',
         'reporting_period', 
         'layer', 
+        'is_primary_record',
+        'display_proportion',
+        'has_related_group',
         'calculation_timestamp'
     )
     list_filter = (
@@ -414,13 +500,15 @@ class CalculatedEmissionValueAdmin(admin.ModelAdmin):
         'reporting_period',
         'source_activity_value__metric__emission_category',
         'source_activity_value__metric__emission_sub_category',
+        'is_primary_record',
         'layer',
         'level'
     )
     search_fields = (
         'calculated_value', 
         'source_activity_value__metric__name', 
-        'layer__company_name'
+        'layer__company_name',
+        'calculation_metadata'
     )
     readonly_fields = (
         'source_activity_value', 
@@ -432,21 +520,161 @@ class CalculatedEmissionValueAdmin(admin.ModelAdmin):
         'layer', 
         'reporting_period',
         'level',
-        'calculation_timestamp'
+        'is_primary_record',
+        'proportion',
+        'related_group_id',
+        'calculation_metadata_formatted',
+        'calculation_timestamp',
+        'related_records_summary'
     )
     date_hierarchy = 'reporting_period'
+    actions = ['view_related_records']
     
     def get_metric_name(self, obj):
-        return obj.source_activity_value.metric.name if obj.source_activity_value and obj.source_activity_value.metric else "N/A"
+        return obj.source_activity_value.metric.name if obj.source_activity_value and obj.source_activity_value.metric else "-"
     get_metric_name.short_description = "Metric"
     get_metric_name.admin_order_field = 'source_activity_value__metric__name'
     
     def get_category_subcategory(self, obj):
-        if obj.source_activity_value and obj.source_activity_value.metric:
-            metric = obj.source_activity_value.metric
-            return f"{metric.emission_category}/{metric.emission_sub_category}"
-        return "N/A"
+        if not obj.source_activity_value or not obj.source_activity_value.metric:
+            return "-"
+        metric = obj.source_activity_value.metric
+        return f"{metric.emission_category}/{metric.emission_sub_category}"
     get_category_subcategory.short_description = "Category/Subcategory"
+    
+    def display_proportion(self, obj):
+        """Format the proportion as a percentage"""
+        if obj.proportion == 1:
+            return "100%"
+        return f"{float(obj.proportion) * 100:.1f}%"
+    display_proportion.short_description = "Proportion"
+    
+    def has_related_group(self, obj):
+        """Check if this calculation is part of a group"""
+        return bool(obj.related_group_id)
+    has_related_group.boolean = True
+    has_related_group.short_description = "In Group"
+    
+    def calculation_metadata_formatted(self, obj):
+        """Format the JSON metadata for better display in the admin"""
+        if not obj.calculation_metadata:
+            return "No metadata"
+            
+        try:
+            import json
+            from django.utils.safestring import mark_safe
+            
+            # Format as pretty JSON with syntax highlighting
+            formatted_json = json.dumps(obj.calculation_metadata, indent=2)
+            
+            # Basic HTML formatting for readability
+            formatted_html = f"<pre>{formatted_json}</pre>"
+            
+            return mark_safe(formatted_html)
+        except Exception as e:
+            return f"Error formatting metadata: {str(e)}"
+    calculation_metadata_formatted.short_description = "Calculation Metadata"
+    
+    def related_records_summary(self, obj):
+        """Show summary of all records in the same group"""
+        from django.utils.safestring import mark_safe
+        
+        if not obj.related_group_id:
+            return "No related records (not part of a group)"
+            
+        # Get all records in this group
+        related_records = CalculatedEmissionValue.objects.filter(related_group_id=obj.related_group_id)
+        
+        # Build HTML summary
+        html = f"<div style='margin: 10px 0;'>"
+        html += f"<p><strong>Group ID:</strong> {obj.related_group_id}</p>"
+        html += f"<p><strong>Related Records ({related_records.count()}):</strong></p>"
+        html += "<table style='border-collapse: collapse; width: 100%;'>"
+        html += "<tr style='background-color: #f2f2f2;'>"
+        html += "<th style='border: 1px solid #ddd; padding: 8px; text-align: left;'>ID</th>"
+        html += "<th style='border: 1px solid #ddd; padding: 8px; text-align: left;'>Value</th>"
+        html += "<th style='border: 1px solid #ddd; padding: 8px; text-align: left;'>Type</th>"
+        html += "<th style='border: 1px solid #ddd; padding: 8px; text-align: left;'>Proportion</th>"
+        html += "<th style='border: 1px solid #ddd; padding: 8px; text-align: left;'>Details</th>"
+        html += "</tr>"
+        
+        for record in related_records:
+            # Highlight the current record
+            row_style = "background-color: #e6f7ff;" if record.id == obj.id else ""
+            primary_text = " (Primary)" if record.is_primary_record else ""
+            proportion = f"{float(record.proportion)*100:.1f}%" if record.proportion != 1 else "100%"
+            
+            # Extract details from metadata
+            details = ""
+            if record.calculation_metadata:
+                vehicle_type = record.calculation_metadata.get('vehicle_label', '')
+                fuel_type = record.calculation_metadata.get('fuel_label', '')
+                if vehicle_type and fuel_type:
+                    details = f"{vehicle_type} / {fuel_type}"
+            
+            html += f"<tr style='{row_style}'>"
+            html += f"<td style='border: 1px solid #ddd; padding: 8px;'><a href='/admin/data_management/calculatedemissionvalue/{record.id}/change/'>{record.id}</a></td>"
+            html += f"<td style='border: 1px solid #ddd; padding: 8px;'>{record.calculated_value} {record.emission_unit}</td>"
+            html += f"<td style='border: 1px solid #ddd; padding: 8px;'>{record.emission_scope}{primary_text}</td>"
+            html += f"<td style='border: 1px solid #ddd; padding: 8px;'>{proportion}</td>"
+            html += f"<td style='border: 1px solid #ddd; padding: 8px;'>{details}</td>"
+            html += "</tr>"
+            
+        html += "</table>"
+        html += "</div>"
+        
+        return mark_safe(html)
+    related_records_summary.short_description = "Related Records"
+    
+    def view_related_records(self, request, queryset):
+        """Admin action to view all records in the same group"""
+        from django.contrib.admin.helpers import ActionForm
+        from django import forms
+        from django.db.models import Q
+        
+        # Get all records with related_group_id from the selection 
+        related_group_ids = [obj.related_group_id for obj in queryset if obj.related_group_id]
+        
+        if not related_group_ids:
+            self.message_user(
+                request,
+                "No related group IDs found in the selected records.",
+                level='WARNING'
+            )
+            return
+            
+        # Create a filter to select all records in these groups
+        group_filter = Q(related_group_id__in=related_group_ids)
+        
+        # Set a session variable with this filter for the admin changelist to use
+        request.session['_calculated_emission_value_filter'] = {'related_group_id__in': related_group_ids}
+        
+        # Count how many records we'll be showing
+        count = CalculatedEmissionValue.objects.filter(group_filter).count()
+        
+        self.message_user(
+            request,
+            f"Showing {count} records from {len(set(related_group_ids))} groups. Records without a group ID are not included.",
+            level='SUCCESS'
+        )
+    view_related_records.short_description = "View all related records in the same groups"
+    
+    def get_queryset(self, request):
+        """Override to support filtering by session variables"""
+        qs = super().get_queryset(request)
+        
+        # Check if we have a filter set in the session from the action
+        if hasattr(request, 'session') and '_calculated_emission_value_filter' in request.session:
+            filter_params = request.session.get('_calculated_emission_value_filter')
+            
+            # Apply the filter if it exists
+            if filter_params:
+                qs = qs.filter(**filter_params)
+                
+                # Clear the session variable so it doesn't persist beyond this request
+                del request.session['_calculated_emission_value_filter']
+                
+        return qs
 
 @admin.register(VehicleRecord)
 class VehicleRecordAdmin(admin.ModelAdmin):

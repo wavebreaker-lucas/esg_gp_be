@@ -12,11 +12,13 @@ from typing import Optional, List, Dict, Tuple, Union
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+import uuid
 
 from ..models.templates import ReportedMetricValue
 from ..models.factors import GHGEmissionFactor
 from ..models.results import CalculatedEmissionValue
 from ..models.polymorphic_metrics import BaseESGMetric
+from ..services.calculation_strategies import get_strategy_for_metric
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +205,7 @@ def convert_unit_if_needed(value: Decimal, source_unit: str, target_unit: str) -
     return value, False
 
 @transaction.atomic
-def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> Optional[CalculatedEmissionValue]:
+def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[CalculatedEmissionValue]:
     """
     Calculate emissions for a single ReportedMetricValue record.
     
@@ -211,117 +213,110 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> Optional
         rpv: The ReportedMetricValue instance containing the activity data
         
     Returns:
-        The created/updated CalculatedEmissionValue or None if calculation couldn't be performed
+        A list of created CalculatedEmissionValue objects or empty list if calculation couldn't be performed
     """
-    metric = rpv.metric
+    from ..services.calculation_strategies import get_strategy_for_metric
     
-    # Skip if metric doesn't have emission category configured
-    if not metric.emission_category or not metric.emission_sub_category:
-        # Special case for VehicleTrackingMetric which uses dynamic subcategory mapping
-        if not isinstance(metric.get_real_instance(), VehicleTrackingMetric) and not metric.emission_category:
-            logger.debug(f"Skipping emissions calculation for metric {metric.pk} - missing category configuration")
-            return None
+    metric = rpv.metric
     
     # Skip if no activity value is present
     if rpv.aggregated_numeric_value is None:
         logger.debug(f"Skipping emissions calculation for RPV {rpv.pk} - no numeric value")
-        return None
+        return []
     
-    # Get activity unit from the metric
+    # Get the specific metric instance
     specific_metric = metric.get_real_instance()
     
-    # Extract unit based on metric type
-    from ..models.polymorphic_metrics import BasicMetric, TimeSeriesMetric, VehicleTrackingMetric
+    # Skip if metric doesn't have emission category configured and isn't a VehicleTrackingMetric
+    from ..models.polymorphic_metrics import VehicleTrackingMetric
+    if not metric.emission_category and not isinstance(specific_metric, VehicleTrackingMetric):
+        logger.debug(f"Skipping emissions calculation for metric {metric.pk} - missing category configuration")
+        return []
     
-    if isinstance(specific_metric, (BasicMetric, TimeSeriesMetric)):
-        if specific_metric.unit_type == 'custom' and specific_metric.custom_unit:
-            activity_unit = specific_metric.custom_unit
-        else:
-            activity_unit = specific_metric.unit_type
-    elif isinstance(specific_metric, VehicleTrackingMetric):
-        # For vehicle tracking, the unit is liters of fuel
-        activity_unit = 'liters'
-    else:
-        # For other metric types, might need custom handling
-        activity_unit = 'count'  # Default fallback
-    
-    # Get the year from the reporting period
+    # Get the year and region
     year = rpv.reporting_period.year
-    
-    # Get region from the metric's location field
     region = metric.location
     
-    # For VehicleTrackingMetric, we need to dynamically determine the subcategory
-    # based on the data in the aggregated text value
-    emission_category = metric.emission_category
-    emission_sub_category = metric.emission_sub_category
+    # Get the appropriate calculation strategy for this metric type
+    strategy = get_strategy_for_metric(specific_metric)
     
-    if isinstance(specific_metric, VehicleTrackingMetric):
-        # VehicleTrackingMetric will have 'transport' as category
-        # But we need to derive the subcategory based on the most common vehicle/fuel type
-        # For simplicity in this version, we'll use a default subcategory
-        # In a full implementation, you could parse rpv.aggregated_text_value to find the vehicle details
-        emission_category = "transport"
+    # Calculate emissions using the strategy
+    calculation_results = strategy.calculate(rpv, specific_metric, year, region)
+    
+    if not calculation_results:
+        logger.debug(f"No calculation results for RPV {rpv.pk}")
+        return []
+    
+    # If we have multiple results, generate a group ID
+    group_id = uuid.uuid4() if len(calculation_results) > 1 else None
+    
+    # Clean up any existing calculations for this source
+    CalculatedEmissionValue.objects.filter(source_activity_value=rpv).delete()
+    
+    # Create new calculation records
+    created_records = []
+    is_primary = True  # First record is the primary one
+    
+    # Create a record for each calculation result
+    for calc in calculation_results:
+        factor = calc['factor']
+        emission_value = calc['emission_value']
+        proportion = calc.get('proportion', Decimal('1.0'))
+        metadata = calc.get('metadata', {})
         
-        # Use the first (most common) vehicle/fuel combination
-        # In a more complete implementation, you would calculate weighted factors
-        # based on the proportion of each vehicle/fuel type
-        emission_sub_category = specific_metric.get_emission_subcategory("private_cars", "diesel_oil")
+        # Create the emission record
+        record = CalculatedEmissionValue.objects.create(
+            source_activity_value=rpv,
+            emission_factor=factor,
+            calculated_value=emission_value,
+            emission_unit=factor.get_emission_unit(),
+            related_group_id=group_id,
+            is_primary_record=is_primary,
+            proportion=proportion,
+            calculation_metadata=metadata
+        )
+        
+        created_records.append(record)
+        is_primary = False  # Only the first record is primary
     
-    # Find matching emission factor (with unit as optional matching criterion)
-    factor = find_matching_emission_factor(
-        year=year,
-        category=emission_category,
-        sub_category=emission_sub_category,
-        activity_unit=activity_unit,
-        region=region
-    )
+    # If we have multiple records, create a primary record with the total
+    if len(created_records) > 1:
+        # Calculate the total emissions
+        total_emission_value = sum(calc['emission_value'] for calc in calculation_results)
+        
+        # Use the first factor for the primary record
+        primary_factor = calculation_results[0]['factor']
+        
+        # Create or update the primary record
+        primary_record = CalculatedEmissionValue.objects.create(
+            source_activity_value=rpv,
+            emission_factor=primary_factor,
+            calculated_value=total_emission_value,
+            emission_unit=primary_factor.get_emission_unit(),
+            related_group_id=group_id,
+            is_primary_record=True,
+            proportion=Decimal('1.0'),  # Primary record represents 100%
+            calculation_metadata={
+                'is_composite': True,
+                'component_count': len(created_records),
+                'calculation_type': 'composite',
+                'metric_type': specific_metric.__class__.__name__
+            }
+        )
+        
+        # Make the components not primary
+        for record in created_records:
+            record.is_primary_record = False
+            record.save()
+            
+        # Add the primary record to the beginning of the list
+        created_records.insert(0, primary_record)
     
-    if not factor:
-        logger.warning(f"No suitable emission factor found for RPV {rpv.pk}")
-        return None
+    action = "Created" if len(created_records) > 0 else "No"
+    record_count = len(created_records)
+    logger.info(f"{action} emission calculation: {record_count} records for RPV {rpv.pk}")
     
-    # Extract activity value
-    activity_value = Decimal(str(rpv.aggregated_numeric_value))
-    
-    # Check if unit conversion is needed
-    factor_unit_parts = factor.factor_unit.split('/')
-    if len(factor_unit_parts) > 1:
-        expected_activity_unit = factor_unit_parts[1]
-    else:
-        expected_activity_unit = activity_unit  # Default to same unit if factor format is unclear
-    
-    # Convert the value if needed
-    converted_value, was_converted = convert_unit_if_needed(
-        value=activity_value,
-        source_unit=activity_unit,
-        target_unit=expected_activity_unit
-    )
-    
-    if was_converted:
-        logger.info(f"Converted activity value from {activity_value} {activity_unit} to {converted_value} {expected_activity_unit}")
-    
-    # Calculate the emission value
-    emission_value = converted_value * factor.value
-    
-    # Extract emission unit from factor
-    emission_unit = factor.get_emission_unit()
-    
-    # Create or update the result
-    emission_result, created = CalculatedEmissionValue.objects.update_or_create(
-        source_activity_value=rpv,
-        emission_factor=factor,
-        defaults={
-            'calculated_value': emission_value,
-            'emission_unit': emission_unit,
-            # The save method of CalculatedEmissionValue will handle additional context
-        }
-    )
-    
-    action = "Created" if created else "Updated"
-    logger.info(f"{action} emission calculation: {emission_value} {emission_unit} for RPV {rpv.pk}")
-    
-    return emission_result
+    return created_records
 
 def calculate_emissions_for_assignment(
     assignment_id: int,
@@ -348,8 +343,6 @@ def calculate_emissions_for_assignment(
     # Build base query
     query = Q(
         assignment_id=assignment_id,
-        metric__emission_category__isnull=False,
-        metric__emission_sub_category__isnull=False,
         aggregated_numeric_value__isnull=False
     )
     
@@ -376,14 +369,23 @@ def calculate_emissions_for_assignment(
         'total_processed': 0,
         'successful_calculations': 0,
         'failed_calculations': 0,
+        'total_records_created': 0,
+        'primary_records_created': 0,
+        'component_records_created': 0,
     }
     
     for rpv in rpvs:
         stats['total_processed'] += 1
         try:
-            result = calculate_emissions_for_activity_value(rpv)
-            if result:
+            results = calculate_emissions_for_activity_value(rpv)
+            if results:
                 stats['successful_calculations'] += 1
+                stats['total_records_created'] += len(results)
+                
+                # Count primary vs component records
+                primary_count = len([r for r in results if r.is_primary_record])
+                stats['primary_records_created'] += primary_count
+                stats['component_records_created'] += len(results) - primary_count
             else:
                 stats['failed_calculations'] += 1
         except Exception as e:
@@ -414,10 +416,8 @@ def recalculate_all_emissions() -> Dict:
     """
     logger.info("Starting complete emissions recalculation")
     
-    # Find all ReportedMetricValue records with emission category/sub-category
+    # Find all ReportedMetricValue records with numeric values
     rpvs = ReportedMetricValue.objects.filter(
-        metric__emission_category__isnull=False,
-        metric__emission_sub_category__isnull=False,
         aggregated_numeric_value__isnull=False
     )
     
@@ -425,23 +425,33 @@ def recalculate_all_emissions() -> Dict:
         'total_processed': 0,
         'successful_calculations': 0,
         'failed_calculations': 0,
+        'total_records_created': 0,
+        'primary_records_created': 0,
+        'component_records_created': 0,
     }
     
     for rpv in rpvs:
         stats['total_processed'] += 1
         try:
-            result = calculate_emissions_for_activity_value(rpv)
-            if result:
+            results = calculate_emissions_for_activity_value(rpv)
+            if results:
                 stats['successful_calculations'] += 1
+                stats['total_records_created'] += len(results)
+                
+                # Count primary vs component records
+                primary_count = len([r for r in results if r.is_primary_record])
+                stats['primary_records_created'] += primary_count
+                stats['component_records_created'] += len(results) - primary_count
             else:
                 stats['failed_calculations'] += 1
         except Exception as e:
             logger.error(f"Error calculating emissions for RPV {rpv.pk}: {e}", exc_info=True)
             stats['failed_calculations'] += 1
     
-    # Clean up orphaned calculations (no longer have valid source RPVs)
+    # Keep existing cleanup code
+    source_rpvs = [r.id for r in rpvs]
     orphaned_count = CalculatedEmissionValue.objects.filter(
-        ~Q(source_activity_value__in=rpvs)
+        ~Q(source_activity_value_id__in=source_rpvs)
     ).delete()[0]
     
     stats['orphaned_calculations_deleted'] = orphaned_count

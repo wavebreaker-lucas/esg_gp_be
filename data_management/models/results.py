@@ -1,6 +1,8 @@
 # data_management/models/results.py
 from django.db import models
 from django.utils import timezone
+from decimal import Decimal
+import uuid
 
 # Import models needed for relationships
 # Assuming factors.py and templates.py are in the same app/directory level
@@ -34,6 +36,33 @@ class CalculatedEmissionValue(models.Model):
     )
     calculation_timestamp = models.DateTimeField(auto_now=True)
 
+    # --- New fields for multi-factor calculations ---
+    calculation_metadata = models.JSONField(
+        default=dict, 
+        blank=True,
+        help_text="Additional calculation metadata, especially for composite calculations"
+    )
+    
+    related_group_id = models.UUIDField(
+        null=True, 
+        blank=True,
+        db_index=True,
+        help_text="UUID linking related calculations from the same source"
+    )
+    
+    is_primary_record = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="Whether this is the primary calculation record for the source"
+    )
+    
+    proportion = models.DecimalField(
+        max_digits=5, 
+        decimal_places=4, 
+        default='1.0',  # Use string, not Decimal object
+        help_text="Proportion this calculation contributes to the total (0.0-1.0)"
+    )
+
     # --- Context (Copied/derived for easier querying/reporting) ---
     assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE)
     layer = models.ForeignKey(LayerProfile, on_delete=models.CASCADE)
@@ -43,16 +72,21 @@ class CalculatedEmissionValue(models.Model):
     emission_scope = models.CharField(max_length=10, blank=True, db_index=True)
 
     class Meta:
-        unique_together = [['source_activity_value', 'emission_factor']] # Allow one calc per source/factor
-        ordering = ['-reporting_period', 'assignment', 'layer', 'emission_scope']
+        # Update unique_together to include related_group_id and is_primary_record
+        unique_together = [['source_activity_value', 'emission_factor', 'related_group_id']] 
+        ordering = ['-reporting_period', 'assignment', 'layer', 'emission_scope', '-is_primary_record']
         indexes = [
             models.Index(fields=['reporting_period', 'level', 'layer']), # Index for common filtering
+            models.Index(fields=['is_primary_record']), # Index for filtering primary records
+            models.Index(fields=['related_group_id']), # Index for finding all related records
         ]
         verbose_name = "Calculated GHG Emission Value"
         verbose_name_plural = "Calculated GHG Emission Values"
 
     def __str__(self):
-        return f"{self.calculated_value} {self.emission_unit} ({self.emission_scope}) for {self.layer} ({self.reporting_period} - {self.level}) from RPV {self.source_activity_value_id}"
+        primary_indicator = " (Primary)" if self.is_primary_record else ""
+        proportion_str = f" [{self.proportion*100:.1f}%]" if self.proportion != 1 else ""
+        return f"{self.calculated_value} {self.emission_unit} ({self.emission_scope}){primary_indicator}{proportion_str} for {self.layer} ({self.reporting_period} - {self.level}) from RPV {self.source_activity_value_id}"
 
     def save(self, *args, **kwargs):
         # Automatically copy context from source activity and factor on save/update

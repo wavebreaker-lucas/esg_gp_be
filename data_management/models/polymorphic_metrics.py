@@ -485,22 +485,22 @@ class VehicleTrackingMetric(BaseESGMetric):
     
     # Configuration fields
     vehicle_type_choices = models.JSONField(
-        default=DEFAULT_VEHICLE_TYPES,
+        default=list,  # Using callable 'list' instead of DEFAULT_VEHICLE_TYPES
         help_text="List of vehicle types available for selection"
     )
     
     fuel_type_choices = models.JSONField(
-        default=DEFAULT_FUEL_TYPES,
+        default=list,  # Using callable 'list' instead of DEFAULT_FUEL_TYPES
         help_text="List of fuel types available for selection"
     )
     
     emission_factor_mapping = models.JSONField(
-        default=DEFAULT_EMISSION_MAPPING,
+        default=dict,  # Using callable 'dict' instead of DEFAULT_EMISSION_MAPPING
         help_text="Mapping of vehicle_type + fuel_type combinations to emission subcategories"
     )
     
     reporting_year = models.PositiveIntegerField(
-        default=lambda: timezone.now().year,
+        default=2025,  # Using a static year instead of lambda function
         help_text="Default reporting year for vehicle data"
     )
     
@@ -539,6 +539,16 @@ class VehicleTrackingMetric(BaseESGMetric):
         if not self.emission_category:
             self.emission_category = "transport"
             
+        # Initialize JSONFields with default values if they're empty
+        if not self.vehicle_type_choices:
+            self.vehicle_type_choices = self.DEFAULT_VEHICLE_TYPES
+            
+        if not self.fuel_type_choices:
+            self.fuel_type_choices = self.DEFAULT_FUEL_TYPES
+            
+        if not self.emission_factor_mapping:
+            self.emission_factor_mapping = self.DEFAULT_EMISSION_MAPPING
+        
     def get_emission_subcategory(self, vehicle_type, fuel_type):
         """
         Dynamically determine the appropriate emission subcategory based on
