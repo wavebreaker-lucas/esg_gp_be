@@ -5,9 +5,10 @@ import datetime
 from dateutil.relativedelta import relativedelta
 from django.db import transaction
 
-from .models import ESGMetricSubmission, BaseESGMetric
+from .models import ESGMetricSubmission, BaseESGMetric, ReportedMetricValue
 from .models.polymorphic_metrics import BasicMetric, TimeSeriesMetric
 from .services.aggregation import calculate_report_value
+from .services.emissions import calculate_emissions_for_activity_value
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,33 @@ def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
     # Schedule the function to run after the current transaction commits
     transaction.on_commit(run_aggregation_after_commit)
     print(f"[DEBUG] Aggregation logic scheduled via on_commit for Submission PK {instance_pk}")
+
+@receiver(post_save, sender=ReportedMetricValue)
+def trigger_emission_calculation(sender, instance, **kwargs):
+    """
+    When a ReportedMetricValue is saved, trigger emission calculation if the metric
+    has emission categories configured.
+    """
+    # Skip if this is a new record and has no numeric value
+    if kwargs.get('created', False) and instance.aggregated_numeric_value is None:
+        return
+        
+    # Skip if metric doesn't have emission categories configured
+    if not instance.metric.emission_category or not instance.metric.emission_sub_category:
+        return
+        
+    def run_emission_calculation():
+        try:
+            result = calculate_emissions_for_activity_value(instance)
+            if result:
+                logger.info(f"Created/updated emission calculation for RPV {instance.pk}: {result.calculated_value} {result.emission_unit}")
+            else:
+                logger.debug(f"No emission calculation created for RPV {instance.pk} - no suitable factor found")
+        except Exception as e:
+            logger.error(f"Error calculating emissions for RPV {instance.pk}: {e}", exc_info=True)
+            
+    # Schedule the calculation after the transaction commits
+    transaction.on_commit(run_emission_calculation)
 
 # Optional: Handle potential errors in the main signal handler if needed,
 # though most work is now deferred.

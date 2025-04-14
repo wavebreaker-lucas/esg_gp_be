@@ -10,6 +10,7 @@ The framework relies on a separation of concerns:
 3.  **Metric Linking:** Configuration on the `BaseESGMetric` definition to link specific activity metrics to the relevant factors.
 4.  **Calculation Logic:** Service functions implementing lookups and calculations for emissions (implemented) and other metrics (to be implemented).
 5.  **Calculated Results:** Stores the output of calculations in dedicated models for traceability and reporting.
+6.  **Automatic Triggers:** Signal handlers that automatically initiate calculations when relevant data changes.
 
 ## Core Components
 
@@ -66,7 +67,9 @@ These models store the output of the calculations, providing traceability back t
 
 ## Calculation Flow (Implemented for Emissions)
 
-1.  **Trigger:** A calculation process is initiated (available via the functions `calculate_emissions_for_activity_value`, `calculate_emissions_for_assignment`, or `recalculate_all_emissions`).
+1.  **Trigger:** A calculation process is initiated in one of the following ways:
+    - **Automatically via signals:** When a `ReportedMetricValue` is created or updated, a signal handler triggers calculation (if the metric has emission categories configured)
+    - **Manually via functions:** Using `calculate_emissions_for_activity_value`, `calculate_emissions_for_assignment`, or `recalculate_all_emissions`.
 2.  **Select Activity Data:** The process identifies `ReportedMetricValue` records that require calculation (filtering on `metric__emission_category` and `metric__emission_sub_category`).
 3.  **Lookup Factor:** For a given `ReportedMetricValue`:
     *   The linked `BaseESGMetric` instance is retrieved.
@@ -88,13 +91,15 @@ These models store the output of the calculations, providing traceability back t
 *   **Emissions Calculation:** Fully implemented in `data_management/services/emissions.py`.
     *   Relies on metric configuration (`emission_category`, `emission_sub_category`, `location`) and factor database.
     *   Scope is determined by the factor database, not inferred by the system.
+    *   **Automatic triggering** implemented via Django signals in `data_management/signals.py`.
 *   **Pollutant Calculation:** To be implemented in `data_management/services/pollutants.py`.
 *   **Energy Conversion Calculation:** To be implemented in `data_management/services/energy.py`.
 
 ## Future Work
 
-*   **Triggering Mechanism:** Implement a reliable method for initiating calculations automatically (scheduled tasks recommended for decoupling and performance).
+*   ~~**Triggering Mechanism:** Implement a reliable method for initiating calculations automatically (scheduled tasks recommended for decoupling and performance).~~ ✅ Implemented using Django signals for ReportedMetricValue changes.
 *   **Factor Management:** Create tools or scripts to populate and maintain the data in the factor tables.
 *   **Unit Conversion Expansion:** Enhance the current unit conversion system to handle a wider range of units and conversions.
 *   **Testing:** Implement thorough testing for factor lookups, unit conversions, and calculation logic.
-*   **Admin Interface:** Develop admin interfaces for monitoring and triggering emissions calculations. 
+*   **Admin Interface:** Develop admin interfaces for monitoring and triggering emissions calculations.
+*   **Additional Signals:** Implement similar signal triggers for pollutant and energy calculations once those services are implemented. 
