@@ -296,19 +296,56 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
              logger.warning(f"[EMISSIONS] Skipping result for RPV {rpv.pk} due to missing factor or emission_value in calculation data: {calc}")
              continue
         
-        # Add component_id to metadata to ensure uniqueness in the constraint
-        metadata['component_id'] = f"{idx}_{uuid.uuid4()}"  # Make truly unique with UUID
+        # Try to get the vehicle record if this is a vehicle-related calculation
+        vehicle_record = None
+        if 'registration' in metadata:
+            registration = metadata.get('registration')
+            try:
+                # Import VehicleRecord here to avoid circular imports
+                from ..models.submission_data import VehicleRecord
+                
+                # Find the vehicle record by registration number and submission
+                # The submission comes from the ReportedMetricValue's data
+                vehicle_records = VehicleRecord.objects.filter(
+                    registration_number=registration,
+                    submission__metric=rpv.metric  # This ensures we get the right vehicle from the right metric
+                )
+                
+                # If we have multiple matches, try to narrow down by other fields
+                if vehicle_records.count() > 1:
+                    # Try to refine by brand/model if available
+                    if 'brand' in metadata and 'model' in metadata:
+                        vehicle_records = vehicle_records.filter(
+                            brand=metadata.get('brand'),
+                            model=metadata.get('model')
+                        )
+                
+                vehicle_record = vehicle_records.first()
+                
+                if vehicle_record:
+                    logger.info(f"[EMISSIONS] Found VehicleRecord ID {vehicle_record.pk} for registration '{registration}'")
+                else:
+                    logger.warning(f"[EMISSIONS] No VehicleRecord found for registration '{registration}' in metric {rpv.metric.pk}")
+                    
+            except Exception as e:
+                logger.error(f"[EMISSIONS] Error finding VehicleRecord for registration '{registration}': {e}", exc_info=True)
+        
+        # Add component_id to metadata as fallback
+        metadata['component_id'] = f"{idx}_{uuid.uuid4()}"
         
         # Create the emission record - always as a component first if group_id exists
         try:
             with transaction.atomic():
                 # Check if a record with this combination already exists
-                existing = CalculatedEmissionValue.objects.filter(
+                existing_query = Q(
                     source_activity_value=rpv,
                     emission_factor=factor,
                     related_group_id=group_id,
-                    is_primary_record=False
-                ).first()
+                    is_primary_record=False,
+                    vehicle_record=vehicle_record  # Include vehicle_record in uniqueness check
+                )
+                
+                existing = CalculatedEmissionValue.objects.filter(existing_query).first()
                 
                 if existing:
                     # Update the existing record instead of creating a new one
@@ -323,6 +360,7 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
                     record = CalculatedEmissionValue.objects.create(
                         source_activity_value=rpv,
                         emission_factor=factor,
+                        vehicle_record=vehicle_record,  # Set vehicle_record directly
                         calculated_value=emission_value,
                         # emission_unit is set automatically on save based on factor
                         related_group_id=group_id,

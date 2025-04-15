@@ -24,6 +24,16 @@ class CalculatedEmissionValue(models.Model):
         on_delete=models.PROTECT, # Prevent deleting factor if used in calculations
         related_name='ghg_emission_calculations'
     )
+    
+    # Link to specific vehicle record (for vehicle emissions only)
+    vehicle_record = models.ForeignKey(
+        'data_management.VehicleRecord',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='emission_calculations',
+        help_text="For vehicle emissions, the specific vehicle this calculation applies to"
+    )
 
     # --- Calculation Result ---
     calculated_value = models.DecimalField(
@@ -72,13 +82,14 @@ class CalculatedEmissionValue(models.Model):
     emission_scope = models.CharField(max_length=10, blank=True, db_index=True)
 
     class Meta:
-        # Update unique_together to include related_group_id and is_primary_record
-        unique_together = [['source_activity_value', 'emission_factor', 'related_group_id', 'is_primary_record']]
+        # Update unique_together to include vehicle_record
+        unique_together = [['source_activity_value', 'emission_factor', 'related_group_id', 'is_primary_record', 'vehicle_record']]
         ordering = ['-reporting_period', 'assignment', 'layer', 'emission_scope', '-is_primary_record']
         indexes = [
             models.Index(fields=['reporting_period', 'level', 'layer']), # Index for common filtering
             models.Index(fields=['is_primary_record']), # Index for filtering primary records
             models.Index(fields=['related_group_id']), # Index for finding all related records
+            models.Index(fields=['vehicle_record']), # Index for finding emissions by vehicle
         ]
         verbose_name = "Calculated GHG Emission Value"
         verbose_name_plural = "Calculated GHG Emission Values"
@@ -90,13 +101,24 @@ class CalculatedEmissionValue(models.Model):
 
     def save(self, *args, **kwargs):
         # Automatically copy context from source activity and factor on save/update
-        # Use update_fields if needed for efficiency during updates
-        self.assignment = self.source_activity_value.assignment
-        self.layer = self.source_activity_value.layer
-        self.reporting_period = self.source_activity_value.reporting_period
-        self.level = self.source_activity_value.level
-        self.emission_scope = self.emission_factor.scope
-        self.emission_unit = self.emission_factor.get_emission_unit() # Get from factor helper
+        
+        if self.source_activity_value_id and not self.assignment_id:
+            self.assignment = self.source_activity_value.assignment
+            self.layer = self.source_activity_value.layer
+            self.reporting_period = self.source_activity_value.reporting_period
+            self.level = self.source_activity_value.level
+        
+        if self.emission_factor_id and not self.emission_scope:
+            self.emission_scope = self.emission_factor.scope
+            
+        if self.emission_factor_id and not self.emission_unit:
+            # Get the emission unit from the factor 
+            if hasattr(self.emission_factor, 'get_emission_unit'):
+                self.emission_unit = self.emission_factor.get_emission_unit()
+            else:
+                self.emission_unit = self.emission_factor.factor_unit
+        
+        # Continue with the normal save operation
         super().save(*args, **kwargs)
 
 
