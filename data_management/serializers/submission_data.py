@@ -51,7 +51,7 @@ class VehicleMonthlyDataSerializer(serializers.ModelSerializer):
         exclude = ('vehicle',)
 
 class VehicleRecordSerializer(serializers.ModelSerializer):
-    monthly_data = VehicleMonthlyDataSerializer(many=True, read_only=True)
+    monthly_data = VehicleMonthlyDataSerializer(many=True, required=False)
     class Meta:
         model = VehicleRecord
         exclude = ('submission',)

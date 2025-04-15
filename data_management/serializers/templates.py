@@ -27,7 +27,8 @@ from .submission_data import (
     MultiFieldTimeSeriesDataPointSerializer,
     MultiFieldDataPointSerializer,
     PolymorphicSubmissionDataSerializer, # Import the new polymorphic reader
-    VehicleRecordSerializer
+    VehicleRecordSerializer,
+    VehicleMonthlyDataSerializer
 )
 # Import the polymorphic metric serializer
 from .polymorphic_metrics import ESGMetricPolymorphicSerializer 
@@ -302,7 +303,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     # --- Field for reading specific submission data ---
     submission_data = serializers.SerializerMethodField(read_only=True)
 
-    vehicle_records = VehicleRecordSerializer(many=True, read_only=True)
+    vehicle_records = VehicleRecordSerializer(many=True, required=False)  # Now writable
 
     class Meta:
         model = ESGMetricSubmission
@@ -572,6 +573,9 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         multifield_timeseries_data_points = validated_data.pop('multifield_timeseries_data_points', None)
         multifield_data = validated_data.pop('multifield_data', None)
         
+        # Extract nested vehicle data if present
+        vehicle_records_data = validated_data.pop('vehicle_records', None)
+        
         # Set the submitted_by field from the request
         request = self.context.get('request')
         if request and hasattr(request, 'user'):
@@ -630,6 +634,10 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                 field_data=multifield_data.get('field_data', {})
             )
         
+        # Handle vehicle_records nested creation
+        if vehicle_records_data is not None:
+            self._save_vehicle_records(submission, vehicle_records_data)
+        
         return submission
         
     def update(self, instance, validated_data):
@@ -641,6 +649,9 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         timeseries_data_points = validated_data.pop('timeseries_data_points', None)
         multifield_timeseries_data_points = validated_data.pop('multifield_timeseries_data_points', None)
         multifield_data = validated_data.pop('multifield_data', None)
+        
+        # Extract nested vehicle data if present
+        vehicle_records_data = validated_data.pop('vehicle_records', None)
         
         # Update the base fields
         for attr, value in validated_data.items():
@@ -708,7 +719,53 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                 defaults={'field_data': multifield_data.get('field_data', {})}
             )
         
+        # Handle vehicle_records nested update
+        if vehicle_records_data is not None:
+            self._save_vehicle_records(instance, vehicle_records_data, update=True)
+        
         return instance
+
+    def _save_vehicle_records(self, submission_instance, vehicle_records_data, update=False):
+        from ..models.submission_data import VehicleRecord, VehicleMonthlyData
+        # For update, keep track of IDs to retain
+        keep_vehicle_ids = []
+        for vehicle_data in vehicle_records_data:
+            monthly_data = vehicle_data.pop('monthly_data', [])
+            vehicle_id = vehicle_data.get('id', None)
+            if update and vehicle_id:
+                # Update existing vehicle record
+                try:
+                    vehicle_obj = VehicleRecord.objects.get(id=vehicle_id, submission=submission_instance)
+                    for attr, value in vehicle_data.items():
+                        setattr(vehicle_obj, attr, value)
+                    vehicle_obj.save()
+                except VehicleRecord.DoesNotExist:
+                    vehicle_obj = VehicleRecord.objects.create(submission=submission_instance, **vehicle_data)
+            else:
+                vehicle_obj = VehicleRecord.objects.create(submission=submission_instance, **vehicle_data)
+            keep_vehicle_ids.append(vehicle_obj.id)
+
+            # Handle monthly_data for this vehicle
+            keep_monthly_ids = []
+            for month_data in monthly_data:
+                month_id = month_data.get('id', None)
+                if update and month_id:
+                    try:
+                        month_obj = VehicleMonthlyData.objects.get(id=month_id, vehicle=vehicle_obj)
+                        for attr, value in month_data.items():
+                            setattr(month_obj, attr, value)
+                        month_obj.save()
+                    except VehicleMonthlyData.DoesNotExist:
+                        month_obj = VehicleMonthlyData.objects.create(vehicle=vehicle_obj, **month_data)
+                else:
+                    month_obj = VehicleMonthlyData.objects.create(vehicle=vehicle_obj, **month_data)
+                keep_monthly_ids.append(month_obj.id)
+            # Delete monthly data not in keep list (for update)
+            if update:
+                VehicleMonthlyData.objects.filter(vehicle=vehicle_obj).exclude(id__in=keep_monthly_ids).delete()
+        # Delete vehicle records not in keep list (for update)
+        if update:
+            VehicleRecord.objects.filter(submission=submission_instance).exclude(id__in=keep_vehicle_ids).delete()
 
 # --- Serializer for Batch Submissions ---
 
