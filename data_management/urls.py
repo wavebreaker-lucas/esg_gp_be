@@ -9,7 +9,8 @@ from .views import (
     TemplateAssignmentView,
     BatchEvidenceView,
     AvailableLayersView, SumSubmissionsByLayerView, 
-    ReportedMetricValueViewSet
+    ReportedMetricValueViewSet,
+    VehicleTypeViewSet, FuelTypeViewSet
 )
 # Import the metrics view separately (or adjust above import)
 from .views.form_definition import metrics as metric_views
@@ -30,6 +31,8 @@ router.register(r'metric-evidence', ESGMetricEvidenceViewSet, basename='metric-e
 router.register(r'esg-metrics', metric_views.ESGMetricViewSet, basename='esgmetric')
 # router.register(r'metric-value-fields', MetricValueFieldViewSet, basename='metric-value-field') # Removed
 router.register(r'reported-metric-values', ReportedMetricValueViewSet, basename='reported-metric-value')
+router.register(r'vehicle-types', VehicleTypeViewSet, basename='vehicle-type')
+router.register(r'fuel-types', FuelTypeViewSet, basename='fuel-type')
 
 # Export the router's URLs
 # Assuming this urls.py is included under /api/ in your main urls.py
