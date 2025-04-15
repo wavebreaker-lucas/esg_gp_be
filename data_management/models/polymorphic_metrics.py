@@ -661,8 +661,10 @@ class VehicleTrackingMetric(BaseESGMetric):
                 total_vehicle_km = vehicle_monthly_data.aggregate(total=Sum('kilometers'))['total'] or 0
                 
                 vehicle_details.append({
-                    'vehicle_type': vehicle.vehicle_type,
-                    'fuel_type': vehicle.fuel_type,
+                    'vehicle_type_value': vehicle.vehicle_type.value,
+                    'vehicle_type_label': vehicle.vehicle_type.label,
+                    'fuel_type_value': vehicle.fuel_type.value,
+                    'fuel_type_label': vehicle.fuel_type.label,
                     'registration': vehicle.registration_number,
                     'fuel_consumed': float(total_vehicle_fuel),
                     'kilometers': float(total_vehicle_km),

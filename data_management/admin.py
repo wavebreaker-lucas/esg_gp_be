@@ -774,9 +774,9 @@ class CalculatedEmissionValueAdmin(admin.ModelAdmin):
 class VehicleRecordAdmin(admin.ModelAdmin):
     form = VehicleRecordForm
     list_display = ['brand', 'model', 'registration_number', 'vehicle_type', 'fuel_type', 'submission', 'is_active']
-    list_filter = ['vehicle_type', 'fuel_type', 'is_active', 'submission__metric']
-    search_fields = ['brand', 'model', 'registration_number', 'notes']
-    raw_id_fields = ['submission']
+    list_filter = ['vehicle_type__value', 'fuel_type__value', 'is_active', 'submission__metric']
+    search_fields = ['brand', 'model', 'registration_number', 'notes', 'vehicle_type__label', 'fuel_type__label']
+    raw_id_fields = ['submission', 'vehicle_type', 'fuel_type']
     inlines = [VehicleMonthlyDataInline]
     
     def get_form(self, request, obj=None, **kwargs):
@@ -786,8 +786,8 @@ class VehicleRecordAdmin(admin.ModelAdmin):
 @admin.register(VehicleMonthlyData)
 class VehicleMonthlyDataAdmin(admin.ModelAdmin):
     list_display = ['vehicle', 'period', 'kilometers', 'fuel_consumed', 'emission_calculated', 'emission_value']
-    list_filter = ['period', 'emission_calculated', 'vehicle__vehicle_type', 'vehicle__fuel_type']
-    search_fields = ['vehicle__brand', 'vehicle__model', 'vehicle__registration_number']
+    list_filter = ['period', 'emission_calculated', 'vehicle__vehicle_type__value', 'vehicle__fuel_type__value']
+    search_fields = ['vehicle__brand', 'vehicle__model', 'vehicle__registration_number', 'vehicle__vehicle_type__label', 'vehicle__fuel_type__label']
     ordering = ['vehicle', 'period']
     date_hierarchy = 'period'
     raw_id_fields = ['vehicle']
@@ -796,7 +796,7 @@ class VehicleMonthlyDataAdmin(admin.ModelAdmin):
 @admin.register(VehicleDataSource)
 class VehicleDataSourceAdmin(admin.ModelAdmin):
     list_display = ['source_reference', 'source_date', 'get_vehicle', 'kilometers', 'fuel_consumed', 'location']
-    list_filter = ['source_date', 'vehicle_monthly_data__vehicle__vehicle_type', 'vehicle_monthly_data__vehicle__fuel_type']
+    list_filter = ['source_date', 'vehicle_monthly_data__vehicle__vehicle_type__value', 'vehicle_monthly_data__vehicle__fuel_type__value']
     search_fields = ['source_reference', 'location', 'notes', 'vehicle_monthly_data__vehicle__registration_number']
     date_hierarchy = 'source_date'
     raw_id_fields = ['vehicle_monthly_data']
