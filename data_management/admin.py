@@ -393,7 +393,7 @@ class VehicleTrackingMetricAdmin(PolymorphicChildModelAdmin):
             'fields': ('name', 'description', 'form', 'order', 'is_required', 'help_text')
         }),
         ('Configuration', {
-            'fields': ('vehicle_type_choices', 'fuel_type_choices', 'reporting_year', 'frequency', 'show_registration_number')
+            'fields': ('vehicle_type_choices', 'fuel_type_choices', 'reporting_year', 'frequency', 'show_registration_number', 'aggregates_inputs')
         }),
         ('Emission Calculation', {
             'fields': ('emission_category', 'emission_sub_category', 'requires_evidence')
