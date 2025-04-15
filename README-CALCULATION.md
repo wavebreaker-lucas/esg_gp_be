@@ -22,6 +22,8 @@ These models store the reference data used for calculations. They are designed t
     *   Stores factors to calculate GHG emissions (typically CO2e) from activity data.
     *   Key lookup fields: `year`, `category`, `sub_category`, `activity_unit`, `region`, `scope`.
     *   Stores the `value` (e.g., kgCO2e per activity unit) and the `factor_unit`.
+    *   Includes factors for different years (2023, 2025) to support calculations across reporting periods.
+    *   Populated via management command: `python manage.py populate_emission_factors`.
 
 *   **`PollutantFactor`**:
     *   Stores factors to calculate specific air pollutants (NOx, SOx, Particulate Matter) from activity data.
@@ -76,7 +78,9 @@ These models store the output of the calculations, providing traceability back t
     *   Stores the calculated GHG emission value (e.g., kgCO2e).
     *   Links to the source `ReportedMetricValue` (`source_activity_value`).
     *   Links to the `GHGEmissionFactor` used (`emission_factor`).
+    *   Links to specific `VehicleRecord` for vehicle-based calculations.
     *   Includes copied context (assignment, layer, period, level, scope).
+    *   Uses a unique_together constraint on [`source_activity_value`, `emission_factor`, `related_group_id`, `is_primary_record`, `vehicle_record`] to ensure data integrity.
 
 *   **`CalculatedPollutantValue`**:
     *   Stores calculated NOx, SOx, and PM values (typically in grams).
@@ -98,6 +102,7 @@ The vehicle emissions calculation extends the standard emissions calculation wit
     *   Processes individual vehicle records and their monthly data entries
     *   Dynamically selects emission factors based on vehicle type and fuel type
     *   Handles multiple vehicles with different characteristics within a single metric
+    *   Maintains data integrity by creating separate calculation records per vehicle
 
 *   **Data Flow:**
     1. When vehicle data is aggregated in `ReportedMetricValue`, it contains JSON data with vehicle records
@@ -107,11 +112,26 @@ The vehicle emissions calculation extends the standard emissions calculation wit
        - Vehicle metadata (type, fuel type, etc.)
     3. For each vehicle record, the appropriate emission factor is selected using the dynamic mapping
     4. Emissions are calculated per vehicle and then summed for the total
+    5. Each vehicle gets its own CalculatedEmissionValue record
 
 *   **Special Cases:**
     *   **Fuel-based calculation:** When fuel consumption data is available, emissions are calculated based on fuel volume × emission factor
     *   **Distance-based calculation:** When only distance data is available, emissions are calculated based on distance × emission factor
     *   **Preference order:** Fuel-based calculation is prioritized over distance-based when both data types are present
+
+### 5. Emission Factor Population
+
+Emission factors are populated and maintained through management commands:
+
+*   **`populate_emission_factors` command:**
+    * Creates/updates emission factors for electricity, towngas, and transport
+    * Includes factors for different years (2023, 2025) to support multi-year reporting
+    * Handles various regions (HK, PRC, ALL) and vehicle/fuel combinations
+    * Ensures correct factors exist for all supported vehicle types and fuel types
+    * Run this command to ensure all necessary emission factors are available:
+      ```
+      python manage.py populate_emission_factors
+      ```
 
 ## Calculation Flow (Implemented for Emissions)
 
@@ -133,7 +153,8 @@ The vehicle emissions calculation extends the standard emissions calculation wit
     *   For vehicle tracking metrics, specialized logic in `calculate_vehicle_emissions` function processes the structured vehicle data.
     *   Unit conversion is performed if needed, with common conversions handled automatically.
     *   The (potentially converted) activity amount is multiplied by the factor value.
-5.  **Store Result:** The calculated value is saved into the `CalculatedEmissionValue` model, linking back to the source `ReportedMetricValue` and the factor used.
+    *   For vehicle metrics, calculations are performed separately for each vehicle record.
+5.  **Store Result:** The calculated value is saved into the `CalculatedEmissionValue` model, linking back to the source `ReportedMetricValue` and the factor used. For vehicle metrics, each vehicle gets its own record.
 6.  **Cleanup:** Orphaned calculations (those with no valid source RPVs) are automatically removed during recalculation.
 
 ## Implementation Status
@@ -143,7 +164,7 @@ The vehicle emissions calculation extends the standard emissions calculation wit
     *   Scope is determined by the factor database, not inferred by the system.
     *   **Automatic triggering** implemented via Django signals in `data_management/signals.py`.
     *   **Special handling for VehicleTrackingMetric** with dynamic emission subcategory mapping.
-    *   **Vehicle-specific calculation logic** implemented in `data_management/services/vehicle_emissions.py`.
+    *   **Vehicle-specific calculation logic** implemented with proper per-vehicle record uniqueness constraints.
 *   **Pollutant Calculation:** To be implemented in `data_management/services/pollutants.py`.
 *   **Energy Conversion Calculation:** To be implemented in `data_management/services/energy.py`.
 

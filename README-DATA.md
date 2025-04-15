@@ -9,6 +9,7 @@ The ESG Data Management System is designed to handle ESG (Environmental, Social,
 - **Separated Submission Data:** Raw data inputs are handled via a header record (`ESGMetricSubmission`) containing common metadata, linked to specific data storage models (`BasicMetricData`, `TabularMetricRow`, `TimeSeriesDataPoint`, etc.) that hold the actual values corresponding to the polymorphic metric type.
 - **Aggregation & Reported Values:** An aggregation service (`aggregation.py`) orchestrates the calculation of final values, but the core calculation logic now resides within a `calculate_aggregate` method on each specific polymorphic metric model. These calculated results are stored in the `ReportedMetricValue` model, which includes an aggregation `level` (e.g., Monthly, Annual).
 - **Completion Logic:** Form and template completion status is determined by checking for the existence of the final, annual (`level='A'`) `ReportedMetricValue` records for all required metrics.
+- **Enhanced Emissions Calculation:** The system now properly supports per-vehicle emission calculations with unique constraints updated to include vehicle records.
 
 ## Specialized Metric Types
 
@@ -27,6 +28,8 @@ The VehicleTrackingMetric is a specialized metric designed for tracking vehicle-
   - VehicleDataSource: Tracks individual data sources (receipts, logs) contributing to monthly totals
 - **Flexible Data Sources**: Supports multiple data sources per vehicle per month for accurate tracking
 - **Emissions Calculation**: Integrates with the emissions calculation system using appropriate factors based on vehicle and fuel type
+  - Properly calculates emissions for each vehicle individually based on its specific type and fuel
+  - Uses unique constraints to ensure calculation integrity per vehicle record
 
 #### Implementation Details
 
@@ -76,6 +79,8 @@ VehicleTrackingMetric integrates with the emissions calculation system through:
 2. **Specialized Handling in Emissions Calculation Service**
    - Detects VehicleTrackingMetric type during calculation
    - Uses the metric's `get_emission_subcategory` to determine appropriate emission factor
+   - Creates individual emission calculations per vehicle record
+   - Ensures uniqueness by including vehicle_record in unique_together constraint
    - Assumes 'liters' as activity unit for fuel consumption
 
 ##### Admin Interface Integration
@@ -100,7 +105,7 @@ The system provides:
    - Dynamic subcategory lookup: "light_goods_lte_2_5_diesel_oil" → "transport_light_commercial_diesel"
    - Find appropriate emission factor (e.g., 2.67 kgCO2e/liter)
    - Calculate: fuel_consumed * emission_factor
-   - Store in CalculatedEmissionValue
+   - Store in CalculatedEmissionValue, linked to specific vehicle record
 
 ## Layer Support
 
