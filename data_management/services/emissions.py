@@ -286,30 +286,58 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
     primary_record = None # Initialize primary record
     
     # Create a record for each calculation result (as components initially)
-    for calc in calculation_results:
+    for idx, calc in enumerate(calculation_results):
         factor = calc.get('factor')
         emission_value = calc.get('emission_value')
         proportion = calc.get('proportion', Decimal('1.0'))
-        metadata = calc.get('metadata', {})
+        metadata = calc.get('metadata', {}) or {}  # Ensure it's a dict even if None
         
         if not factor or emission_value is None:
              logger.warning(f"[EMISSIONS] Skipping result for RPV {rpv.pk} due to missing factor or emission_value in calculation data: {calc}")
              continue
         
+        # Add component_id to metadata to ensure uniqueness in the constraint
+        metadata['component_id'] = f"{idx}_{uuid.uuid4()}"  # Make truly unique with UUID
+        
         # Create the emission record - always as a component first if group_id exists
-        record = CalculatedEmissionValue.objects.create(
-            source_activity_value=rpv,
-            emission_factor=factor,
-            calculated_value=emission_value,
-            # emission_unit is set automatically on save based on factor
-            related_group_id=group_id,
-            is_primary_record=False, # Initially False if part of a group
-            proportion=proportion,
-            calculation_metadata=metadata
-            # Context fields (assignment, layer, reporting_period, level, scope) are set automatically on save
-        )
-        created_records.append(record)
-        logger.debug(f"[EMISSIONS] Created component CalculatedEmissionValue ID {record.pk} for RPV {rpv.pk}")
+        try:
+            with transaction.atomic():
+                # Check if a record with this combination already exists
+                existing = CalculatedEmissionValue.objects.filter(
+                    source_activity_value=rpv,
+                    emission_factor=factor,
+                    related_group_id=group_id,
+                    is_primary_record=False
+                ).first()
+                
+                if existing:
+                    # Update the existing record instead of creating a new one
+                    existing.calculated_value = emission_value
+                    existing.proportion = proportion
+                    existing.calculation_metadata = metadata
+                    existing.save()
+                    record = existing
+                    logger.debug(f"[EMISSIONS] Updated existing CalculatedEmissionValue ID {record.pk} for RPV {rpv.pk}")
+                else:
+                    # Create a new record
+                    record = CalculatedEmissionValue.objects.create(
+                        source_activity_value=rpv,
+                        emission_factor=factor,
+                        calculated_value=emission_value,
+                        # emission_unit is set automatically on save based on factor
+                        related_group_id=group_id,
+                        is_primary_record=False, # Initially False if part of a group
+                        proportion=proportion,
+                        calculation_metadata=metadata
+                        # Context fields (assignment, layer, reporting_period, level, scope) are set automatically on save
+                    )
+                    logger.debug(f"[EMISSIONS] Created component CalculatedEmissionValue ID {record.pk} for RPV {rpv.pk}")
+            
+            created_records.append(record)
+        except Exception as e:
+            logger.error(f"[EMISSIONS] Error creating component for RPV {rpv.pk}: {e}", exc_info=True)
+            # Continue with next calculation result even if this one failed
+            continue
     
     # If we had multiple components, create a primary record with the total
     if group_id and created_records: # Only if group_id exists and we actually created components
@@ -320,29 +348,59 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
         primary_factor = created_records[0].emission_factor
         
         # Create the primary record
-        primary_record = CalculatedEmissionValue.objects.create(
-            source_activity_value=rpv,
-            emission_factor=primary_factor,
-            calculated_value=total_emission_value,
-            related_group_id=group_id,
-            is_primary_record=True,
-            proportion=Decimal('1.0'),
-            calculation_metadata={
-                'is_composite': True,
-                'component_count': len(created_records),
-                'calculation_type': 'composite',
-                'metric_type': specific_metric.__class__.__name__
-            }
-        )
-        logger.info(f"[EMISSIONS] Created primary CalculatedEmissionValue ID {primary_record.pk} (Total: {total_emission_value}) for RPV {rpv.pk}")
-        # Add the primary record to the beginning of the list for return consistency
-        created_records.insert(0, primary_record)
+        try:
+            with transaction.atomic():
+                # Check if a primary record with this combination already exists
+                existing_primary = CalculatedEmissionValue.objects.filter(
+                    source_activity_value=rpv,
+                    related_group_id=group_id,
+                    is_primary_record=True
+                ).first()
+                
+                if existing_primary:
+                    # Update the existing primary record
+                    existing_primary.emission_factor = primary_factor
+                    existing_primary.calculated_value = total_emission_value
+                    existing_primary.calculation_metadata = {
+                        'is_composite': True,
+                        'component_count': len(created_records),
+                        'calculation_type': 'composite',
+                        'metric_type': specific_metric.__class__.__name__
+                    }
+                    existing_primary.save()
+                    primary_record = existing_primary
+                    logger.info(f"[EMISSIONS] Updated existing primary CalculatedEmissionValue ID {primary_record.pk} (Total: {total_emission_value}) for RPV {rpv.pk}")
+                else:
+                    # Create a new primary record
+                    primary_record = CalculatedEmissionValue.objects.create(
+                        source_activity_value=rpv,
+                        emission_factor=primary_factor,
+                        calculated_value=total_emission_value,
+                        related_group_id=group_id,
+                        is_primary_record=True,
+                        proportion=Decimal('1.0'),
+                        calculation_metadata={
+                            'is_composite': True,
+                            'component_count': len(created_records),
+                            'calculation_type': 'composite',
+                            'metric_type': specific_metric.__class__.__name__
+                        }
+                    )
+                    logger.info(f"[EMISSIONS] Created primary CalculatedEmissionValue ID {primary_record.pk} (Total: {total_emission_value}) for RPV {rpv.pk}")
+                
+                # Add the primary record to the beginning of the list for return consistency
+                created_records.insert(0, primary_record)
+        except Exception as e:
+            logger.error(f"[EMISSIONS] Error creating/updating primary record for RPV {rpv.pk}: {e}", exc_info=True)
     elif not group_id and created_records: # Single result, make it the primary
         single_record = created_records[0]
-        single_record.is_primary_record = True
-        single_record.save(update_fields=['is_primary_record'])
-        logger.info(f"[EMISSIONS] Marked single CalculatedEmissionValue ID {single_record.pk} as primary for RPV {rpv.pk}")
-        primary_record = single_record # Set primary_record for the final log message
+        try:
+            single_record.is_primary_record = True
+            single_record.save(update_fields=['is_primary_record'])
+            logger.info(f"[EMISSIONS] Marked single CalculatedEmissionValue ID {single_record.pk} as primary for RPV {rpv.pk}")
+            primary_record = single_record # Set primary_record for the final log message
+        except Exception as e:
+            logger.error(f"[EMISSIONS] Error updating single record as primary for RPV {rpv.pk}: {e}", exc_info=True)
         
     # Final logging based on whether a primary record was established
     if primary_record:
