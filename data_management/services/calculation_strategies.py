@@ -251,9 +251,21 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
         if not vehicle_type:
             return "Unknown"
             
+        # First try to find a VehicleType object
+        try:
+            from ..models.polymorphic_metrics import VehicleType
+            vehicle_type_obj = VehicleType.objects.filter(value=vehicle_type).first()
+            if vehicle_type_obj:
+                return vehicle_type_obj.label
+        except Exception:
+            # If there's an error, fall back to the JSONField approach
+            pass
+            
+        # Fall back to the old JSONField approach
         for vt in metric.vehicle_type_choices:
             if isinstance(vt, dict) and vt.get('value') == vehicle_type:
                 return vt.get('label', vehicle_type)
+                
         return vehicle_type
         
     def _get_fuel_label(self, fuel_type, metric):
@@ -261,9 +273,21 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
         if not fuel_type:
             return "Unknown"
             
+        # First try to find a FuelType object
+        try:
+            from ..models.polymorphic_metrics import FuelType
+            fuel_type_obj = FuelType.objects.filter(value=fuel_type).first()
+            if fuel_type_obj:
+                return fuel_type_obj.label
+        except Exception:
+            # If there's an error, fall back to the JSONField approach
+            pass
+            
+        # Fall back to the old JSONField approach
         for ft in metric.fuel_type_choices:
             if isinstance(ft, dict) and ft.get('value') == fuel_type:
                 return ft.get('label', fuel_type)
+                
         return fuel_type
 
 

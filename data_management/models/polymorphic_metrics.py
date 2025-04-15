@@ -439,6 +439,32 @@ class MultiFieldMetric(BaseESGMetric):
         fields = len(self.field_definitions) if isinstance(self.field_definitions, list) else 0
         return f"[Multi-Field ({fields} fields)] {super().__str__()}"
 
+class VehicleType(models.Model):
+    """Model for vehicle types available for selection in VehicleTrackingMetric."""
+    value = models.CharField(max_length=100, unique=True, help_text="Unique identifier code for this vehicle type")
+    label = models.CharField(max_length=255, help_text="Display name for this vehicle type")
+    
+    class Meta:
+        ordering = ['label']
+        verbose_name = "Vehicle Type"
+        verbose_name_plural = "Vehicle Types"
+    
+    def __str__(self):
+        return self.label
+
+class FuelType(models.Model):
+    """Model for fuel types available for selection in VehicleTrackingMetric."""
+    value = models.CharField(max_length=100, unique=True, help_text="Unique identifier code for this fuel type")
+    label = models.CharField(max_length=255, help_text="Display name for this fuel type")
+    
+    class Meta:
+        ordering = ['label']
+        verbose_name = "Fuel Type"
+        verbose_name_plural = "Fuel Types"
+    
+    def __str__(self):
+        return self.label
+
 class VehicleTrackingMetric(BaseESGMetric):
     """Metrics for tracking multiple vehicles with monthly fuel consumption and distance data."""
     
@@ -460,7 +486,7 @@ class VehicleTrackingMetric(BaseESGMetric):
         {"value": "unleaded_petrol", "label": "Unleaded petrol"},
     ]
     
-    # Default emission factor mapping
+    # Default emission factor mapping - still using JSON for this complex mapping
     DEFAULT_EMISSION_MAPPING = {
         # Vehicle type + fuel type combinations
         "private_cars_diesel_oil": "transport_cars_diesel",
@@ -484,24 +510,39 @@ class VehicleTrackingMetric(BaseESGMetric):
         "lpg": "transport_lpg"
     }
     
-    # Configuration fields
-    vehicle_type_choices = models.JSONField(
-        default=list,  # Using callable 'list' instead of DEFAULT_VEHICLE_TYPES
-        help_text="List of vehicle types available for selection"
+    # Configuration fields - replace JSONFields with M2M relationships
+    vehicle_types = models.ManyToManyField(
+        VehicleType,
+        related_name="metrics",
+        help_text="Vehicle types available for selection"
     )
     
-    fuel_type_choices = models.JSONField(
-        default=list,  # Using callable 'list' instead of DEFAULT_FUEL_TYPES
-        help_text="List of fuel types available for selection"
+    fuel_types = models.ManyToManyField(
+        FuelType,
+        related_name="metrics",
+        help_text="Fuel types available for selection"
     )
     
+    # Keep emission_factor_mapping as JSONField since it's a complex mapping
     emission_factor_mapping = models.JSONField(
-        default=dict,  # Using callable 'dict' instead of DEFAULT_EMISSION_MAPPING
+        default=dict,
         help_text="Mapping of vehicle_type + fuel_type combinations to emission subcategories"
     )
     
+    # Keep the legacy JSONFields for backward compatibility during migration
+    # These can be removed after migration is complete
+    vehicle_type_choices = models.JSONField(
+        default=list,
+        help_text="DEPRECATED: Use vehicle_types M2M relation instead"
+    )
+    
+    fuel_type_choices = models.JSONField(
+        default=list,
+        help_text="DEPRECATED: Use fuel_types M2M relation instead"
+    )
+    
     reporting_year = models.PositiveIntegerField(
-        default=2025,  # Using a static year instead of lambda function
+        default=2025,
         help_text="Default reporting year for vehicle data"
     )
     

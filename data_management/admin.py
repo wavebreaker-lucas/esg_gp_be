@@ -14,7 +14,7 @@ from polymorphic.admin import PolymorphicParentModelAdmin, PolymorphicChildModel
 from .models.polymorphic_metrics import (
     BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
     TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric,
-    VehicleTrackingMetric
+    VehicleTrackingMetric, VehicleType, FuelType
 )
 from .models.submission_data import (
     BasicMetricData, TimeSeriesDataPoint, TabularMetricRow,
@@ -111,10 +111,87 @@ class TabularMetricRowInline(admin.TabularInline):
     fields = ('row_index', 'row_data')
     ordering = ('row_index',)
 
+# Custom form for VehicleRecord that uses the new ForeignKey relationships
+class VehicleRecordForm(forms.ModelForm):
+    class Meta:
+        model = VehicleRecord
+        fields = '__all__'
+        widgets = {
+            'submission': forms.HiddenInput(),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        instance = kwargs.get('instance')
+        initial = kwargs.get('initial', {})
+        
+        submission_id = None
+        if instance and instance.submission_id:
+            submission_id = instance.submission_id
+        elif 'submission' in initial:
+            submission_id = initial.get('submission')
+        
+        if submission_id:
+            try:
+                # Get the submission and metric
+                submission = ESGMetricSubmission.objects.get(pk=submission_id)
+                metric = submission.metric.get_real_instance()
+                
+                # Only proceed if it's a VehicleTrackingMetric
+                if isinstance(metric, VehicleTrackingMetric):
+                    # Filter choices to only those associated with this metric
+                    self.fields['vehicle_type'].queryset = metric.vehicle_types.all()
+                    self.fields['fuel_type'].queryset = metric.fuel_types.all()
+                    
+                    logger.info(f"Loaded vehicle and fuel choices from metric {metric.pk} for submission {submission_id}")
+            except Exception as e:
+                logger.error(f"Error loading choices for VehicleRecordForm: {e}", exc_info=True)
+
 class VehicleRecordInline(admin.StackedInline):
+    """Inline admin for VehicleRecord objects in the ESGMetricSubmission admin."""
     model = VehicleRecord
+    form = VehicleRecordForm
     extra = 1
     fields = ('brand', 'model', 'registration_number', 'vehicle_type', 'fuel_type', 'notes', 'is_active')
+
+    def get_formset(self, request, obj=None, **kwargs):
+        """Override to customize the inline formset for VehicleRecords."""
+        formset = super().get_formset(request, obj, **kwargs)
+        
+        # Store the original __init__ method
+        original_init = formset.__init__
+        
+        # Define a new __init__ method that sets up the vehicle and fuel type choices
+        def new_init(self, *args, **kwargs):
+            # Call the original __init__
+            original_init(self, *args, **kwargs)
+            
+            # Set up vehicle and fuel type choices for each form
+            if obj is not None:
+                try:
+                    # Get the specific metric instance
+                    metric = obj.metric.get_real_instance()
+                    if isinstance(metric, VehicleTrackingMetric):
+                        # Get the vehicle and fuel types
+                        vehicle_types = metric.vehicle_types.all()
+                        fuel_types = metric.fuel_types.all()
+                        
+                        # Apply to each form in the formset
+                        for form in self.forms:
+                            form.fields['vehicle_type'].queryset = vehicle_types
+                            form.fields['fuel_type'].queryset = fuel_types
+                            
+                        # Also set for the empty form
+                        if hasattr(self, 'empty_form'):
+                            self.empty_form.fields['vehicle_type'].queryset = vehicle_types
+                            self.empty_form.fields['fuel_type'].queryset = fuel_types
+                except Exception as e:
+                    logger.error(f"Error setting up vehicle and fuel types in inline formset: {e}")
+        
+        # Replace the formset's __init__ method
+        formset.__init__ = new_init
+        
+        return formset
 
 class VehicleMonthlyDataInline(admin.TabularInline):
     model = VehicleMonthlyData
@@ -384,21 +461,35 @@ class MultiFieldMetricAdmin(PolymorphicChildModelAdmin):
     base_model = MultiFieldMetric
     # Optional: Customize
 
+@admin.register(VehicleType)
+class VehicleTypeAdmin(admin.ModelAdmin):
+    list_display = ['value', 'label']
+    search_fields = ['value', 'label']
+    ordering = ['label']
+
+@admin.register(FuelType)
+class FuelTypeAdmin(admin.ModelAdmin):
+    list_display = ['value', 'label']
+    search_fields = ['value', 'label']
+    ordering = ['label']
+
 @admin.register(VehicleTrackingMetric)
 class VehicleTrackingMetricAdmin(PolymorphicChildModelAdmin):
     base_model = VehicleTrackingMetric
     # Custom fieldsets for better organization
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'description', 'form', 'order', 'is_required', 'help_text')
+            'fields': ('name', 'form', 'description', 'order', 'is_required', 'help_text', 'location')
         }),
-        ('Configuration', {
-            'fields': ('vehicle_type_choices', 'fuel_type_choices', 'reporting_year', 'frequency', 'show_registration_number', 'aggregates_inputs')
+        ('Vehicle Configuration', {
+            'fields': ('vehicle_types', 'fuel_types', 'emission_factor_mapping', 'reporting_year', 
+                     'frequency', 'show_registration_number')
         }),
-        ('Emission Calculation', {
-            'fields': ('emission_category', 'emission_sub_category', 'requires_evidence')
-        }),
+        ('Emission Configuration', {
+            'fields': ('emission_category', 'emission_sub_category')
+        })
     )
+    filter_horizontal = ('vehicle_types', 'fuel_types')  # Makes ManyToMany fields easier to manage
 
 @admin.register(BaseESGMetric)
 class BaseESGMetricAdmin(PolymorphicParentModelAdmin):
@@ -678,59 +769,6 @@ class CalculatedEmissionValueAdmin(admin.ModelAdmin):
                 del request.session['_calculated_emission_value_filter']
                 
         return qs
-
-# Custom form for VehicleRecord that loads choices from the parent metric
-class VehicleRecordForm(forms.ModelForm):
-    class Meta:
-        model = VehicleRecord
-        fields = '__all__'
-        widgets = {
-            'vehicle_type': forms.Select(),
-            'fuel_type': forms.Select()
-        }
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
-        # Get vehicle_type and fuel_type choices from the parent metric
-        instance = kwargs.get('instance')
-        initial = kwargs.get('initial', {})
-        
-        submission_id = None
-        if instance and instance.submission_id:
-            submission_id = instance.submission_id
-        elif 'submission' in initial:
-            submission_id = initial.get('submission')
-        
-        if submission_id:
-            try:
-                # Get the submission and then find the metric
-                submission = ESGMetricSubmission.objects.get(pk=submission_id)
-                metric = submission.metric.get_real_instance()
-                
-                # Only proceed if it's a VehicleTrackingMetric
-                if isinstance(metric, VehicleTrackingMetric):
-                    # Set up choices for vehicle_type
-                    vehicle_type_choices = []
-                    for choice in metric.vehicle_type_choices:
-                        vehicle_type_choices.append((choice.get('value'), choice.get('label')))
-                    
-                    # Set up choices for fuel_type
-                    fuel_type_choices = []
-                    for choice in metric.fuel_type_choices:
-                        fuel_type_choices.append((choice.get('value'), choice.get('label')))
-                    
-                    # Apply the choices
-                    if vehicle_type_choices:
-                        self.fields['vehicle_type'].widget = forms.Select(choices=[('', '---------')] + vehicle_type_choices)
-                    
-                    if fuel_type_choices:
-                        self.fields['fuel_type'].widget = forms.Select(choices=[('', '---------')] + fuel_type_choices)
-                    
-                    logger.info(f"Loaded vehicle and fuel choices from metric {metric.pk} for submission {submission_id}")
-            
-            except Exception as e:
-                logger.error(f"Error loading choices for VehicleRecordForm: {e}", exc_info=True)
 
 @admin.register(VehicleRecord)
 class VehicleRecordAdmin(admin.ModelAdmin):

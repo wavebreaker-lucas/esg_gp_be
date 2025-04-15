@@ -3,7 +3,7 @@ from .templates import ESGMetricSubmission
 from .polymorphic_metrics import (
     BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
     TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric,
-    VehicleTrackingMetric
+    VehicleTrackingMetric, VehicleType, FuelType
 )
 
 # --- Submission Data Models ---
@@ -138,9 +138,35 @@ class VehicleRecord(models.Model):
     model = models.CharField(max_length=100, help_text="Vehicle model")
     registration_number = models.CharField(max_length=50, help_text="Vehicle registration/license plate number")
     
-    # Type information (matched against the parent metric's choices)
-    vehicle_type = models.CharField(max_length=50, help_text="Type of vehicle (e.g., private car, truck)")
-    fuel_type = models.CharField(max_length=50, help_text="Type of fuel used (e.g., petrol, diesel)")
+    # Type information - use ForeignKeys instead of CharFields
+    vehicle_type = models.ForeignKey(
+        VehicleType,
+        on_delete=models.PROTECT,  # Use PROTECT to prevent accidental deletion
+        related_name='vehicles',
+        help_text="Type of vehicle (e.g., private car, truck)"
+    )
+    
+    fuel_type = models.ForeignKey(
+        FuelType,
+        on_delete=models.PROTECT,  # Use PROTECT to prevent accidental deletion
+        related_name='vehicles',
+        help_text="Type of fuel used (e.g., petrol, diesel)"
+    )
+    
+    # For backward compatibility during migration - these can be removed later
+    vehicle_type_code = models.CharField(
+        max_length=50, 
+        blank=True, 
+        null=True,
+        help_text="DEPRECATED: Legacy vehicle type code"
+    )
+    
+    fuel_type_code = models.CharField(
+        max_length=50, 
+        blank=True, 
+        null=True,
+        help_text="DEPRECATED: Legacy fuel type code"
+    )
     
     # Additional information
     notes = models.TextField(blank=True, help_text="Additional notes about this vehicle")
