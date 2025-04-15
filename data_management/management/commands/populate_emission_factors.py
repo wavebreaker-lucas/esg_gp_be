@@ -182,6 +182,21 @@ class Command(BaseCommand):
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         )
         
+        # ADDED: Factor for 2025 ALL region
+        self.create_factor(
+            name="Diesel - Passenger Car - 2025 - ALL",
+            category="transport",
+            sub_category="transport_cars_diesel",
+            activity_unit="liters",
+            value=2.6460, # Using 2023 value as placeholder
+            factor_unit="kgCO2e/liter",
+            year=2025,
+            region="ALL",
+            scope="1",
+            source="Derived from HKEX 2023 Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
         self.create_factor(
             name="Diesel - Private Van",
             category="transport",
@@ -307,6 +322,21 @@ class Command(BaseCommand):
             region="HK / PRC",
             scope="1",
             source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # ADDED: Factor for 2025 ALL region (Petrol Cars)
+        self.create_factor(
+            name="Petrol/Unleaded - Passenger Car - 2025 - ALL",
+            category="transport",
+            sub_category="transport_cars_petrol",
+            activity_unit="liters",
+            value=2.6687, # Using 2023 value as placeholder
+            factor_unit="kgCO2e/liter",
+            year=2025,
+            region="ALL",
+            scope="1",
+            source="Derived from HKEX 2023 Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         )
         
