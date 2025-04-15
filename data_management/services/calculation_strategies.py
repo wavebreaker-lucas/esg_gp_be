@@ -147,6 +147,11 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
         logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Calculating total fuel...")
         for idx, vehicle in enumerate(vehicles):
             try:
+                # Make sure we're checking for valid data using the new field names
+                if not vehicle.get('vehicle_type_value') or not vehicle.get('fuel_type_value'):
+                    logger.warning(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Skipping vehicle {idx} in first pass due to missing vehicle_type_value or fuel_type_value")
+                    continue
+                    
                 fuel_consumed = Decimal(str(vehicle.get('fuel_consumed', 0)))
                 logger.debug(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Vehicle {idx} fuel: {fuel_consumed}")
                 total_fuel += fuel_consumed
@@ -165,8 +170,12 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
         logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Calculating emissions per vehicle...")
         for idx, vehicle in enumerate(vehicles):
             try:
-                vehicle_type = vehicle.get('vehicle_type')
-                fuel_type = vehicle.get('fuel_type')
+                # Use the new field names that include _value suffix
+                vehicle_type = vehicle.get('vehicle_type_value')
+                fuel_type = vehicle.get('fuel_type_value')
+                vehicle_label = vehicle.get('vehicle_type_label', 'Unknown')
+                fuel_label = vehicle.get('fuel_type_label', 'Unknown')
+                
                 fuel_consumed = Decimal(str(vehicle.get('fuel_consumed', 0)))
                 kilometers = Decimal(str(vehicle.get('kilometers', 0)))
                 registration = vehicle.get('registration', 'N/A')
@@ -201,10 +210,7 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
                 # Ensure proportion calculation doesn't divide by zero (though checked earlier)
                 proportion = fuel_consumed / total_fuel if total_fuel > 0 else Decimal('0') 
                 
-                # Get display labels
-                vehicle_label = self._get_vehicle_label(vehicle_type, metric)
-                fuel_label = self._get_fuel_label(fuel_type, metric)
-                
+                # We now get labels directly from the data rather than looking them up
                 logger.debug(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Vehicle {idx} calculated emission: {emission_value}, proportion: {proportion}")
                 
                 # Add to results
