@@ -153,21 +153,6 @@ class VehicleRecord(models.Model):
         help_text="Type of fuel used (e.g., petrol, diesel)"
     )
     
-    # For backward compatibility during migration - these can be removed later
-    vehicle_type_code = models.CharField(
-        max_length=50, 
-        blank=True, 
-        null=True,
-        help_text="DEPRECATED: Legacy vehicle type code"
-    )
-    
-    fuel_type_code = models.CharField(
-        max_length=50, 
-        blank=True, 
-        null=True,
-        help_text="DEPRECATED: Legacy fuel type code"
-    )
-    
     # Additional information
     notes = models.TextField(blank=True, help_text="Additional notes about this vehicle")
     is_active = models.BooleanField(default=True, help_text="Whether this vehicle is currently active")
