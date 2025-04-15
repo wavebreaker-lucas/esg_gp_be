@@ -1,5 +1,8 @@
 from django.contrib import admin
 import logging # Import the logging module
+from django import forms
+from django.db.models import Q
+from django.utils.html import format_html
 from .models.esg import BoundaryItem, EmissionFactor, ESGData, DataEditLog
 from .models.templates import (
     ESGFormCategory, ESGForm,
@@ -676,13 +679,71 @@ class CalculatedEmissionValueAdmin(admin.ModelAdmin):
                 
         return qs
 
+# Custom form for VehicleRecord that loads choices from the parent metric
+class VehicleRecordForm(forms.ModelForm):
+    class Meta:
+        model = VehicleRecord
+        fields = '__all__'
+        widgets = {
+            'vehicle_type': forms.Select(),
+            'fuel_type': forms.Select()
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Get vehicle_type and fuel_type choices from the parent metric
+        instance = kwargs.get('instance')
+        initial = kwargs.get('initial', {})
+        
+        submission_id = None
+        if instance and instance.submission_id:
+            submission_id = instance.submission_id
+        elif 'submission' in initial:
+            submission_id = initial.get('submission')
+        
+        if submission_id:
+            try:
+                # Get the submission and then find the metric
+                submission = ESGMetricSubmission.objects.get(pk=submission_id)
+                metric = submission.metric.get_real_instance()
+                
+                # Only proceed if it's a VehicleTrackingMetric
+                if isinstance(metric, VehicleTrackingMetric):
+                    # Set up choices for vehicle_type
+                    vehicle_type_choices = []
+                    for choice in metric.vehicle_type_choices:
+                        vehicle_type_choices.append((choice.get('value'), choice.get('label')))
+                    
+                    # Set up choices for fuel_type
+                    fuel_type_choices = []
+                    for choice in metric.fuel_type_choices:
+                        fuel_type_choices.append((choice.get('value'), choice.get('label')))
+                    
+                    # Apply the choices
+                    if vehicle_type_choices:
+                        self.fields['vehicle_type'].widget = forms.Select(choices=[('', '---------')] + vehicle_type_choices)
+                    
+                    if fuel_type_choices:
+                        self.fields['fuel_type'].widget = forms.Select(choices=[('', '---------')] + fuel_type_choices)
+                    
+                    logger.info(f"Loaded vehicle and fuel choices from metric {metric.pk} for submission {submission_id}")
+            
+            except Exception as e:
+                logger.error(f"Error loading choices for VehicleRecordForm: {e}", exc_info=True)
+
 @admin.register(VehicleRecord)
 class VehicleRecordAdmin(admin.ModelAdmin):
+    form = VehicleRecordForm
     list_display = ['brand', 'model', 'registration_number', 'vehicle_type', 'fuel_type', 'submission', 'is_active']
     list_filter = ['vehicle_type', 'fuel_type', 'is_active', 'submission__metric']
     search_fields = ['brand', 'model', 'registration_number', 'notes']
     raw_id_fields = ['submission']
     inlines = [VehicleMonthlyDataInline]
+    
+    def get_form(self, request, obj=None, **kwargs):
+        """Ensure our custom form is used"""
+        return super().get_form(request, obj, **kwargs)
 
 @admin.register(VehicleMonthlyData)
 class VehicleMonthlyDataAdmin(admin.ModelAdmin):

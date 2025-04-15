@@ -7,10 +7,34 @@ from django.db import transaction
 
 from .models import ESGMetricSubmission, BaseESGMetric, ReportedMetricValue
 from .models.polymorphic_metrics import BasicMetric, TimeSeriesMetric
+from .models.submission_data import VehicleMonthlyData
 from .services.aggregation import calculate_report_value
 from .services.emissions import calculate_emissions_for_activity_value
 
 logger = logging.getLogger(__name__)
+
+@receiver([post_save, post_delete], sender=VehicleMonthlyData)
+def trigger_recalculation_on_vehicle_data_change(sender, instance, **kwargs):
+    """
+    When VehicleMonthlyData is saved or deleted, trigger recalculation by updating
+    the parent submission.
+    """
+    print(f"[DEBUG] Signal triggered for VehicleMonthlyData {getattr(instance, 'pk', 'Unknown')}")
+    
+    # Get the parent submission through the vehicle record
+    try:
+        # For post_save, the instance is valid
+        if not kwargs.get('raw', False):  # Skip during fixture loading
+            vehicle = instance.vehicle
+            if vehicle and vehicle.submission_id:
+                submission = ESGMetricSubmission.objects.get(pk=vehicle.submission_id)
+                
+                # Simply touch the submission to trigger its post_save signal
+                submission.save(update_fields=['updated_at'])
+                print(f"[DEBUG] Triggered recalculation by touching submission {submission.pk}")
+    except Exception as e:
+        logger.error(f"Error in vehicle monthly data signal handler: {e}", exc_info=True)
+        print(f"[DEBUG] Error in vehicle data signal handler: {str(e)}")
 
 @receiver([post_save, post_delete], sender=ESGMetricSubmission)
 def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
@@ -111,9 +135,35 @@ def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
             
             # For non-time series, non-basic metrics:
             elif not isinstance(metric, BasicMetric):
-                # Standard monthly aggregation for other metric types
-                if submission_period:
-                    periods_to_recalculate.add((submission_period, 'M'))
+                # Special handling for VehicleTrackingMetric
+                from .models.polymorphic_metrics import VehicleTrackingMetric
+                if isinstance(metric, VehicleTrackingMetric):
+                    # For vehicle tracking, we need to aggregate based on vehicle monthly data periods
+                    from .models.submission_data import VehicleRecord, VehicleMonthlyData
+                    
+                    try:
+                        # Find all vehicle records for this submission
+                        vehicle_records = VehicleRecord.objects.filter(submission_id=instance_pk)
+                        
+                        if vehicle_records.exists():
+                            # Get all monthly data periods for these vehicles
+                            monthly_data_periods = VehicleMonthlyData.objects.filter(
+                                vehicle__in=vehicle_records
+                            ).values_list('period', flat=True).distinct()
+                            
+                            # Add each period to recalculation set
+                            for period in monthly_data_periods:
+                                if period and assignment_start <= period <= assignment_end:
+                                    periods_to_recalculate.add((period, 'M'))
+                                
+                            print(f"[DEBUG] Found {len(periods_to_recalculate)} vehicle monthly periods to recalculate")
+                    except Exception as e:
+                        logger.error(f"Error finding vehicle monthly periods: {e}")
+                        print(f"[DEBUG] Error processing vehicle periods: {e}")
+                else:
+                    # Standard monthly aggregation for other metric types
+                    if submission_period:
+                        periods_to_recalculate.add((submission_period, 'M'))
             else:
                 # For BasicMetric
                 logger.info(f"Skipping Monthly recalculation trigger (post-commit) for BasicMetric {metric.pk}")
