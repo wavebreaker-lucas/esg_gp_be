@@ -218,25 +218,36 @@ def trigger_emission_calculation(sender, instance, **kwargs):
     When a ReportedMetricValue is saved, trigger emission calculation if the metric
     has emission categories configured.
     """
+    logger.info(f"[SIGNAL] trigger_emission_calculation called for RPV {instance.pk}") # Log signal start
+    
     # Skip if this is a new record and has no numeric value
     if kwargs.get('created', False) and instance.aggregated_numeric_value is None:
+        logger.info(f"[SIGNAL] Skipping emission trigger for new RPV {instance.pk} - no numeric value")
         return
         
-    # Skip if metric doesn't have emission categories configured
+    # This check might be too strict for VehicleTrackingMetric, but log anyway
     if not instance.metric.emission_category or not instance.metric.emission_sub_category:
-        return
+        logger.info(f"[SIGNAL] RPV {instance.pk} metric lacks emission category/subcategory. Relying on VehicleTrackingMetric exception later if applicable.")
+        # Don't return here for now, let the main function handle the VehicleTrackingMetric exception
+        # return
         
     def run_emission_calculation():
+        logger.info(f"[SIGNAL-ONCOMMIT] Running emission calculation logic for RPV {instance.pk}") # Log on_commit start
         try:
-            result = calculate_emissions_for_activity_value(instance)
-            if result:
-                logger.info(f"Created/updated emission calculation for RPV {instance.pk}: {result.calculated_value} {result.emission_unit}")
+            # Fetch the instance again to ensure it's up-to-date after commit
+            latest_instance = ReportedMetricValue.objects.get(pk=instance.pk)
+            results = calculate_emissions_for_activity_value(latest_instance)
+            if results:
+                logger.info(f"[SIGNAL-ONCOMMIT] Emission calculation successful for RPV {latest_instance.pk}. {len(results)} records created/updated.")
             else:
-                logger.debug(f"No emission calculation created for RPV {instance.pk} - no suitable factor found")
+                logger.info(f"[SIGNAL-ONCOMMIT] Emission calculation did not produce results for RPV {latest_instance.pk}. Check logs from calculate_emissions_for_activity_value.")
+        except ReportedMetricValue.DoesNotExist:
+            logger.error(f"[SIGNAL-ONCOMMIT] RPV {instance.pk} not found after commit. Cannot calculate emissions.")
         except Exception as e:
-            logger.error(f"Error calculating emissions for RPV {instance.pk}: {e}", exc_info=True)
+            logger.error(f"[SIGNAL-ONCOMMIT] Error during emission calculation for RPV {instance.pk}: {e}", exc_info=True)
             
     # Schedule the calculation after the transaction commits
+    logger.info(f"[SIGNAL] Scheduling run_emission_calculation via on_commit for RPV {instance.pk}")
     transaction.on_commit(run_emission_calculation)
 
 # Optional: Handle potential errors in the main signal handler if needed,

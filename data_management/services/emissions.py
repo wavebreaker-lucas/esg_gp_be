@@ -215,85 +215,118 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
     Returns:
         A list of created CalculatedEmissionValue objects or empty list if calculation couldn't be performed
     """
+    logger.info(f"[EMISSIONS] Starting calculation for RPV {rpv.pk}") # Log function start
     from ..services.calculation_strategies import get_strategy_for_metric
     
     metric = rpv.metric
     
     # Skip if no activity value is present
     if rpv.aggregated_numeric_value is None:
-        logger.debug(f"Skipping emissions calculation for RPV {rpv.pk} - no numeric value")
+        logger.info(f"[EMISSIONS] Skipping RPV {rpv.pk} - no numeric value")
         return []
     
     # Get the specific metric instance
-    specific_metric = metric.get_real_instance()
+    try:
+        specific_metric = metric.get_real_instance()
+        logger.info(f"[EMISSIONS] RPV {rpv.pk} has specific metric type: {specific_metric.__class__.__name__}")
+    except Exception as e:
+        logger.error(f"[EMISSIONS] Error getting specific metric for RPV {rpv.pk}: {e}", exc_info=True)
+        return [] # Cannot proceed without specific metric
     
-    # Skip if metric doesn't have emission category configured and isn't a VehicleTrackingMetric
+    # Check for category/subcategory unless it's VehicleTrackingMetric
     from ..models.polymorphic_metrics import VehicleTrackingMetric
     if not metric.emission_category and not isinstance(specific_metric, VehicleTrackingMetric):
-        logger.debug(f"Skipping emissions calculation for metric {metric.pk} - missing category configuration")
+        logger.info(f"[EMISSIONS] Skipping RPV {rpv.pk} (Metric {metric.pk}) - missing category config and not VehicleTrackingMetric")
         return []
+    elif not metric.emission_category and isinstance(specific_metric, VehicleTrackingMetric):
+        logger.info(f"[EMISSIONS] Proceeding for RPV {rpv.pk} (VehicleTrackingMetric) despite missing base emission_category")
+    else:
+        logger.info(f"[EMISSIONS] Proceeding for RPV {rpv.pk} - metric has emission_category: {metric.emission_category}")
     
     # Get the year and region
     year = rpv.reporting_period.year
     region = metric.location
+    logger.info(f"[EMISSIONS] RPV {rpv.pk} - Year: {year}, Region: {region}")
     
     # Get the appropriate calculation strategy for this metric type
-    strategy = get_strategy_for_metric(specific_metric)
+    try:
+        strategy = get_strategy_for_metric(specific_metric)
+        logger.info(f"[EMISSIONS] Using strategy: {strategy.__class__.__name__} for RPV {rpv.pk}")
+    except Exception as e:
+        logger.error(f"[EMISSIONS] Error getting strategy for RPV {rpv.pk}, Metric: {specific_metric.__class__.__name__}: {e}", exc_info=True)
+        return []
     
     # Calculate emissions using the strategy
-    calculation_results = strategy.calculate(rpv, specific_metric, year, region)
+    calculation_results = [] # Initialize
+    try:
+        calculation_results = strategy.calculate(rpv, specific_metric, year, region)
+        logger.info(f"[EMISSIONS] Strategy calculation returned {len(calculation_results)} results for RPV {rpv.pk}")
+    except Exception as e:
+        logger.error(f"[EMISSIONS] Error during strategy.calculate for RPV {rpv.pk}: {e}", exc_info=True)
+        return [] # Don't proceed if strategy failed
     
     if not calculation_results:
-        logger.debug(f"No calculation results for RPV {rpv.pk}")
+        logger.info(f"[EMISSIONS] No calculation results produced by strategy for RPV {rpv.pk}. No CalculatedEmissionValue will be created.")
+        # Clean up any existing calculations for this source? Maybe not here, strategy might have intended empty result.
+        # CalculatedEmissionValue.objects.filter(source_activity_value=rpv).delete()
         return []
     
     # If we have multiple results, generate a group ID
     group_id = uuid.uuid4() if len(calculation_results) > 1 else None
+    if group_id:
+        logger.info(f"[EMISSIONS] Generated group_id {group_id} for {len(calculation_results)} results for RPV {rpv.pk}")
     
     # Clean up any existing calculations for this source
-    CalculatedEmissionValue.objects.filter(source_activity_value=rpv).delete()
+    deleted_count, _ = CalculatedEmissionValue.objects.filter(source_activity_value=rpv).delete()
+    if deleted_count > 0:
+        logger.info(f"[EMISSIONS] Deleted {deleted_count} existing CalculatedEmissionValue records for RPV {rpv.pk}")
     
     # Create new calculation records
     created_records = []
+    primary_record = None # Initialize primary record
     
     # Create a record for each calculation result (as components initially)
     for calc in calculation_results:
-        factor = calc['factor']
-        emission_value = calc['emission_value']
+        factor = calc.get('factor')
+        emission_value = calc.get('emission_value')
         proportion = calc.get('proportion', Decimal('1.0'))
         metadata = calc.get('metadata', {})
         
-        # Create the emission record - always as a component first
+        if not factor or emission_value is None:
+             logger.warning(f"[EMISSIONS] Skipping result for RPV {rpv.pk} due to missing factor or emission_value in calculation data: {calc}")
+             continue
+        
+        # Create the emission record - always as a component first if group_id exists
         record = CalculatedEmissionValue.objects.create(
             source_activity_value=rpv,
             emission_factor=factor,
             calculated_value=emission_value,
-            emission_unit=factor.get_emission_unit(),
+            # emission_unit is set automatically on save based on factor
             related_group_id=group_id,
-            is_primary_record=False, # Hardcoded to False for components
+            is_primary_record=False, # Initially False if part of a group
             proportion=proportion,
             calculation_metadata=metadata
+            # Context fields (assignment, layer, reporting_period, level, scope) are set automatically on save
         )
-        
         created_records.append(record)
+        logger.debug(f"[EMISSIONS] Created component CalculatedEmissionValue ID {record.pk} for RPV {rpv.pk}")
     
-    # If we have multiple records, create a primary record with the total
-    if len(created_records) > 1:
-        # Calculate the total emissions
-        total_emission_value = sum(calc['emission_value'] for calc in calculation_results)
+    # If we had multiple components, create a primary record with the total
+    if group_id and created_records: # Only if group_id exists and we actually created components
+        # Calculate the total emissions from the successfully created components
+        total_emission_value = sum(r.calculated_value for r in created_records)
         
-        # Use the first factor for the primary record
-        primary_factor = calculation_results[0]['factor']
+        # Use the first factor for the primary record (or maybe find the most relevant?)
+        primary_factor = created_records[0].emission_factor
         
-        # Create or update the primary record
+        # Create the primary record
         primary_record = CalculatedEmissionValue.objects.create(
             source_activity_value=rpv,
             emission_factor=primary_factor,
             calculated_value=total_emission_value,
-            emission_unit=primary_factor.get_emission_unit(),
             related_group_id=group_id,
             is_primary_record=True,
-            proportion=Decimal('1.0'),  # Primary record represents 100%
+            proportion=Decimal('1.0'),
             calculation_metadata={
                 'is_composite': True,
                 'component_count': len(created_records),
@@ -301,15 +334,25 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
                 'metric_type': specific_metric.__class__.__name__
             }
         )
-        
-        # Add the primary record to the beginning of the list
+        logger.info(f"[EMISSIONS] Created primary CalculatedEmissionValue ID {primary_record.pk} (Total: {total_emission_value}) for RPV {rpv.pk}")
+        # Add the primary record to the beginning of the list for return consistency
         created_records.insert(0, primary_record)
-    
-    action = "Created" if len(created_records) > 0 else "No"
-    record_count = len(created_records)
-    logger.info(f"{action} emission calculation: {record_count} records for RPV {rpv.pk}")
-    
-    return created_records
+    elif not group_id and created_records: # Single result, make it the primary
+        single_record = created_records[0]
+        single_record.is_primary_record = True
+        single_record.save(update_fields=['is_primary_record'])
+        logger.info(f"[EMISSIONS] Marked single CalculatedEmissionValue ID {single_record.pk} as primary for RPV {rpv.pk}")
+        primary_record = single_record # Set primary_record for the final log message
+        
+    # Final logging based on whether a primary record was established
+    if primary_record:
+        record_count = len(created_records)
+        logger.info(f"[EMISSIONS] Successfully created {record_count} emission calculation record(s) for RPV {rpv.pk}. Primary ID: {primary_record.pk}")
+    else:
+        # This case means no results or only invalid results were returned by the strategy
+        logger.info(f"[EMISSIONS] No valid emission calculation records created for RPV {rpv.pk}.")
+        
+    return created_records # Return all created records (primary first if exists)
 
 def calculate_emissions_for_assignment(
     assignment_id: int,
