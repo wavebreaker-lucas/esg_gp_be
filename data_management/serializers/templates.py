@@ -11,7 +11,7 @@ from ..models.templates import (
 # Import the new base model (might need specialized ones later)
 from ..models.polymorphic_metrics import (
     BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
-    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric # Import specific types
+    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric, VehicleTrackingMetric # Import specific types
 )
 # Import the specific data models needed for get_submission_data
 from ..models.submission_data import (
@@ -26,7 +26,8 @@ from .submission_data import (
     TimeSeriesDataPointSerializer,
     MultiFieldTimeSeriesDataPointSerializer,
     MultiFieldDataPointSerializer,
-    PolymorphicSubmissionDataSerializer # Import the new polymorphic reader
+    PolymorphicSubmissionDataSerializer, # Import the new polymorphic reader
+    VehicleRecordSerializer
 )
 # Import the polymorphic metric serializer
 from .polymorphic_metrics import ESGMetricPolymorphicSerializer 
@@ -301,6 +302,8 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     # --- Field for reading specific submission data ---
     submission_data = serializers.SerializerMethodField(read_only=True)
 
+    vehicle_records = VehicleRecordSerializer(many=True, read_only=True)
+
     class Meta:
         model = ESGMetricSubmission
         # Removed 'value', 'text_value'
@@ -317,6 +320,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             # --- Write-only fields for submission data ---
             'basic_data', 'tabular_rows', 'material_data_points', 
             'timeseries_data_points', 'multifield_timeseries_data_points', 'multifield_data',
+            'vehicle_records',
             # --- Read-only field for output ---
             'submission_data'
         ]
@@ -397,6 +401,11 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                 data_to_serialize = obj.multifield_data
             except MultiFieldDataPoint.DoesNotExist:
                 pass
+        elif isinstance(metric, VehicleTrackingMetric):
+            data_to_serialize = obj.vehicle_records.all()
+            serializer_kwargs['many'] = True
+            serializer = VehicleRecordSerializer(data_to_serialize, **serializer_kwargs)
+            return serializer.data
         
         if data_to_serialize is not None:
             # Use the Polymorphic serializer to render the correct structure
