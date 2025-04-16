@@ -45,6 +45,21 @@ def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
     # instance here is the ESGMetricSubmission that was saved/deleted
     print(f"[DEBUG] Signal triggered for ESGMetricSubmission {getattr(instance, 'pk', 'Unknown')}")
     print(f"[DEBUG] Signal kwargs: {kwargs}")
+    
+    # For deletion, check if we need to force-delete ReportedMetricValue records
+    if kwargs.get('signal') == post_delete:
+        print(f"[DEBUG] Post-delete signal for submission {instance.pk}")
+        # Store values needed later since the instance is about to be deleted
+        assignment_id = instance.assignment_id
+        metric_id = instance.metric_id
+        layer_id = instance.layer_id if instance.layer_id else instance.assignment.layer_id
+        reporting_period = instance.reporting_period
+        
+        # Add a task to be executed after commit to clean up orphaned ReportedMetricValue records
+        transaction.on_commit(lambda: clean_up_orphaned_reported_values(
+            assignment_id, metric_id, layer_id, reporting_period
+        ))
+        print(f"[DEBUG] Scheduled orphaned record cleanup for submission {instance.pk}")
 
     # Get PK now, as instance might not be valid inside on_commit if deleted
     instance_pk = instance.pk
@@ -211,6 +226,61 @@ def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
     # Schedule the function to run after the current transaction commits
     transaction.on_commit(run_aggregation_after_commit)
     print(f"[DEBUG] Aggregation logic scheduled via on_commit for Submission PK {instance_pk}")
+
+def clean_up_orphaned_reported_values(assignment_id, metric_id, layer_id, reporting_period):
+    """
+    Check if any ReportedMetricValue records need to be deleted after a submission deletion.
+    This is called via on_commit to ensure we're working with the post-transaction database state.
+    """
+    try:
+        print(f"[DEBUG] Checking for orphaned ReportedMetricValue records")
+        from .models import ReportedMetricValue, ESGMetricSubmission
+        
+        # For each possible aggregation level
+        for level in ['M', 'A']:
+            # Get the ReportedMetricValue for this context
+            try:
+                rpv = ReportedMetricValue.objects.get(
+                    assignment_id=assignment_id,
+                    metric_id=metric_id,
+                    layer_id=layer_id,
+                    reporting_period=reporting_period if level == 'M' else reporting_period.replace(month=12, day=31),
+                    level=level
+                )
+                
+                # Count remaining submissions that should contribute
+                remaining_submissions = ESGMetricSubmission.objects.filter(
+                    assignment_id=assignment_id,
+                    metric_id=metric_id,
+                    layer_id=layer_id
+                ).count()
+                
+                print(f"[DEBUG] Found ReportedMetricValue {rpv.pk} with {remaining_submissions} remaining submissions")
+                
+                # If no submissions left, delete the ReportedMetricValue
+                if remaining_submissions == 0:
+                    print(f"[DEBUG] Deleting orphaned ReportedMetricValue {rpv.pk}")
+                    rpv.delete()
+                    logger.info(f"Deleted orphaned ReportedMetricValue {rpv.pk}")
+                else:
+                    # Otherwise trigger recalculation
+                    from .services.aggregation import calculate_report_value
+                    print(f"[DEBUG] Recalculating ReportedMetricValue {rpv.pk}")
+                    calculate_report_value(
+                        assignment=rpv.assignment,
+                        metric=rpv.metric,
+                        reporting_period=rpv.reporting_period,
+                        layer=rpv.layer,
+                        level=rpv.level
+                    )
+            except ReportedMetricValue.DoesNotExist:
+                print(f"[DEBUG] No ReportedMetricValue found for the given context and level {level}")
+            except Exception as e:
+                logger.error(f"Error checking ReportedMetricValue for level {level}: {e}")
+                print(f"[DEBUG] Error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error cleaning up orphaned ReportedMetricValue records: {e}")
+        print(f"[DEBUG] Error in cleanup: {str(e)}")
 
 @receiver(post_save, sender=ReportedMetricValue)
 def trigger_emission_calculation(sender, instance, **kwargs):
