@@ -114,28 +114,28 @@ def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
                     from .models.submission_data import TimeSeriesDataPoint
                     
                     # Get data points for this submission
-                    if kwargs.get('created', False) or ('created' not in kwargs): # For new or updated submissions
-                        print(f"[DEBUG] Finding time series data points for submission {instance_pk}")
-                        data_points = TimeSeriesDataPoint.objects.filter(submission_id=instance_pk)
-                        
-                        # Extract unique month periods from the data points
-                        unique_months = set()
-                        for point in data_points:
-                            # For each point, set the day to the last day of its month to use as the reporting period
-                            if point.period:
-                                # Calculate the last day of the month
-                                next_month = point.period.replace(day=28) + datetime.timedelta(days=4)  # This will never be the last day of the month
-                                month_end = next_month - datetime.timedelta(days=next_month.day)  # Subtract the extra days to get the last day
-                                unique_months.add(month_end)
-                        
-                        print(f"[DEBUG] Found {len(unique_months)} unique months in time series data")
-                        
-                        # Add each unique month period with 'M' level to periods_to_recalculate
-                        for month_end in unique_months:
-                            if assignment_start <= month_end <= assignment_end:
-                                periods_to_recalculate.add((month_end, 'M'))
-                            else:
-                                print(f"[DEBUG] Skipping month {month_end} as it's outside assignment range")
+                    # Always process time series data points regardless of creation or update
+                    print(f"[DEBUG] Finding time series data points for submission {instance_pk}")
+                    data_points = TimeSeriesDataPoint.objects.filter(submission_id=instance_pk)
+                    
+                    # Extract unique month periods from the data points
+                    unique_months = set()
+                    for point in data_points:
+                        # For each point, set the day to the last day of its month to use as the reporting period
+                        if point.period:
+                            # Calculate the last day of the month
+                            next_month = point.period.replace(day=28) + datetime.timedelta(days=4)  # This will never be the last day of the month
+                            month_end = next_month - datetime.timedelta(days=next_month.day)  # Subtract the extra days to get the last day
+                            unique_months.add(month_end)
+                    
+                    print(f"[DEBUG] Found {len(unique_months)} unique months in time series data")
+                    
+                    # Add each unique month period with 'M' level to periods_to_recalculate
+                    for month_end in unique_months:
+                        if assignment_start <= month_end <= assignment_end:
+                            periods_to_recalculate.add((month_end, 'M'))
+                        else:
+                            print(f"[DEBUG] Skipping month {month_end} as it's outside assignment range")
                     
                     # Also include the submission period with 'M' level as a fallback
                     if submission_period:
