@@ -11,7 +11,7 @@ from ..models.templates import (
 # Import the new base model (might need specialized ones later)
 from ..models.polymorphic_metrics import (
     BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
-    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric, VehicleTrackingMetric # Import specific types
+    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric, VehicleTrackingMetric
 )
 # Import the specific data models needed for get_submission_data
 from ..models.submission_data import (
@@ -477,19 +477,31 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         provided_data_fields = [
             f for f in [
                 'basic_data', 'tabular_rows', 'material_data_points', 
-                'timeseries_data_points', 'multifield_timeseries_data_points', 'multifield_data'
+                'timeseries_data_points', 'multifield_timeseries_data_points', 'multifield_data',
+                'vehicle_records'  # Add vehicle_records as a valid data field
             ] if data.get(f) is not None
         ]
         
         logger.info(f"Provided data fields: {provided_data_fields}")
         
-        if is_creating and len(provided_data_fields) == 0:
-            logger.error("No submission data provided")
-            raise serializers.ValidationError("No submission data provided (e.g., basic_data, tabular_rows, etc.).")
-        if len(provided_data_fields) > 1:
-            logger.error(f"Multiple data fields provided: {provided_data_fields}")
+        if not provided_data_fields:
+            # Special case for VehicleTrackingMetric - if we're submitting for a vehicle tracking metric
+            # and there's no error yet, don't raise an error about missing data fields
+            if not is_creating or not isinstance(metric, VehicleTrackingMetric) or 'vehicle_records' not in data:
+                logger.error("No submission data provided")
+                raise serializers.ValidationError("No submission data provided (e.g., basic_data, tabular_rows, etc.).")
+        
+        # For BasicMetric, we expect basic_data
+        if isinstance(metric, BasicMetric) and 'basic_data' not in provided_data_fields:
+            logger.error("Basic metric requires basic_data")
+            raise serializers.ValidationError(f"Metric of type BasicMetric requires 'basic_data' field, got {provided_data_fields}.")
+        
+        # Ensure only one type of data is provided (except vehicle_records can be combined)
+        data_without_vehicle = [f for f in provided_data_fields if f != 'vehicle_records']
+        if len(data_without_vehicle) > 1:
+            logger.error(f"Multiple data fields provided: {data_without_vehicle}")
             raise serializers.ValidationError("Multiple types of submission data provided. Only one is allowed.")
-            
+        
         # Only perform type match check if a data field was actually provided
         if provided_data_fields:
             provided_field = provided_data_fields[0]
@@ -508,6 +520,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                 TimeSeriesMetric: 'timeseries_data_points',
                 MultiFieldTimeSeriesMetric: 'multifield_timeseries_data_points',
                 MultiFieldMetric: 'multifield_data',
+                VehicleTrackingMetric: 'vehicle_records',  # Add support for VehicleTrackingMetric
             }
 
             expected_field = None
@@ -520,7 +533,11 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                 logger.error(f"Unsupported metric type: {type(specific_metric).__name__}")
                 raise serializers.ValidationError(f"Unsupported metric type encountered: {type(specific_metric).__name__}")
 
-            if provided_field != expected_field:
+            # Skip field validation for VehicleTrackingMetric since we handle it specially
+            if isinstance(specific_metric, VehicleTrackingMetric):
+                logger.info(f"Found VehicleTrackingMetric with vehicle_records data")
+                pass  # Skip the field validation
+            elif provided_field != expected_field:
                 error_msg = f"Invalid data field '{provided_field}' provided for metric type '{type(specific_metric).__name__}'. Expected field: '{expected_field}'."
                 logger.error(error_msg)
                 raise serializers.ValidationError(error_msg)
