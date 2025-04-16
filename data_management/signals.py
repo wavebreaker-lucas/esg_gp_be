@@ -4,6 +4,7 @@ from django.dispatch import receiver
 import datetime
 from dateutil.relativedelta import relativedelta
 from django.db import transaction
+from concurrent.futures import ThreadPoolExecutor
 
 from .models import ESGMetricSubmission, BaseESGMetric, ReportedMetricValue
 from .models.polymorphic_metrics import BasicMetric, TimeSeriesMetric
@@ -12,6 +13,10 @@ from .services.aggregation import calculate_report_value
 from .services.emissions import calculate_emissions_for_activity_value
 
 logger = logging.getLogger(__name__)
+
+# Create thread pools with limited workers - one for aggregation calculations and one for emissions
+aggregation_executor = ThreadPoolExecutor(max_workers=4)
+emission_executor = ThreadPoolExecutor(max_workers=2)
 
 @receiver([post_save, post_delete], sender=VehicleMonthlyData)
 def trigger_recalculation_on_vehicle_data_change(sender, instance, **kwargs):
@@ -190,29 +195,25 @@ def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
             logger.info(f"Submission change committed for Metric {metric.pk}, Assignment {assignment.pk}, Layer {layer.pk}. Triggering recalculation for: {periods_to_recalculate}")
             print(f"[DEBUG] Post-commit Periods to recalculate: {periods_to_recalculate}")
 
+            # Submit each calculation to the thread pool instead of running sequentially
             for period_end, level in periods_to_recalculate:
                 if assignment_start <= period_end <= assignment_end:
                     try:
-                        print(f"[DEBUG] Calling calculate_report_value (post-commit) for period {period_end}, level {level}")
-                        result = calculate_report_value(
+                        print(f"[DEBUG] Submitting calculate_report_value to thread pool for period {period_end}, level {level}")
+                        # Submit the calculation to the thread pool
+                        future = aggregation_executor.submit(
+                            calculate_report_value,
                             assignment=assignment,
                             metric=metric,
                             reporting_period=period_end,
                             layer=layer,
                             level=level
                         )
-                        print(f"[DEBUG] calculate_report_value (post-commit) result: {result}")
-                        if result:
-                            print(f"[DEBUG] Created/updated ReportedMetricValue ID: {result.pk}")
-                            print(f"[DEBUG] - Value: {result.aggregated_numeric_value or result.aggregated_text_value}")
-                            print(f"[DEBUG] - Submissions count: {result.source_submission_count}")
-                        else:
-                            print(f"[DEBUG] No ReportedMetricValue created/updated (post-commit)")
+                        # You could store futures if needed to check results later
+                        print(f"[DEBUG] Calculation job submitted to thread pool for period {period_end}, level {level}")
                     except Exception as e:
-                        logger.error(f"Error during triggered recalculation (post-commit) for Metric {metric.pk}, Period {period_end}, Level {level}: {e}", exc_info=True)
-                        print(f"[DEBUG] Error in calculate_report_value (post-commit): {str(e)}")
-                        import traceback
-                        print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+                        logger.error(f"Error submitting calculation job to thread pool for Metric {metric.pk}, Period {period_end}, Level {level}: {e}", exc_info=True)
+                        print(f"[DEBUG] Error submitting to thread pool: {str(e)}")
                 else:
                      logger.warning(f"Skipping recalculation (post-commit) for period {period_end} (Level {level}) as it's outside assignment range {assignment_start} - {assignment_end}.")
                      print(f"[DEBUG] Skipping period {period_end} (outside range, post-commit)")
@@ -434,11 +435,12 @@ def trigger_emission_calculation(sender, instance, **kwargs):
         try:
             # Fetch the instance again to ensure it's up-to-date after commit
             latest_instance = ReportedMetricValue.objects.get(pk=instance.pk)
-            results = calculate_emissions_for_activity_value(latest_instance)
-            if results:
-                logger.info(f"[SIGNAL-ONCOMMIT] Emission calculation successful for RPV {latest_instance.pk}. {len(results)} records created/updated.")
-            else:
-                logger.info(f"[SIGNAL-ONCOMMIT] Emission calculation did not produce results for RPV {latest_instance.pk}. Check logs from calculate_emissions_for_activity_value.")
+            
+            # Submit the emission calculation to the thread pool
+            logger.info(f"[SIGNAL-ONCOMMIT] Submitting emission calculation to thread pool for RPV {latest_instance.pk}")
+            future = emission_executor.submit(calculate_emissions_for_activity_value, latest_instance)
+            logger.info(f"[SIGNAL-ONCOMMIT] Emission calculation job submitted to thread pool for RPV {latest_instance.pk}")
+            
         except ReportedMetricValue.DoesNotExist:
             logger.error(f"[SIGNAL-ONCOMMIT] RPV {instance.pk} not found after commit. Cannot calculate emissions.")
         except Exception as e:
