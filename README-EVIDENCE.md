@@ -309,6 +309,82 @@ Evidence files can be stored in two ways:
      - The system warns if applying OCR data would override existing values in the target submission's data.
      - The target submission's specific data record (`BasicMetricData`) is updated if OCR data is applied and compatible. The evidence record itself remains unchanged regarding its link to submissions.
 
+## Direct Vehicle Linking
+
+The system now supports direct linking between evidence files and specific vehicles, providing a more precise way to associate supporting documentation with vehicle records.
+
+### ESGMetricEvidence Model Enhancement
+
+The evidence model has been updated with a target_vehicle field:
+
+```python
+class ESGMetricEvidence(models.Model):
+    # Other fields...
+    
+    # NEW: Direct link to a specific vehicle
+    target_vehicle = models.ForeignKey(
+        'data_management.VehicleRecord',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='evidence_files',
+        help_text="The specific vehicle this evidence relates to, if any."
+    )
+```
+
+### Uploading Evidence with Vehicle Association
+
+When uploading evidence, users can specify a target vehicle:
+
+```
+POST /api/metric-evidence/
+{
+  file: [file data],
+  metric_id: 123,
+  layer_id: 3,
+  period: "2024-06-30",
+  target_vehicle_id: 45  // ID of the specific VehicleRecord
+}
+```
+
+### Retrieving Vehicle-Specific Evidence
+
+Find evidence files linked to a specific vehicle:
+
+```
+GET /api/metric-evidence/by_vehicle/?vehicle_id=45&period=2024-06-30
+```
+
+- Retrieves evidence files directly linked to the specified vehicle
+- Optional period parameter to filter by reporting period
+- Returns 404 if the vehicle doesn't exist
+- Returns 400 if vehicle_id is not provided
+
+### Enhanced Evidence Finding Logic
+
+The `find_relevant_evidence()` function now checks for vehicle records when working with VehicleTrackingMetric:
+
+1. Identifies when a submission is for a VehicleTrackingMetric
+2. Retrieves all vehicles associated with the submission
+3. Includes evidence linked to any of these vehicles in the results
+4. Automatically merges vehicle-specific evidence with standard metadata-matching evidence
+
+### Benefits of Direct Vehicle Linking
+
+- **Precise Documentation**: Link receipts, registration documents, or maintenance records directly to specific vehicles
+- **Improved Traceability**: Clear audit trail connecting evidence to individual assets
+- **Better User Experience**: Users can see all evidence for a specific vehicle in one place
+- **Enhanced Data Integrity**: Maintain vehicle-document relationships even if submission details change
+
+### Admin Interface Enhancements
+
+The admin interface has been updated to support the new vehicle linking:
+
+- Added vehicle information display in the evidence list view
+- Added vehicle-based filters and search capabilities
+- Improved the evidence detail view to show associated vehicle information
+- Added raw_id_fields for easier vehicle selection
+
 ## Testing OCR Processing
 
 For testing OCR processing without saving to the database, use the Django management command:
