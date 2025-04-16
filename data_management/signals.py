@@ -235,16 +235,144 @@ def clean_up_orphaned_reported_values(assignment_id, metric_id, layer_id, report
     try:
         print(f"[DEBUG] Checking for orphaned ReportedMetricValue records")
         from .models import ReportedMetricValue, ESGMetricSubmission
+        from .models.polymorphic_metrics import VehicleTrackingMetric, TimeSeriesMetric, MultiFieldTimeSeriesMetric, BaseESGMetric
         
-        # For each possible aggregation level
-        for level in ['M', 'A']:
-            # Get the ReportedMetricValue for this context
+        # Check if this is a time series-like metric that can have monthly data
+        try:
+            metric = BaseESGMetric.objects.get(pk=metric_id)
+            real_instance = metric.get_real_instance()
+            is_time_series_metric = isinstance(real_instance, (VehicleTrackingMetric, TimeSeriesMetric, MultiFieldTimeSeriesMetric))
+            print(f"[DEBUG] Metric {metric_id} is a time series metric: {is_time_series_metric}")
+        except:
+            is_time_series_metric = False
+            print(f"[DEBUG] Could not determine if metric {metric_id} is a time series metric, assuming it is not")
+        
+        # For annual aggregation level - handle like before
+        try:
+            level = 'A'
+            annual_period = reporting_period.replace(month=12, day=31)
+            rpv = ReportedMetricValue.objects.get(
+                assignment_id=assignment_id,
+                metric_id=metric_id,
+                layer_id=layer_id,
+                reporting_period=annual_period,
+                level=level
+            )
+            
+            # Count remaining submissions that should contribute
+            remaining_submissions = ESGMetricSubmission.objects.filter(
+                assignment_id=assignment_id,
+                metric_id=metric_id,
+                layer_id=layer_id
+            ).count()
+            
+            print(f"[DEBUG] Found Annual ReportedMetricValue {rpv.pk} with {remaining_submissions} remaining submissions")
+            
+            # If no submissions left, delete the ReportedMetricValue
+            if remaining_submissions == 0:
+                print(f"[DEBUG] Deleting orphaned Annual ReportedMetricValue {rpv.pk}")
+                rpv.delete()
+                logger.info(f"Deleted orphaned Annual ReportedMetricValue {rpv.pk}")
+            else:
+                # Otherwise trigger recalculation
+                from .services.aggregation import calculate_report_value
+                print(f"[DEBUG] Recalculating Annual ReportedMetricValue {rpv.pk}")
+                calculate_report_value(
+                    assignment=rpv.assignment,
+                    metric=rpv.metric,
+                    reporting_period=rpv.reporting_period,
+                    layer=rpv.layer,
+                    level=rpv.level
+                )
+        except ReportedMetricValue.DoesNotExist:
+            print(f"[DEBUG] No Annual ReportedMetricValue found")
+        except Exception as e:
+            logger.error(f"Error checking Annual ReportedMetricValue: {e}")
+            print(f"[DEBUG] Error processing Annual records: {str(e)}")
+        
+        # For monthly aggregation level - special handling for time series metrics
+        if is_time_series_metric:
+            level = 'M'
+            year = reporting_period.year
+            
+            # For time series metrics, check all months in the year
+            print(f"[DEBUG] Checking all monthly records for time series metric in year {year}")
+            
+            # Find all monthly reports for this year, metric, assignment, and layer
+            monthly_rpvs = ReportedMetricValue.objects.filter(
+                assignment_id=assignment_id,
+                metric_id=metric_id,
+                layer_id=layer_id,
+                reporting_period__year=year,
+                level=level
+            )
+            
+            print(f"[DEBUG] Found {monthly_rpvs.count()} monthly ReportedMetricValue records for year {year}")
+            
+            for rpv in monthly_rpvs:
+                # For each monthly record, check if we need to delete or recalculate
+                month_period = rpv.reporting_period
+                print(f"[DEBUG] Processing monthly record for {month_period}")
+                
+                # Determine if any contributing data remains for this month
+                # This has to be handled differently for each metric type
+                has_contributing_data = False
+                
+                if isinstance(real_instance, VehicleTrackingMetric):
+                    # Check for vehicle monthly data
+                    from .models.submission_data import VehicleRecord, VehicleMonthlyData
+                    has_contributing_data = VehicleMonthlyData.objects.filter(
+                        vehicle__submission__assignment_id=assignment_id,
+                        vehicle__submission__metric_id=metric_id,
+                        vehicle__submission__layer_id=layer_id,
+                        period__month=month_period.month,
+                        period__year=month_period.year
+                    ).exists()
+                elif isinstance(real_instance, TimeSeriesMetric):
+                    # Check for time series data points
+                    from .models.submission_data import TimeSeriesDataPoint
+                    has_contributing_data = TimeSeriesDataPoint.objects.filter(
+                        submission__assignment_id=assignment_id,
+                        submission__metric_id=metric_id,
+                        submission__layer_id=layer_id,
+                        period__month=month_period.month,
+                        period__year=month_period.year
+                    ).exists()
+                elif isinstance(real_instance, MultiFieldTimeSeriesMetric):
+                    # Check for multi-field time series data points
+                    from .models.submission_data import MultiFieldTimeSeriesDataPoint
+                    has_contributing_data = MultiFieldTimeSeriesDataPoint.objects.filter(
+                        submission__assignment_id=assignment_id,
+                        submission__metric_id=metric_id,
+                        submission__layer_id=layer_id,
+                        period__month=month_period.month,
+                        period__year=month_period.year
+                    ).exists()
+                
+                if not has_contributing_data:
+                    print(f"[DEBUG] No data found for {month_period}, deleting ReportedMetricValue {rpv.pk}")
+                    rpv.delete()
+                    logger.info(f"Deleted orphaned Monthly ReportedMetricValue {rpv.pk} for {month_period}")
+                else:
+                    # Trigger recalculation for this month
+                    from .services.aggregation import calculate_report_value
+                    print(f"[DEBUG] Data still exists for {month_period}, recalculating ReportedMetricValue {rpv.pk}")
+                    calculate_report_value(
+                        assignment=rpv.assignment,
+                        metric=rpv.metric,
+                        reporting_period=rpv.reporting_period,
+                        layer=rpv.layer,
+                        level=rpv.level
+                    )
+        else:
+            # For non-time series metrics, handle monthly level like before
             try:
+                level = 'M'
                 rpv = ReportedMetricValue.objects.get(
                     assignment_id=assignment_id,
                     metric_id=metric_id,
                     layer_id=layer_id,
-                    reporting_period=reporting_period if level == 'M' else reporting_period.replace(month=12, day=31),
+                    reporting_period=reporting_period,  # Use exact reporting period
                     level=level
                 )
                 
@@ -255,17 +383,17 @@ def clean_up_orphaned_reported_values(assignment_id, metric_id, layer_id, report
                     layer_id=layer_id
                 ).count()
                 
-                print(f"[DEBUG] Found ReportedMetricValue {rpv.pk} with {remaining_submissions} remaining submissions")
+                print(f"[DEBUG] Found Monthly ReportedMetricValue {rpv.pk} with {remaining_submissions} remaining submissions")
                 
                 # If no submissions left, delete the ReportedMetricValue
                 if remaining_submissions == 0:
-                    print(f"[DEBUG] Deleting orphaned ReportedMetricValue {rpv.pk}")
+                    print(f"[DEBUG] Deleting orphaned Monthly ReportedMetricValue {rpv.pk}")
                     rpv.delete()
-                    logger.info(f"Deleted orphaned ReportedMetricValue {rpv.pk}")
+                    logger.info(f"Deleted orphaned Monthly ReportedMetricValue {rpv.pk}")
                 else:
                     # Otherwise trigger recalculation
                     from .services.aggregation import calculate_report_value
-                    print(f"[DEBUG] Recalculating ReportedMetricValue {rpv.pk}")
+                    print(f"[DEBUG] Recalculating Monthly ReportedMetricValue {rpv.pk}")
                     calculate_report_value(
                         assignment=rpv.assignment,
                         metric=rpv.metric,
@@ -274,9 +402,9 @@ def clean_up_orphaned_reported_values(assignment_id, metric_id, layer_id, report
                         level=rpv.level
                     )
             except ReportedMetricValue.DoesNotExist:
-                print(f"[DEBUG] No ReportedMetricValue found for the given context and level {level}")
+                print(f"[DEBUG] No Monthly ReportedMetricValue found for the given context")
             except Exception as e:
-                logger.error(f"Error checking ReportedMetricValue for level {level}: {e}")
+                logger.error(f"Error checking Monthly ReportedMetricValue: {e}")
                 print(f"[DEBUG] Error: {str(e)}")
     except Exception as e:
         logger.error(f"Error cleaning up orphaned ReportedMetricValue records: {e}")
