@@ -16,7 +16,8 @@ from ..models.polymorphic_metrics import (
 # Import the specific data models needed for get_submission_data
 from ..models.submission_data import (
     BasicMetricData, TabularMetricRow, MaterialMatrixDataPoint, 
-    TimeSeriesDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint
+    TimeSeriesDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint,
+    VehicleRecord  # Added import for VehicleRecord
 )
 # Import the new submission data serializers
 from .submission_data import (
@@ -240,6 +241,18 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
     )
     layer_name = serializers.SerializerMethodField()
     
+    # Add target_vehicle_id field for write operations
+    target_vehicle_id = serializers.PrimaryKeyRelatedField(
+        source='target_vehicle',
+        queryset=VehicleRecord.objects.all(),
+        required=False,
+        allow_null=True,
+        write_only=True
+    )
+    
+    # Add target_vehicle_info field for read operations
+    target_vehicle_info = serializers.SerializerMethodField(read_only=True)
+    
     class Meta:
         model = ESGMetricEvidence
         # submission field points to ESGMetricSubmission, intended_metric points to BaseESGMetric - OK
@@ -249,12 +262,14 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
             'enable_ocr_processing', 'is_processed_by_ocr', 'extracted_value', 
             'period', 'was_manually_edited', 'edited_at', 
             'edited_by', 'edited_by_name', 'intended_metric', # Removed submission
-            'layer_id', 'layer_name', 'source_identifier' # Added source_identifier
+            'layer_id', 'layer_name', 'source_identifier', # Added source_identifier
+            'target_vehicle_id', 'target_vehicle_info' # Added vehicle fields
         ]
         read_only_fields = [
             'uploaded_by', 'uploaded_at', 'is_processed_by_ocr', 
             'extracted_value', 'period', 'was_manually_edited',
-            'edited_at', 'edited_by', 'layer_name'
+            'edited_at', 'edited_by', 'layer_name',
+            'target_vehicle_info' # Added as read-only
         ]
     
     def get_uploaded_by_name(self, obj):
@@ -270,6 +285,17 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
     def get_layer_name(self, obj):
         if obj.layer:
             return obj.layer.company_name
+        return None
+    
+    def get_target_vehicle_info(self, obj):
+        """Return basic information about the target vehicle if set"""
+        if obj.target_vehicle:
+            return {
+                'id': obj.target_vehicle.id,
+                'registration_number': obj.target_vehicle.registration_number,
+                'brand': obj.target_vehicle.brand,
+                'model': obj.target_vehicle.model
+            }
         return None
 
 class ESGMetricSubmissionSerializer(serializers.ModelSerializer):

@@ -12,7 +12,7 @@ from ...services.bill_analyzer import UtilityBillAnalyzer
 from accounts.permissions import BakerTillyAdmin
 from accounts.models import LayerProfile
 from ...models.polymorphic_metrics import BaseESGMetric, BasicMetric
-from ...models.submission_data import BasicMetricData
+from ...models.submission_data import BasicMetricData, VehicleRecord
 
 
 class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
@@ -103,6 +103,16 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         # Handle optional source_identifier parameter
         source_identifier = request.data.get('source_identifier')
         
+        # Handle optional target_vehicle_id parameter
+        target_vehicle_id = request.data.get('target_vehicle_id')
+        target_vehicle = None
+        if target_vehicle_id:
+            try:
+                target_vehicle = VehicleRecord.objects.get(id=target_vehicle_id)
+                # Optionally: Add permission check to ensure user has access to this vehicle
+            except VehicleRecord.DoesNotExist:
+                return Response({'error': 'Vehicle not found'}, status=404)
+        
         # Create standalone evidence record
         evidence = ESGMetricEvidence.objects.create(
             file=file_obj,
@@ -113,7 +123,8 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             period=period,  # Set the user-provided period
             intended_metric=metric,  # Use the new field for metric relationship
             layer=layer,  # Set the layer
-            source_identifier=source_identifier  # Set the source identifier
+            source_identifier=source_identifier,  # Set the source identifier
+            target_vehicle=target_vehicle  # Set the target vehicle
         )
         
         # Prepare response - use serializer to include layer_id and layer_name
@@ -443,6 +454,46 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         
         # Execute query and serialize results
         evidence = evidence_query.select_related('layer', 'intended_metric')
+        serializer = self.get_serializer(evidence, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def by_vehicle(self, request):
+        """
+        Get evidence files linked to a specific vehicle, optionally filtered by period.
+        
+        Parameters:
+            vehicle_id: ID of the vehicle to get evidence for
+            period: (Optional) Filter evidence by specific period (YYYY-MM-DD)
+        """
+        vehicle_id = request.query_params.get('vehicle_id')
+        if not vehicle_id:
+            return Response({'error': 'vehicle_id is required'}, status=400)
+        
+        # Check if vehicle exists (can be expanded to check permissions)
+        try:
+            vehicle = VehicleRecord.objects.get(id=vehicle_id)
+            
+            # Optional: Check if user has permission to access this vehicle
+            # (Similar to permission checks in other methods)
+        except VehicleRecord.DoesNotExist:
+            return Response({'error': 'Vehicle not found'}, status=404)
+        
+        # Get evidence directly linked to this vehicle
+        evidence_query = ESGMetricEvidence.objects.filter(target_vehicle_id=vehicle_id)
+        
+        # Apply period filter if provided
+        period_str = request.query_params.get('period')
+        if period_str:
+            try:
+                from datetime import datetime
+                period_date = datetime.strptime(period_str, '%Y-%m-%d').date()
+                evidence_query = evidence_query.filter(period=period_date)
+            except ValueError:
+                return Response({'error': 'Invalid period format. Use YYYY-MM-DD'}, status=400)
+        
+        # Execute query and return results
+        evidence = evidence_query.select_related('layer', 'intended_metric', 'target_vehicle')
         serializer = self.get_serializer(evidence, many=True)
         return Response(serializer.data)
 

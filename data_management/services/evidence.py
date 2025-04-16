@@ -4,8 +4,11 @@ from datetime import datetime
 # Import the new polymorphic metric models
 from ..models.polymorphic_metrics import (
     BaseESGMetric, TimeSeriesMetric, MaterialTrackingMatrixMetric,
-    MultiFieldTimeSeriesMetric
+    MultiFieldTimeSeriesMetric, VehicleTrackingMetric
 )
+
+# Import VehicleRecord with absolute path
+from data_management.models.submission_data import VehicleRecord  # Added for direct access
 
 # Configure logging to show in console
 logging.basicConfig(
@@ -43,9 +46,42 @@ def find_relevant_evidence(submission, user=None):
     if user:
         evidence_query = evidence_query.filter(uploaded_by=user)
     
-    # Get specific metric instance to check if it's time-based
+    # Get specific metric instance to check if it's time-based or vehicle-based
     try:
         specific_metric = submission.metric.get_real_instance()
+        
+        # Check if this is a vehicle tracking metric
+        if isinstance(specific_metric, VehicleTrackingMetric):
+            # Get all vehicle records associated with this submission
+            from django.db.models import Q
+            
+            # Get the existing filters
+            base_query = Q(
+                intended_metric=submission.metric,
+                layer=submission.layer
+            )
+            
+            # Add source_identifier if present
+            if submission.source_identifier:
+                base_query &= Q(source_identifier=submission.source_identifier)
+                
+            # Add period if present
+            if submission.reporting_period:
+                base_query &= Q(period=submission.reporting_period)
+            
+            # Add user filter if present
+            if user:
+                base_query &= Q(uploaded_by=user)
+            
+            # Create a new query that ORs the base filters with the vehicle filter
+            vehicle_query = Q(target_vehicle_id__in=VehicleRecord.objects.filter(
+                submission=submission
+            ).values_list('id', flat=True))
+            
+            # Apply the combined filter
+            evidence_query = ESGMetricEvidence.objects.filter(
+                base_query | vehicle_query
+            ).distinct()  # Ensure no duplicates
         
         # Determine if time-based by checking the type
         is_time_based = isinstance(specific_metric, (
@@ -61,4 +97,4 @@ def find_relevant_evidence(submission, user=None):
         # If we can't determine the type, just continue with the basic matching
         pass
     
-    return evidence_query.select_related('layer', 'intended_metric') 
+    return evidence_query.select_related('layer', 'intended_metric', 'target_vehicle') 

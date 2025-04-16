@@ -303,11 +303,11 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
 
 @admin.register(ESGMetricEvidence)
 class ESGMetricEvidenceAdmin(admin.ModelAdmin):
-    list_display = ['get_submission_display', 'filename', 'file_type', 'uploaded_by', 'uploaded_at', 'is_standalone']
-    list_filter = ['file_type', 'is_processed_by_ocr']
-    search_fields = ['filename', 'description']
+    list_display = ['get_submission_display', 'filename', 'file_type', 'uploaded_by', 'uploaded_at', 'is_standalone', 'get_vehicle_display']
+    list_filter = ['file_type', 'is_processed_by_ocr', 'target_vehicle__vehicle_type']
+    search_fields = ['filename', 'description', 'target_vehicle__registration_number']
     date_hierarchy = 'uploaded_at'
-    raw_id_fields = ['uploaded_by']
+    raw_id_fields = ['uploaded_by', 'target_vehicle']
     
     def get_submission_display(self, obj):
         """Safely display metric information"""
@@ -321,6 +321,13 @@ class ESGMetricEvidenceAdmin(admin.ModelAdmin):
         return obj.intended_metric is None
     is_standalone.boolean = True
     is_standalone.short_description = "Standalone"
+    
+    def get_vehicle_display(self, obj):
+        """Display vehicle information if associated"""
+        if obj.target_vehicle:
+            return f"{obj.target_vehicle.registration_number} ({obj.target_vehicle.brand} {obj.target_vehicle.model})"
+        return "-"
+    get_vehicle_display.short_description = "Vehicle"
 
 @admin.register(ReportedMetricValue)
 class ReportedMetricValueAdmin(admin.ModelAdmin):
