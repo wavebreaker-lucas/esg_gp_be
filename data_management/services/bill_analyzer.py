@@ -138,7 +138,7 @@ class UtilityBillAnalyzer:
                 except Exception as e:
                     logger.exception(f"Error during OCR processing: {str(e)}")
                     evidence.is_processed_by_ocr = True  # Mark as processed even if failed
-                    evidence.save()
+                    evidence.save(update_fields=['is_processed_by_ocr'])  # FIXED: Only update this field
                     return False, {
                         "error": f"OCR processing failed: {str(e)}"
                     }
@@ -146,7 +146,7 @@ class UtilityBillAnalyzer:
                 if result.get("status") != "Succeeded" or "result" not in result:
                     evidence.is_processed_by_ocr = True
                     evidence.ocr_data = result  # Store the raw result anyway
-                    evidence.save()
+                    evidence.save(update_fields=['is_processed_by_ocr', 'ocr_data'])  # FIXED: Only update these fields
                     return False, {
                         "error": "OCR processing did not succeed"
                     }
@@ -168,10 +168,13 @@ class UtilityBillAnalyzer:
                     extracted_data = self._extract_data_from_analyzer(fields)
                     
                     if not extracted_data:
-                        evidence.save()
+                        evidence.save(update_fields=['is_processed_by_ocr', 'ocr_data'])  # FIXED: Only update these fields
                         return False, {
                             "error": "Could not extract relevant data from document"
                         }
+                    
+                    # Track fields to update
+                    fields_to_update = ['is_processed_by_ocr', 'ocr_data']  # FIXED: track fields to update
                     
                     # Update the evidence record with extracted data
                     # For simplicity, we'll use the first period if multiple periods were found
@@ -189,7 +192,10 @@ class UtilityBillAnalyzer:
                         # Use the most recent period as the primary
                         first_period = periods[0]
                         evidence.extracted_value = first_period.get("consumption")
+                        fields_to_update.append('extracted_value')  # FIXED: track field
+                        
                         evidence.ocr_period = first_period.get("period")  # Store OCR period in new field
+                        fields_to_update.append('ocr_period')  # FIXED: track field
                         
                         # Store all other periods in additional_periods
                         if len(periods) > 1:
@@ -206,12 +212,16 @@ class UtilityBillAnalyzer:
                                     "period": period_date,
                                     "consumption": period.get("consumption")
                                 })
+                            # ocr_data is already in fields_to_update
                     else:
                         # Use single period data if available
                         evidence.extracted_value = extracted_data.get("value")
+                        fields_to_update.append('extracted_value')  # FIXED: track field
+                        
                         evidence.ocr_period = extracted_data.get("period")  # Store OCR period in new field
+                        fields_to_update.append('ocr_period')  # FIXED: track field
                     
-                    evidence.save()
+                    evidence.save(update_fields=fields_to_update)  # FIXED: Only update the tracked fields
                     
                     # Return success with additional periods if available
                     additional_periods = evidence.ocr_data.get('additional_periods', [])
@@ -226,7 +236,7 @@ class UtilityBillAnalyzer:
                     logger.exception(f"Error extracting data from OCR result: {str(e)}")
                     evidence.is_processed_by_ocr = True
                     evidence.ocr_data = result
-                    evidence.save()
+                    evidence.save(update_fields=['is_processed_by_ocr', 'ocr_data'])  # FIXED: Only update these fields
                     return False, {
                         "error": f"Error extracting data from OCR result: {str(e)}"
                     }
