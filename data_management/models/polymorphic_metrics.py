@@ -610,20 +610,16 @@ class VehicleTrackingMetric(BaseESGMetric):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Set this instance to allow multiple submissions as vehicles are tracked separately
         self.allow_multiple_submissions_per_period = True
-        
+        self.aggregates_inputs = True
         # Set default emission category for vehicle tracking
         if not self.emission_category:
             self.emission_category = "transport"
-            
         # Initialize JSONFields with default values if they're empty
         if not self.vehicle_type_choices:
             self.vehicle_type_choices = self.DEFAULT_VEHICLE_TYPES
-            
         if not self.fuel_type_choices:
             self.fuel_type_choices = self.DEFAULT_FUEL_TYPES
-            
         if not self.emission_factor_mapping:
             self.emission_factor_mapping = self.DEFAULT_EMISSION_MAPPING
         
@@ -835,20 +831,16 @@ class FuelConsumptionMetric(BaseESGMetric):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Set this instance to allow multiple submissions as equipment can be tracked separately
         self.allow_multiple_submissions_per_period = True
-        
+        self.aggregates_inputs = True
         # Set default emission category for fuel tracking
         if not self.emission_category:
             self.emission_category = "stationary_combustion"
-            
         # Initialize JSONFields with default values if they're empty
         if not self.source_type_choices:
             self.source_type_choices = self.DEFAULT_SOURCE_TYPES
-            
         if not self.fuel_type_choices:
             self.fuel_type_choices = self.DEFAULT_FUEL_TYPES
-            
         if not self.emission_factor_mapping:
             self.emission_factor_mapping = self.DEFAULT_EMISSION_MAPPING
         

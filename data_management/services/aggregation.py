@@ -48,7 +48,7 @@ def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric
 
     # Check if aggregation is needed
     if not metric.aggregates_inputs:
-        # logger.debug(f"Skipping aggregation for metric {metric.id} as aggregates_inputs is False.")
+        logger.debug(f"Skipping aggregation for metric {metric.id} as aggregates_inputs is False.")
         deleted_count, _ = ReportedMetricValue.objects.filter(
             assignment=assignment,
             metric=metric,
@@ -57,15 +57,14 @@ def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric
             level=level
         ).delete()
         if deleted_count > 0:
-            # logger.info(f"Deleted Aggregated Metric Record for {metric.name} ({reporting_period}, Level: {level}) - {layer.company_name} as aggregates_inputs is now False.")
-            pass
+            logger.info(f"Deleted Aggregated Metric Record for {metric.name} ({reporting_period}, Level: {level}) - {layer.company_name} as aggregates_inputs is now False.")
         return None
 
     # --- Get Specific Metric Instance ---
     try:
         specific_metric = metric.get_real_instance()
     except Exception as e:
-        # logger.error(f"Could not get specific instance for metric {metric.pk}: {e}")
+        logger.error(f"Could not get specific instance for metric {metric.pk}: {e}")
         return None
 
     # --- Fetch Relevant Submission Headers Broadly --- 
@@ -99,10 +98,10 @@ def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric
     #     quarter = (target_month - 1) // 3 + 1
     #     target_start_date = reporting_period.replace(month=3 * quarter - 2, day=1)
     else: # Should be caught by initial level validation
-        # logger.error(f"Unhandled level '{level}' during date calculation.")
+        logger.error(f"Unhandled level '{level}' during date calculation.")
         return None 
     
-    # logger.debug(f"Aggregation window for Level '{level}', End: {target_end_date}: {target_start_date} to {target_end_date}")
+    logger.debug(f"Aggregation window for Level '{level}', End: {target_end_date}: {target_start_date} to {target_end_date}")
     
     # --- Delegate Aggregation to the Specific Metric Instance --- 
     aggregation_result = None
@@ -115,11 +114,11 @@ def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric
                 level=level
             )
         except NotImplementedError:
-            # logger.error(f"Aggregation logic not implemented for metric type: {type(specific_metric).__name__} (ID: {metric.pk})")
+            logger.error(f"Aggregation logic not implemented for metric type: {type(specific_metric).__name__} (ID: {metric.pk})")
             # Do not return here, allow deletion logic below to proceed if needed
             pass
         except Exception as e:
-            # logger.error(f"Error during metric-specific aggregation call for {metric.pk}: {e}", exc_info=True)
+            logger.error(f"Error during metric-specific aggregation call for {metric.pk}: {e}", exc_info=True)
             # Do not return here, allow deletion logic below to proceed if needed
             pass
 
@@ -158,11 +157,11 @@ def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric
             defaults=parent_defaults
         )
         action = "Created" if created else "Updated"
-        # logger.info(f"{action} ReportedMetricValue (ID: {parent_agg_record.id}) for Metric {metric.pk} - Period {reporting_period} - Level {level}. Method: {agg_method}. Result: Num={aggregated_numeric}, Text='{aggregated_text}' ({final_source_submission_count} contributing submissions)")
+        logger.info(f"{action} ReportedMetricValue (ID: {parent_agg_record.id}) for Metric {metric.pk} - Period {reporting_period} - Level {level}. Method: {agg_method}. Result: Num={aggregated_numeric}, Text='{aggregated_text}' ({final_source_submission_count} contributing submissions)")
         return parent_agg_record
     else:
         # No relevant data found/contributed for this specific reporting_period/level, delete existing RPV
-        # logger.info(f"No contributing source data found via metric aggregation for Metric {metric.pk} for period ending {reporting_period}, level {level}. Deleting existing record if any.")
+        logger.info(f"No contributing source data found via metric aggregation for Metric {metric.pk} for period ending {reporting_period}, level {level}. Deleting existing record if any.")
         deleted_count, _ = ReportedMetricValue.objects.filter(
             assignment=assignment,
             metric=metric,
@@ -171,6 +170,5 @@ def calculate_report_value(assignment: TemplateAssignment, metric: BaseESGMetric
             level=level # Filter by level for deletion
         ).delete()
         if deleted_count > 0:
-             # logger.info(f"Deleted existing ReportedMetricValue for {metric.name} ({reporting_period}, Level: {level}) as no contributing data was found.")
-             pass
+             logger.info(f"Deleted existing ReportedMetricValue for {metric.name} ({reporting_period}, Level: {level}) as no contributing data was found.")
         return None 
