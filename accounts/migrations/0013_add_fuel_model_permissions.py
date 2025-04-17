@@ -7,6 +7,7 @@ from django.apps import apps as global_apps
 # List of fuel-related models that need permissions
 FUEL_MODELS = [
     'fuelsourcetype',
+    'stationaryfueltype',
     'fuelconsumptionmetric',
     'fuelrecord',
     'fuelmonthlydata',

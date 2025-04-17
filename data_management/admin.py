@@ -23,7 +23,8 @@ from .models.polymorphic_metrics import (
     FuelConsumptionMetric,
     VehicleType, 
     FuelType, 
-    FuelSourceType
+    FuelSourceType,
+    StationaryFuelType
 )
 from .models.submission_data import (
     BasicMetricData, 
@@ -532,6 +533,12 @@ class VehicleTrackingMetricAdmin(PolymorphicChildModelAdmin):
 @admin.register(FuelSourceType)
 class FuelSourceTypeAdmin(admin.ModelAdmin):
     list_display = ['value', 'label']
+    search_fields = ['value', 'label']
+    ordering = ['label']
+
+@admin.register(StationaryFuelType)
+class StationaryFuelTypeAdmin(admin.ModelAdmin):
+    list_display = ['value', 'label', 'unit']
     search_fields = ['value', 'label']
     ordering = ['label']
 

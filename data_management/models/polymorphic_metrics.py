@@ -487,6 +487,20 @@ class FuelType(models.Model):
     def __str__(self):
         return self.label
 
+class StationaryFuelType(models.Model):
+    """Model for fuel types available for selection in FuelConsumptionMetric."""
+    value = models.CharField(max_length=100, unique=True, help_text="Unique identifier code for this stationary fuel type")
+    label = models.CharField(max_length=255, help_text="Display name for this stationary fuel type")
+    unit = models.CharField(max_length=50, default="litre", help_text="Unit of measurement for this fuel type")
+    
+    class Meta:
+        ordering = ['label']
+        verbose_name = "Stationary Fuel Type"
+        verbose_name_plural = "Stationary Fuel Types"
+    
+    def __str__(self):
+        return f"{self.label} ({self.unit})"
+
 class VehicleTrackingMetric(BaseESGMetric):
     """Metrics for tracking multiple vehicles with monthly fuel consumption and distance data."""
     
@@ -741,15 +755,15 @@ class FuelConsumptionMetric(BaseESGMetric):
     
     # Default fuel type choices - can be extended through admin
     DEFAULT_FUEL_TYPES = [
-        {"value": "diesel_oil", "label": "Diesel oil (in litre)"},
-        {"value": "lpg", "label": "LPG (in KG)"},
-        {"value": "kerosene", "label": "Kerosene (in litre)"},
-        {"value": "natural_gas", "label": "Natural gas (in cubic meter)"},
-        {"value": "charcoal", "label": "Charcoal (in KG)"},
-        {"value": "town_gas", "label": "Town gas (in KG)"},
-        {"value": "petrol", "label": "Petrol (in litre)"},
-        {"value": "unleaded_petrol", "label": "Unleaded petrol (in litre)"},
-        {"value": "refrigerant", "label": "Refrigerant/Blend"},
+        {"value": "diesel_oil", "label": "Diesel oil", "unit": "litre"},
+        {"value": "lpg", "label": "LPG", "unit": "kg"},
+        {"value": "kerosene", "label": "Kerosene", "unit": "litre"},
+        {"value": "natural_gas", "label": "Natural gas", "unit": "cubic meter"},
+        {"value": "charcoal", "label": "Charcoal", "unit": "kg"},
+        {"value": "town_gas", "label": "Town gas", "unit": "kg"},
+        {"value": "petrol", "label": "Petrol", "unit": "litre"},
+        {"value": "unleaded_petrol", "label": "Unleaded petrol", "unit": "litre"},
+        {"value": "refrigerant", "label": "Refrigerant/Blend", "unit": "kg"},
     ]
     
     # Default emission factor mapping
@@ -772,7 +786,7 @@ class FuelConsumptionMetric(BaseESGMetric):
     )
     
     fuel_types = models.ManyToManyField(
-        FuelType,
+        StationaryFuelType,
         related_name="fuel_consumption_metrics",
         help_text="Fuel types available for selection"
     )

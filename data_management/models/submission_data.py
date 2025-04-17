@@ -4,7 +4,7 @@ from .polymorphic_metrics import (
     BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
     TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric,
     VehicleTrackingMetric, VehicleType, FuelType,
-    FuelConsumptionMetric, FuelSourceType
+    FuelConsumptionMetric, FuelSourceType, StationaryFuelType
 )
 
 # --- Submission Data Models ---
@@ -311,7 +311,7 @@ class FuelRecord(models.Model):
     )
     
     fuel_type = models.ForeignKey(
-        FuelType,
+        StationaryFuelType,
         on_delete=models.PROTECT,
         related_name='fuel_sources',
         help_text="Type of fuel used (e.g., diesel, natural gas)"
