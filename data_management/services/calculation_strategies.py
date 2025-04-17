@@ -297,11 +297,147 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
         return fuel_type
 
 
+class FuelConsumptionCalculationStrategy(EmissionCalculationStrategy):
+    """Strategy for fuel consumption metrics with multiple sources and fuel types"""
+    
+    def calculate(self, rpv, metric, year, region):
+        """Calculate emissions for fuel consumption metrics"""
+        # logger.info(f"[STRATEGY-Fuel] Calculating emissions for RPV {rpv.pk}, Metric {metric.pk}")
+        from ..services.emissions import find_matching_emission_factor
+        
+        # Parse fuel consumption data from the aggregated text value
+        try:
+            fuel_data = self._parse_fuel_data(rpv.aggregated_text_value)
+            if not fuel_data:
+                print(f"[STRATEGY-Fuel][WARNING] RPV {rpv.pk}: Couldn't parse fuel data from aggregated_text_value: {rpv.aggregated_text_value}")
+                return []
+                
+            sources = fuel_data.get('sources', [])
+            if not sources:
+                print(f"[STRATEGY-Fuel][WARNING] RPV {rpv.pk}: No 'sources' key found in parsed data: {fuel_data}")
+                return []
+            # logger.info(f"[STRATEGY-Fuel] RPV {rpv.pk}: Parsed {len(sources)} sources from aggregated text.")
+        except Exception as e:
+            print(f"[STRATEGY-Fuel][ERROR] RPV {rpv.pk}: Error parsing fuel data: {e}")
+            return []
+            
+        # Process each source
+        results = []
+        total_consumption = Decimal('0')
+        
+        # First pass - calculate total consumption for proportion calculation
+        # logger.info(f"[STRATEGY-Fuel] RPV {rpv.pk}: Calculating total consumption...")
+        for idx, source in enumerate(sources):
+            try:
+                # Make sure we're checking for valid data
+                if not source.get('source_type_value') or not source.get('fuel_type_value'):
+                    print(f"[STRATEGY-Fuel][WARNING] RPV {rpv.pk}: Skipping source {idx} in first pass due to missing source_type_value or fuel_type_value")
+                    continue
+                    
+                consumption = Decimal(str(source.get('consumption', 0)))
+                # logger.debug(f"[STRATEGY-Fuel] RPV {rpv.pk}: Source {idx} consumption: {consumption}")
+                total_consumption += consumption
+            except (ValueError, TypeError) as e:
+                print(f"[STRATEGY-Fuel][WARNING] RPV {rpv.pk}: Invalid consumption value for source {idx}: {source.get('consumption')}. Error: {e}")
+                continue
+            
+        # logger.info(f"[STRATEGY-Fuel] RPV {rpv.pk}: Calculated total_consumption = {total_consumption}")
+            
+        # No fuel consumed - nothing to calculate
+        if total_consumption <= 0:
+            print(f"[STRATEGY-Fuel][WARNING] RPV {rpv.pk}: Total consumption is zero or negative. No emissions will be calculated.")
+            return []
+            
+        # Second pass - calculate emissions for each source
+        # logger.info(f"[STRATEGY-Fuel] RPV {rpv.pk}: Calculating emissions per source...")
+        for idx, source in enumerate(sources):
+            try:
+                # Use the field names with _value suffix
+                source_type = source.get('source_type_value')
+                fuel_type = source.get('fuel_type_value')
+                source_type_label = source.get('source_type_label', 'Unknown')
+                fuel_type_label = source.get('fuel_type_label', 'Unknown')
+                
+                consumption = Decimal(str(source.get('consumption', 0)))
+                source_name = source.get('source_name', 'Unknown Source')
+                
+                # logger.debug(f"[STRATEGY-Fuel] RPV {rpv.pk}: Processing Source {idx}: Type={source_type}, Fuel={fuel_type}, Consumption={consumption}, Name={source_name}")
+                
+                if not consumption or not source_type or not fuel_type:
+                    logger.warning(f"[STRATEGY-Fuel] RPV {rpv.pk}: Skipping source {idx} due to missing type/fuel/consumption: {source}")
+                    continue
+                    
+                # Get appropriate subcategory using metric's mapping - only needs fuel type for FuelConsumptionMetric
+                emission_sub_category = metric.get_emission_subcategory(fuel_type)
+                # logger.debug(f"[STRATEGY-Fuel] RPV {rpv.pk}: Derived subcategory for Source {idx}: '{emission_sub_category}'")
+                
+                # Find matching factor - use stationary_combustion as the category
+                factor = find_matching_emission_factor(
+                    year=year,
+                    category="stationary_combustion", # Use the category set in FuelConsumptionMetric
+                    sub_category=emission_sub_category,
+                    activity_unit=None, # Let the factor lookup handle unit conversion
+                    region=region
+                )
+                
+                if not factor:
+                    logger.warning(f"[STRATEGY-Fuel] RPV {rpv.pk}: No emission factor found for Source {idx} (Type={source_type}, Fuel={fuel_type}, SubCat={emission_sub_category}, Year={year}, Region={region}) - Skipping source.")
+                    continue
+                
+                # logger.info(f"[STRATEGY-Fuel] RPV {rpv.pk}: Found factor for Source {idx}: ID={factor.pk}, Value={factor.value}")
+                    
+                # Calculate emissions
+                emission_value = consumption * factor.value
+                # Ensure proportion calculation doesn't divide by zero (though checked earlier)
+                proportion = consumption / total_consumption if total_consumption > 0 else Decimal('0') 
+                
+                # logger.debug(f"[STRATEGY-Fuel] RPV {rpv.pk}: Source {idx} calculated emission: {emission_value}, proportion: {proportion}")
+                
+                # Add to results
+                results.append({
+                    'factor': factor,
+                    'activity_value': consumption,
+                    'emission_value': emission_value,
+                    'proportion': proportion,
+                    'metadata': {
+                        'source_type': source_type,
+                        'source_type_label': source_type_label,
+                        'fuel_type': fuel_type,
+                        'fuel_type_label': fuel_type_label,
+                        'source_name': source_name,
+                        'notes': source.get('notes', '')
+                    }
+                })
+            except Exception as e:
+                logger.error(f"[STRATEGY-Fuel] RPV {rpv.pk}: Error processing source {idx}: {e}", exc_info=True)
+                continue
+                
+        # logger.info(f"[STRATEGY-Fuel] RPV {rpv.pk}: Finished processing sources. Returning {len(results)} calculation results.")
+        return results
+    
+    def _parse_fuel_data(self, text_value):
+        """Parse fuel data from aggregated_text_value"""
+        if not text_value:
+            return None
+            
+        # If it's already a dict, just return it
+        if isinstance(text_value, dict):
+            return text_value
+            
+        # Try to parse JSON string
+        try:
+            return json.loads(text_value)
+        except (json.JSONDecodeError, TypeError):
+            # Not valid JSON
+            return None
+
+
 # Registry of strategies keyed by metric class name
 strategy_registry = {
     'BasicMetric': BasicMetricCalculationStrategy(),
     'TimeSeriesMetric': TimeSeriesCalculationStrategy(),
     'VehicleTrackingMetric': VehicleTrackingCalculationStrategy(),
+    'FuelConsumptionMetric': FuelConsumptionCalculationStrategy(), # Add the new strategy
 }
 
 def get_strategy_for_metric(metric):
