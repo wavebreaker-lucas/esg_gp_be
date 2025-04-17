@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .models import ESGMetricSubmission, BaseESGMetric, ReportedMetricValue
 from .models.polymorphic_metrics import BasicMetric, TimeSeriesMetric
-from .models.submission_data import VehicleMonthlyData, FuelMonthlyData
+from .models.submission_data import VehicleMonthlyData, FuelMonthlyData, FuelRecord
 from .services.aggregation import calculate_report_value
 from .services.emissions import calculate_emissions_for_activity_value
 
@@ -494,6 +494,59 @@ def trigger_emission_calculation(sender, instance, **kwargs):
     # Schedule the calculation after the transaction commits
     # logger.info(f"[SIGNAL] Scheduling run_emission_calculation via on_commit for RPV {instance.pk}")
     transaction.on_commit(run_emission_calculation)
+
+@receiver(post_delete, sender=FuelRecord)
+def cleanup_monthly_rpvs_on_fuelrecord_delete(sender, instance, **kwargs):
+    """
+    When a FuelRecord is deleted, check all months in the assignment period and trigger aggregation/cleanup.
+    This ensures that if the last record for a month is deleted, the monthly RPV is also deleted.
+    """
+    try:
+        submission = instance.submission
+        assignment = submission.assignment
+        metric = submission.metric
+        layer = submission.layer or assignment.layer
+        assignment_start = assignment.reporting_period_start
+        assignment_end = assignment.reporting_period_end
+
+        # Generate all month-end dates in the assignment period
+        from dateutil.relativedelta import relativedelta
+        import datetime
+
+        months = []
+        current = assignment_start.replace(day=1)
+        while current <= assignment_end:
+            # Get last day of the month
+            next_month = current + relativedelta(months=1)
+            last_day = next_month - datetime.timedelta(days=1)
+            if last_day > assignment_end:
+                last_day = assignment_end
+            months.append(last_day)
+            current = next_month
+
+        # Import here to avoid circular import
+        from .services.aggregation import calculate_report_value
+
+        for month_end in months:
+            calculate_report_value(
+                assignment=assignment,
+                metric=metric,
+                reporting_period=month_end,
+                layer=layer,
+                level='M'
+            )
+        # Also trigger annual aggregation/cleanup
+        calculate_report_value(
+            assignment=assignment,
+            metric=metric,
+            reporting_period=assignment_end,
+            layer=layer,
+            level='A'
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in FuelRecord post_delete cleanup: {e}", exc_info=True)
 
 # Optional: Handle potential errors in the main signal handler if needed,
 # though most work is now deferred.
