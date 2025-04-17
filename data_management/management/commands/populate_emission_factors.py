@@ -16,6 +16,7 @@ class Command(BaseCommand):
         self.populate_electricity_factors()
         self.populate_towngas_factors()
         self.populate_transport_factors()
+        self.populate_stationary_combustion_factors()
         
         total_count = GHGEmissionFactor.objects.count()
         self.stdout.write(self.style.SUCCESS(f"Completed! Total factors in database: {total_count}"))
@@ -729,5 +730,112 @@ class Command(BaseCommand):
             region="HK / PRC",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+
+    def populate_stationary_combustion_factors(self):
+        """Populate stationary combustion emission factors"""
+        # Diesel for generators/stationary combustion
+        self.create_factor(
+            name="Diesel - Stationary Combustion (Generators)",
+            category="stationary_combustion",
+            sub_category="stationary_diesel",
+            activity_unit="liters",
+            value=2.6167,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # LPG for stationary sources
+        self.create_factor(
+            name="LPG - Stationary Source",
+            category="stationary_combustion",
+            sub_category="stationary_lpg",
+            activity_unit="kg",
+            value=3.0171,
+            factor_unit="kgCO2e/kg",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # Kerosene for stationary sources
+        self.create_factor(
+            name="Kerosene - Stationary Source",
+            category="stationary_combustion",
+            sub_category="stationary_kerosene",
+            activity_unit="liters",
+            value=2.4317,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # Charcoal for stationary sources
+        self.create_factor(
+            name="Charcoal - Stationary Source",
+            category="stationary_combustion",
+            sub_category="stationary_charcoal",
+            activity_unit="kg",
+            value=3.1318,
+            factor_unit="kgCO2e/kg",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # Towngas for direct consumption
+        self.create_factor(
+            name="Towngas - Direct Consumption",
+            category="stationary_combustion",
+            sub_category="stationary_town_gas",
+            activity_unit="Unit",
+            value=2.5529,
+            factor_unit="kgCO2e/Unit",
+            year=2023,
+            region="HK",
+            scope="1",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # Petrol for stationary equipment (using petrol passenger car as proxy)
+        self.create_factor(
+            name="Petrol - Stationary Equipment",
+            category="stationary_combustion",
+            sub_category="stationary_petrol",
+            activity_unit="liters",
+            value=2.6687,
+            factor_unit="kgCO2e/liter",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Derived",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # Natural gas (added as an approximation as it wasn't in your list)
+        self.create_factor(
+            name="Natural Gas - Stationary Combustion",
+            category="stationary_combustion",
+            sub_category="stationary_natural_gas",
+            activity_unit="cubic meter",
+            value=2.1622,  # This is an approximation, update with actual value if available
+            factor_unit="kgCO2e/m3",
+            year=2023,
+            region="HK / PRC",
+            scope="1",
+            source="HKEX Reporting Guidance - Estimated",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         ) 
