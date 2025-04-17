@@ -35,6 +35,16 @@ class CalculatedEmissionValue(models.Model):
         help_text="For vehicle emissions, the specific vehicle this calculation applies to"
     )
 
+    # Link to specific fuel record (for fuel emissions only)
+    fuel_record = models.ForeignKey(
+        'data_management.FuelRecord',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='emission_calculations',
+        help_text="For fuel emissions, the specific fuel record this calculation applies to"
+    )
+
     # --- Calculation Result ---
     calculated_value = models.DecimalField(
         max_digits=15, decimal_places=5,
@@ -82,14 +92,15 @@ class CalculatedEmissionValue(models.Model):
     emission_scope = models.CharField(max_length=10, blank=True, db_index=True)
 
     class Meta:
-        # Update unique_together to include vehicle_record
-        unique_together = [['source_activity_value', 'emission_factor', 'related_group_id', 'is_primary_record', 'vehicle_record']]
+        # Update unique_together to include vehicle_record and fuel_record
+        unique_together = [['source_activity_value', 'emission_factor', 'related_group_id', 'is_primary_record', 'vehicle_record', 'fuel_record']]
         ordering = ['-reporting_period', 'assignment', 'layer', 'emission_scope', '-is_primary_record']
         indexes = [
             models.Index(fields=['reporting_period', 'level', 'layer']), # Index for common filtering
             models.Index(fields=['is_primary_record']), # Index for filtering primary records
             models.Index(fields=['related_group_id']), # Index for finding all related records
             models.Index(fields=['vehicle_record']), # Index for finding emissions by vehicle
+            models.Index(fields=['fuel_record']), # Index for finding emissions by fuel record
         ]
         verbose_name = "Calculated GHG Emission Value"
         verbose_name_plural = "Calculated GHG Emission Values"

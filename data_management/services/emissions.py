@@ -340,6 +340,15 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
                 # logger.error(f"[EMISSIONS] Error finding VehicleRecord for registration '{registration}': {e}", exc_info=True)
                 pass
         
+        # Try to get the fuel record if this is a fuel-related calculation
+        fuel_record = None
+        if 'fuel_record_id' in metadata and metadata['fuel_record_id']:
+            try:
+                from ..models.submission_data import FuelRecord
+                fuel_record = FuelRecord.objects.get(pk=metadata['fuel_record_id'])
+            except Exception as e:
+                fuel_record = None
+        
         # Add component_id to metadata as fallback
         metadata['component_id'] = f"{idx}_{uuid.uuid4()}"
         
@@ -352,7 +361,8 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
                     emission_factor=factor,
                     related_group_id=group_id,
                     is_primary_record=False,
-                    vehicle_record=vehicle_record  # Include vehicle_record in uniqueness check
+                    vehicle_record=vehicle_record,
+                    fuel_record=fuel_record
                 )
                 
                 existing = CalculatedEmissionValue.objects.filter(existing_query).first()
@@ -370,7 +380,8 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
                     record = CalculatedEmissionValue.objects.create(
                         source_activity_value=rpv,
                         emission_factor=factor,
-                        vehicle_record=vehicle_record,  # Set vehicle_record directly
+                        vehicle_record=vehicle_record,
+                        fuel_record=fuel_record,
                         calculated_value=emission_value,
                         # emission_unit is set automatically on save based on factor
                         related_group_id=group_id,

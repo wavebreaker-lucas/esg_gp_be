@@ -360,6 +360,7 @@ class FuelConsumptionCalculationStrategy(EmissionCalculationStrategy):
                 
                 consumption = Decimal(str(source.get('consumption', 0)))
                 source_name = source.get('source_name', 'Unknown Source')
+                fuel_record_id = source.get('id')
                 
                 # logger.debug(f"[STRATEGY-Fuel] RPV {rpv.pk}: Processing Source {idx}: Type={source_type}, Fuel={fuel_type}, Consumption={consumption}, Name={source_name}")
                 
@@ -400,6 +401,7 @@ class FuelConsumptionCalculationStrategy(EmissionCalculationStrategy):
                     'emission_value': emission_value,
                     'proportion': proportion,
                     'metadata': {
+                        'fuel_record_id': fuel_record_id,
                         'source_type': source_type,
                         'source_type_label': source_type_label,
                         'fuel_type': fuel_type,
