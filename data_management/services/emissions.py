@@ -22,6 +22,9 @@ from ..services.calculation_strategies import get_strategy_for_metric
 
 logger = logging.getLogger(__name__)
 
+# Suppress info/debug logs for now
+# (Comment out or disable logger.info/logger.debug calls)
+
 def find_matching_emission_factor(
     year: int,
     category: str,
@@ -65,7 +68,7 @@ def find_matching_emission_factor(
         region_query = activity_unit_query & Q(region=region)
         factor = GHGEmissionFactor.objects.filter(region_query).first()
         if factor:
-            logger.debug(f"Found exact region match for {category}/{sub_category} in {region}")
+            # logger.debug(f"Found exact region match for {category}/{sub_category} in {region}")
             return factor
         
         # Try region fallback: "HK / PRC" for either "HK" or "PRC"
@@ -73,20 +76,20 @@ def find_matching_emission_factor(
             combined_region_query = activity_unit_query & Q(region='HK / PRC')
             factor = GHGEmissionFactor.objects.filter(combined_region_query).first()
             if factor:
-                logger.debug(f"Found combined region match 'HK / PRC' for {category}/{sub_category}")
+                # logger.debug(f"Found combined region match 'HK / PRC' for {category}/{sub_category}")
                 return factor
     
     # Try universal region ("ALL") 
     universal_region_query = activity_unit_query & (Q(region='ALL') | Q(region='') | Q(region__isnull=True))
     factor = GHGEmissionFactor.objects.filter(universal_region_query).first()
     if factor:
-        logger.debug(f"Found universal region match for {category}/{sub_category}")
+        # logger.debug(f"Found universal region match for {category}/{sub_category}")
         return factor
     
     # If we got this far with a unit specified and didn't find a match, 
     # try again WITHOUT the unit constraint
     if activity_unit and activity_unit_query != query:
-        logger.debug(f"Trying factor lookup without unit constraint for {category}/{sub_category}")
+        # logger.debug(f"Trying factor lookup without unit constraint for {category}/{sub_category}")
         return find_matching_emission_factor(
             year=year,
             category=category,
@@ -114,7 +117,7 @@ def find_matching_emission_factor(
         
         earlier_factor = GHGEmissionFactor.objects.filter(earlier_year_query).order_by('-year').first()
         if earlier_factor:
-            logger.debug(f"Found earlier year ({earlier_factor.year}) match for {category}/{sub_category} in {region}")
+            # logger.debug(f"Found earlier year ({earlier_factor.year}) match for {category}/{sub_category} in {region}")
             return earlier_factor
     
     # Finally, try universal region with earlier year
@@ -132,12 +135,12 @@ def find_matching_emission_factor(
     
     universal_earlier_factor = GHGEmissionFactor.objects.filter(universal_earlier_query).order_by('-year').first()
     if universal_earlier_factor:
-        logger.debug(f"Found universal earlier year ({universal_earlier_factor.year}) match for {category}/{sub_category}")
+        # logger.debug(f"Found universal earlier year ({universal_earlier_factor.year}) match for {category}/{sub_category}")
         return universal_earlier_factor
     
     # Try earlier year without unit constraint as last resort
     if activity_unit:
-        logger.debug(f"Trying earlier year lookup without unit constraint for {category}/{sub_category}")
+        # logger.debug(f"Trying earlier year lookup without unit constraint for {category}/{sub_category}")
         return find_matching_emission_factor(
             year=year,
             category=category,
@@ -148,7 +151,7 @@ def find_matching_emission_factor(
         )
     
     # No match found after all fallbacks
-    logger.warning(f"No emission factor found for {category}/{sub_category}, region={region}, year={year}")
+    # logger.warning(f"No emission factor found for {category}/{sub_category}, region={region}, year={year}")
     return None
 
 def convert_unit_if_needed(value: Decimal, source_unit: str, target_unit: str) -> Tuple[Decimal, bool]:
@@ -201,7 +204,7 @@ def convert_unit_if_needed(value: Decimal, source_unit: str, target_unit: str) -
         return value * Decimal(1000), True
     
     # If we reach this point, we don't know how to convert
-    logger.warning(f"Don't know how to convert {source_unit} to {target_unit}")
+    # logger.warning(f"Don't know how to convert {source_unit} to {target_unit}")
     return value, False
 
 @transaction.atomic
@@ -215,58 +218,60 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
     Returns:
         A list of created CalculatedEmissionValue objects or empty list if calculation couldn't be performed
     """
-    logger.info(f"[EMISSIONS] Starting calculation for RPV {rpv.pk}") # Log function start
+    # logger.info(f"[EMISSIONS] Starting calculation for RPV {rpv.pk}") # Log function start
     from ..services.calculation_strategies import get_strategy_for_metric
     
     metric = rpv.metric
     
     # Skip if no activity value is present
     if rpv.aggregated_numeric_value is None:
-        logger.info(f"[EMISSIONS] Skipping RPV {rpv.pk} - no numeric value")
+        # logger.info(f"[EMISSIONS] Skipping RPV {rpv.pk} - no numeric value")
         return []
     
     # Get the specific metric instance
     try:
         specific_metric = metric.get_real_instance()
-        logger.info(f"[EMISSIONS] RPV {rpv.pk} has specific metric type: {specific_metric.__class__.__name__}")
+        # logger.info(f"[EMISSIONS] RPV {rpv.pk} has specific metric type: {specific_metric.__class__.__name__}")
     except Exception as e:
-        logger.error(f"[EMISSIONS] Error getting specific metric for RPV {rpv.pk}: {e}", exc_info=True)
+        # logger.error(f"[EMISSIONS] Error getting specific metric for RPV {rpv.pk}: {e}", exc_info=True)
         return [] # Cannot proceed without specific metric
     
     # Check for category/subcategory unless it's VehicleTrackingMetric
     from ..models.polymorphic_metrics import VehicleTrackingMetric
     if not metric.emission_category and not isinstance(specific_metric, VehicleTrackingMetric):
-        logger.info(f"[EMISSIONS] Skipping RPV {rpv.pk} (Metric {metric.pk}) - missing category config and not VehicleTrackingMetric")
+        # logger.info(f"[EMISSIONS] Skipping RPV {rpv.pk} (Metric {metric.pk}) - missing category config and not VehicleTrackingMetric")
         return []
     elif not metric.emission_category and isinstance(specific_metric, VehicleTrackingMetric):
-        logger.info(f"[EMISSIONS] Proceeding for RPV {rpv.pk} (VehicleTrackingMetric) despite missing base emission_category")
+        # logger.info(f"[EMISSIONS] Proceeding for RPV {rpv.pk} (VehicleTrackingMetric) despite missing base emission_category")
+        pass
     else:
-        logger.info(f"[EMISSIONS] Proceeding for RPV {rpv.pk} - metric has emission_category: {metric.emission_category}")
+        # logger.info(f"[EMISSIONS] Proceeding for RPV {rpv.pk} - metric has emission_category: {metric.emission_category}")
+        pass
     
     # Get the year and region
     year = rpv.reporting_period.year
     region = metric.location
-    logger.info(f"[EMISSIONS] RPV {rpv.pk} - Year: {year}, Region: {region}")
+    # logger.info(f"[EMISSIONS] RPV {rpv.pk} - Year: {year}, Region: {region}")
     
     # Get the appropriate calculation strategy for this metric type
     try:
         strategy = get_strategy_for_metric(specific_metric)
-        logger.info(f"[EMISSIONS] Using strategy: {strategy.__class__.__name__} for RPV {rpv.pk}")
+        # logger.info(f"[EMISSIONS] Using strategy: {strategy.__class__.__name__} for RPV {rpv.pk}")
     except Exception as e:
-        logger.error(f"[EMISSIONS] Error getting strategy for RPV {rpv.pk}, Metric: {specific_metric.__class__.__name__}: {e}", exc_info=True)
+        # logger.error(f"[EMISSIONS] Error getting strategy for RPV {rpv.pk}, Metric: {specific_metric.__class__.__name__}: {e}", exc_info=True)
         return []
     
     # Calculate emissions using the strategy
     calculation_results = [] # Initialize
     try:
         calculation_results = strategy.calculate(rpv, specific_metric, year, region)
-        logger.info(f"[EMISSIONS] Strategy calculation returned {len(calculation_results)} results for RPV {rpv.pk}")
+        # logger.info(f"[EMISSIONS] Strategy calculation returned {len(calculation_results)} results for RPV {rpv.pk}")
     except Exception as e:
-        logger.error(f"[EMISSIONS] Error during strategy.calculate for RPV {rpv.pk}: {e}", exc_info=True)
+        # logger.error(f"[EMISSIONS] Error during strategy.calculate for RPV {rpv.pk}: {e}", exc_info=True)
         return [] # Don't proceed if strategy failed
     
     if not calculation_results:
-        logger.info(f"[EMISSIONS] No calculation results produced by strategy for RPV {rpv.pk}. No CalculatedEmissionValue will be created.")
+        # logger.info(f"[EMISSIONS] No calculation results produced by strategy for RPV {rpv.pk}. No CalculatedEmissionValue will be created.")
         # Clean up any existing calculations for this source? Maybe not here, strategy might have intended empty result.
         # CalculatedEmissionValue.objects.filter(source_activity_value=rpv).delete()
         return []
@@ -274,12 +279,14 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
     # If we have multiple results, generate a group ID
     group_id = uuid.uuid4() if len(calculation_results) > 1 else None
     if group_id:
-        logger.info(f"[EMISSIONS] Generated group_id {group_id} for {len(calculation_results)} results for RPV {rpv.pk}")
+        # logger.info(f"[EMISSIONS] Generated group_id {group_id} for {len(calculation_results)} results for RPV {rpv.pk}")
+        pass
     
     # Clean up any existing calculations for this source
     deleted_count, _ = CalculatedEmissionValue.objects.filter(source_activity_value=rpv).delete()
     if deleted_count > 0:
-        logger.info(f"[EMISSIONS] Deleted {deleted_count} existing CalculatedEmissionValue records for RPV {rpv.pk}")
+        # logger.info(f"[EMISSIONS] Deleted {deleted_count} existing CalculatedEmissionValue records for RPV {rpv.pk}")
+        pass
     
     # Create new calculation records
     created_records = []
@@ -293,7 +300,7 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
         metadata = calc.get('metadata', {}) or {}  # Ensure it's a dict even if None
         
         if not factor or emission_value is None:
-             logger.warning(f"[EMISSIONS] Skipping result for RPV {rpv.pk} due to missing factor or emission_value in calculation data: {calc}")
+             # logger.warning(f"[EMISSIONS] Skipping result for RPV {rpv.pk} due to missing factor or emission_value in calculation data: {calc}")
              continue
         
         # Try to get the vehicle record if this is a vehicle-related calculation
@@ -323,12 +330,15 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
                 vehicle_record = vehicle_records.first()
                 
                 if vehicle_record:
-                    logger.info(f"[EMISSIONS] Found VehicleRecord ID {vehicle_record.pk} for registration '{registration}'")
+                    # logger.info(f"[EMISSIONS] Found VehicleRecord ID {vehicle_record.pk} for registration '{registration}'")
+                    pass
                 else:
-                    logger.warning(f"[EMISSIONS] No VehicleRecord found for registration '{registration}' in metric {rpv.metric.pk}")
+                    # logger.warning(f"[EMISSIONS] No VehicleRecord found for registration '{registration}' in metric {rpv.metric.pk}")
+                    pass
                     
             except Exception as e:
-                logger.error(f"[EMISSIONS] Error finding VehicleRecord for registration '{registration}': {e}", exc_info=True)
+                # logger.error(f"[EMISSIONS] Error finding VehicleRecord for registration '{registration}': {e}", exc_info=True)
+                pass
         
         # Add component_id to metadata as fallback
         metadata['component_id'] = f"{idx}_{uuid.uuid4()}"
@@ -354,7 +364,7 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
                     existing.calculation_metadata = metadata
                     existing.save()
                     record = existing
-                    logger.debug(f"[EMISSIONS] Updated existing CalculatedEmissionValue ID {record.pk} for RPV {rpv.pk}")
+                    # logger.debug(f"[EMISSIONS] Updated existing CalculatedEmissionValue ID {record.pk} for RPV {rpv.pk}")
                 else:
                     # Create a new record
                     record = CalculatedEmissionValue.objects.create(
@@ -369,11 +379,11 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
                         calculation_metadata=metadata
                         # Context fields (assignment, layer, reporting_period, level, scope) are set automatically on save
                     )
-                    logger.debug(f"[EMISSIONS] Created component CalculatedEmissionValue ID {record.pk} for RPV {rpv.pk}")
+                    # logger.debug(f"[EMISSIONS] Created component CalculatedEmissionValue ID {record.pk} for RPV {rpv.pk}")
             
             created_records.append(record)
         except Exception as e:
-            logger.error(f"[EMISSIONS] Error creating component for RPV {rpv.pk}: {e}", exc_info=True)
+            # logger.error(f"[EMISSIONS] Error creating component for RPV {rpv.pk}: {e}", exc_info=True)
             # Continue with next calculation result even if this one failed
             continue
     
@@ -407,7 +417,7 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
                     }
                     existing_primary.save()
                     primary_record = existing_primary
-                    logger.info(f"[EMISSIONS] Updated existing primary CalculatedEmissionValue ID {primary_record.pk} (Total: {total_emission_value}) for RPV {rpv.pk}")
+                    # logger.info(f"[EMISSIONS] Updated existing primary CalculatedEmissionValue ID {primary_record.pk} (Total: {total_emission_value}) for RPV {rpv.pk}")
                 else:
                     # Create a new primary record
                     primary_record = CalculatedEmissionValue.objects.create(
@@ -424,29 +434,33 @@ def calculate_emissions_for_activity_value(rpv: ReportedMetricValue) -> List[Cal
                             'metric_type': specific_metric.__class__.__name__
                         }
                     )
-                    logger.info(f"[EMISSIONS] Created primary CalculatedEmissionValue ID {primary_record.pk} (Total: {total_emission_value}) for RPV {rpv.pk}")
+                    # logger.info(f"[EMISSIONS] Created primary CalculatedEmissionValue ID {primary_record.pk} (Total: {total_emission_value}) for RPV {rpv.pk}")
                 
                 # Add the primary record to the beginning of the list for return consistency
                 created_records.insert(0, primary_record)
         except Exception as e:
-            logger.error(f"[EMISSIONS] Error creating/updating primary record for RPV {rpv.pk}: {e}", exc_info=True)
+            # logger.error(f"[EMISSIONS] Error creating/updating primary record for RPV {rpv.pk}: {e}", exc_info=True)
+            pass
     elif not group_id and created_records: # Single result, make it the primary
         single_record = created_records[0]
         try:
             single_record.is_primary_record = True
             single_record.save(update_fields=['is_primary_record'])
-            logger.info(f"[EMISSIONS] Marked single CalculatedEmissionValue ID {single_record.pk} as primary for RPV {rpv.pk}")
+            # logger.info(f"[EMISSIONS] Marked single CalculatedEmissionValue ID {single_record.pk} as primary for RPV {rpv.pk}")
             primary_record = single_record # Set primary_record for the final log message
         except Exception as e:
-            logger.error(f"[EMISSIONS] Error updating single record as primary for RPV {rpv.pk}: {e}", exc_info=True)
+            # logger.error(f"[EMISSIONS] Error updating single record as primary for RPV {rpv.pk}: {e}", exc_info=True)
+            pass
         
     # Final logging based on whether a primary record was established
     if primary_record:
         record_count = len(created_records)
-        logger.info(f"[EMISSIONS] Successfully created {record_count} emission calculation record(s) for RPV {rpv.pk}. Primary ID: {primary_record.pk}")
+        # logger.info(f"[EMISSIONS] Successfully created {record_count} emission calculation record(s) for RPV {rpv.pk}. Primary ID: {primary_record.pk}")
+        pass
     else:
         # This case means no results or only invalid results were returned by the strategy
-        logger.info(f"[EMISSIONS] No valid emission calculation records created for RPV {rpv.pk}.")
+        # logger.info(f"[EMISSIONS] No valid emission calculation records created for RPV {rpv.pk}.")
+        pass
         
     return created_records # Return all created records (primary first if exists)
 
@@ -470,7 +484,7 @@ def calculate_emissions_for_assignment(
     Returns:
         Dictionary with summary statistics of calculations performed
     """
-    logger.info(f"Starting emissions calculations for assignment {assignment_id}")
+    # logger.info(f"Starting emissions calculations for assignment {assignment_id}")
     
     # Build base query
     query = Q(
@@ -480,18 +494,18 @@ def calculate_emissions_for_assignment(
     
     # Apply period filters if specified
     if period_date:
-        logger.info(f"Filtering by exact reporting period: {period_date}")
+        # logger.info(f"Filtering by exact reporting period: {period_date}")
         query &= Q(reporting_period=period_date)
     elif year:
-        logger.info(f"Filtering by year: {year}")
+        # logger.info(f"Filtering by year: {year}")
         query &= Q(reporting_period__year=year)
         if month:
-            logger.info(f"Filtering by month: {month}")
+            # logger.info(f"Filtering by month: {month}")
             query &= Q(reporting_period__month=month)
             
     # Apply level filter if specified
     if level:
-        logger.info(f"Filtering by aggregation level: {level}")
+        # logger.info(f"Filtering by aggregation level: {level}")
         query &= Q(level=level)
     
     # Execute the query
@@ -521,7 +535,7 @@ def calculate_emissions_for_assignment(
             else:
                 stats['failed_calculations'] += 1
         except Exception as e:
-            logger.error(f"Error calculating emissions for RPV {rpv.pk}: {e}", exc_info=True)
+            # logger.error(f"Error calculating emissions for RPV {rpv.pk}: {e}", exc_info=True)
             stats['failed_calculations'] += 1
     
     log_msg = f"Completed emissions calculations for assignment {assignment_id}"
@@ -533,9 +547,8 @@ def calculate_emissions_for_assignment(
             log_msg += f" month {month}"
     if level:
         log_msg += f" level {level}"
-    log_msg += f". Stats: {stats}"
+    # logger.info(log_msg)
     
-    logger.info(log_msg)
     return stats
 
 def recalculate_all_emissions() -> Dict:
@@ -546,7 +559,7 @@ def recalculate_all_emissions() -> Dict:
     Returns:
         Dictionary with summary statistics
     """
-    logger.info("Starting complete emissions recalculation")
+    # logger.info("Starting complete emissions recalculation")
     
     # Find all ReportedMetricValue records with numeric values
     rpvs = ReportedMetricValue.objects.filter(
@@ -577,7 +590,7 @@ def recalculate_all_emissions() -> Dict:
             else:
                 stats['failed_calculations'] += 1
         except Exception as e:
-            logger.error(f"Error calculating emissions for RPV {rpv.pk}: {e}", exc_info=True)
+            # logger.error(f"Error calculating emissions for RPV {rpv.pk}: {e}", exc_info=True)
             stats['failed_calculations'] += 1
     
     # Keep existing cleanup code
@@ -588,5 +601,5 @@ def recalculate_all_emissions() -> Dict:
     
     stats['orphaned_calculations_deleted'] = orphaned_count
     
-    logger.info(f"Completed emissions recalculation. Stats: {stats}")
+    # logger.info(f"Completed emissions recalculation. Stats: {stats}")
     return stats 

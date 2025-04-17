@@ -186,7 +186,7 @@ def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
                         periods_to_recalculate.add((submission_period, 'M'))
             else:
                 # For BasicMetric
-                logger.info(f"Skipping Monthly recalculation trigger (post-commit) for BasicMetric {metric.pk}")
+                # logger.info(f"Skipping Monthly recalculation trigger (post-commit) for BasicMetric {metric.pk}")
                 print(f"[DEBUG] Skipping Monthly recalculation trigger (post-commit) for BasicMetric")
 
             # Always calculate Annual aggregation
@@ -199,7 +199,6 @@ def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
             for period_end, level in periods_to_recalculate:
                 if assignment_start <= period_end <= assignment_end:
                     try:
-                        print(f"[DEBUG] Submitting calculate_report_value to thread pool for period {period_end}, level {level}")
                         # Submit the calculation to the thread pool
                         future = aggregation_executor.submit(
                             calculate_report_value,
@@ -209,8 +208,6 @@ def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
                             layer=layer,
                             level=level
                         )
-                        # You could store futures if needed to check results later
-                        print(f"[DEBUG] Calculation job submitted to thread pool for period {period_end}, level {level}")
                     except Exception as e:
                         logger.error(f"Error submitting calculation job to thread pool for Metric {metric.pk}, Period {period_end}, Level {level}: {e}", exc_info=True)
                         print(f"[DEBUG] Error submitting to thread pool: {str(e)}")
@@ -353,7 +350,7 @@ def clean_up_orphaned_reported_values(assignment_id, metric_id, layer_id, report
                 if not has_contributing_data:
                     print(f"[DEBUG] No data found for {month_period}, deleting ReportedMetricValue {rpv.pk}")
                     rpv.delete()
-                    logger.info(f"Deleted orphaned Monthly ReportedMetricValue {rpv.pk} for {month_period}")
+                    # logger.info(f"Deleted orphaned Monthly ReportedMetricValue {rpv.pk} for {month_period}")
                 else:
                     # Trigger recalculation for this month
                     from .services.aggregation import calculate_report_value
@@ -390,7 +387,7 @@ def clean_up_orphaned_reported_values(assignment_id, metric_id, layer_id, report
                 if remaining_submissions == 0:
                     print(f"[DEBUG] Deleting orphaned Monthly ReportedMetricValue {rpv.pk}")
                     rpv.delete()
-                    logger.info(f"Deleted orphaned Monthly ReportedMetricValue {rpv.pk}")
+                    # logger.info(f"Deleted orphaned Monthly ReportedMetricValue {rpv.pk}")
                 else:
                     # Otherwise trigger recalculation
                     from .services.aggregation import calculate_report_value
@@ -417,29 +414,30 @@ def trigger_emission_calculation(sender, instance, **kwargs):
     When a ReportedMetricValue is saved, trigger emission calculation if the metric
     has emission categories configured.
     """
-    logger.info(f"[SIGNAL] trigger_emission_calculation called for RPV {instance.pk}") # Log signal start
+    # logger.info(f"[SIGNAL] trigger_emission_calculation called for RPV {instance.pk}") # Log signal start
     
     # Skip if this is a new record and has no numeric value
     if kwargs.get('created', False) and instance.aggregated_numeric_value is None:
-        logger.info(f"[SIGNAL] Skipping emission trigger for new RPV {instance.pk} - no numeric value")
+        # logger.info(f"[SIGNAL] Skipping emission trigger for new RPV {instance.pk} - no numeric value")
         return
         
     # This check might be too strict for VehicleTrackingMetric, but log anyway
     if not instance.metric.emission_category or not instance.metric.emission_sub_category:
-        logger.info(f"[SIGNAL] RPV {instance.pk} metric lacks emission category/subcategory. Relying on VehicleTrackingMetric exception later if applicable.")
+        # logger.info(f"[SIGNAL] RPV {instance.pk} metric lacks emission category/subcategory. Relying on VehicleTrackingMetric exception later if applicable.")
         # Don't return here for now, let the main function handle the VehicleTrackingMetric exception
         # return
-        
+        pass
+    
     def run_emission_calculation():
-        logger.info(f"[SIGNAL-ONCOMMIT] Running emission calculation logic for RPV {instance.pk}") # Log on_commit start
+        # logger.info(f"[SIGNAL-ONCOMMIT] Running emission calculation logic for RPV {instance.pk}") # Log on_commit start
         try:
             # Fetch the instance again to ensure it's up-to-date after commit
             latest_instance = ReportedMetricValue.objects.get(pk=instance.pk)
             
             # Submit the emission calculation to the thread pool
-            logger.info(f"[SIGNAL-ONCOMMIT] Submitting emission calculation to thread pool for RPV {latest_instance.pk}")
+            # logger.info(f"[SIGNAL-ONCOMMIT] Submitting emission calculation to thread pool for RPV {latest_instance.pk}")
             future = emission_executor.submit(calculate_emissions_for_activity_value, latest_instance)
-            logger.info(f"[SIGNAL-ONCOMMIT] Emission calculation job submitted to thread pool for RPV {latest_instance.pk}")
+            # logger.info(f"[SIGNAL-ONCOMMIT] Emission calculation job submitted to thread pool for RPV {latest_instance.pk}")
             
         except ReportedMetricValue.DoesNotExist:
             logger.error(f"[SIGNAL-ONCOMMIT] RPV {instance.pk} not found after commit. Cannot calculate emissions.")
@@ -447,7 +445,7 @@ def trigger_emission_calculation(sender, instance, **kwargs):
             logger.error(f"[SIGNAL-ONCOMMIT] Error during emission calculation for RPV {instance.pk}: {e}", exc_info=True)
             
     # Schedule the calculation after the transaction commits
-    logger.info(f"[SIGNAL] Scheduling run_emission_calculation via on_commit for RPV {instance.pk}")
+    # logger.info(f"[SIGNAL] Scheduling run_emission_calculation via on_commit for RPV {instance.pk}")
     transaction.on_commit(run_emission_calculation)
 
 # Optional: Handle potential errors in the main signal handler if needed,

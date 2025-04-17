@@ -449,26 +449,21 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         return ESGMetricEvidenceSerializer(evidence, many=True, context=self.context).data
 
     def validate_basic_data(self, basic_data):
-        """Validate basic structure of basic_data."""
-        logger.info(f"Validating basic_data: {basic_data}")
+        # logger.info(f"Validating basic_data: {basic_data}")
         if basic_data is not None and not isinstance(basic_data, dict):
-            logger.error(f"basic_data must be a dictionary, got {type(basic_data)}")
+            # logger.error(f"basic_data must be a dictionary, got {type(basic_data)}")
             raise serializers.ValidationError("basic_data must be a dictionary.")
         return basic_data
 
     def validate(self, data):
-        """
-        Validate submission based on metric type, ensure only one data field is present,
-        and check for duplicates based on the metric's allow_multiple_submissions_per_period flag.
-        """
-        logger.info(f"Validating submission data: {data}")
+        # logger.info(f"Validating submission data: {data}")
         metric = data.get('metric')
         assignment = data.get('assignment')
         reporting_period = data.get('reporting_period', None)
         basic_data = data.get('basic_data')
         
         if not metric:
-            logger.error("Metric is required")
+            # logger.error("Metric is required")
             raise serializers.ValidationError("Metric is required.")
         
         # --- BEGIN: Duplicate check (added logic) ---
@@ -476,7 +471,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         if is_creating:
             if not metric.allow_multiple_submissions_per_period:
                 if not assignment:
-                    logger.error("Assignment is required when creating a submission")
+                    # logger.error("Assignment is required when creating a submission")
                     raise serializers.ValidationError({"assignment": "Assignment is required when creating a submission."})
 
                 # Get the layer from the submission data, or default to assignment's layer
@@ -496,7 +491,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                     metric_name = getattr(metric, 'name', 'Unknown Metric')
                     assignment_name = str(assignment)
                     error_msg = f"A submission already exists for metric '{metric_name}' in assignment '{assignment_name}'{period_str}."
-                    logger.error(error_msg)
+                    # logger.error(error_msg)
                     raise serializers.ValidationError(error_msg)
         
         # --- Check data payload presence and type match --- 
@@ -508,24 +503,24 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             ] if data.get(f) is not None
         ]
         
-        logger.info(f"Provided data fields: {provided_data_fields}")
+        # logger.info(f"Provided data fields: {provided_data_fields}")
         
         if not provided_data_fields:
             # Special case for VehicleTrackingMetric - if we're submitting for a vehicle tracking metric
             # and there's no error yet, don't raise an error about missing data fields
             if not is_creating or not isinstance(metric, VehicleTrackingMetric) or 'vehicle_records' not in data:
-                logger.error("No submission data provided")
+                # logger.error("No submission data provided")
                 raise serializers.ValidationError("No submission data provided (e.g., basic_data, tabular_rows, etc.).")
         
         # For BasicMetric, we expect basic_data
         if isinstance(metric, BasicMetric) and 'basic_data' not in provided_data_fields:
-            logger.error("Basic metric requires basic_data")
+            # logger.error("Basic metric requires basic_data")
             raise serializers.ValidationError(f"Metric of type BasicMetric requires 'basic_data' field, got {provided_data_fields}.")
         
         # Ensure only one type of data is provided (except vehicle_records can be combined)
         data_without_vehicle = [f for f in provided_data_fields if f != 'vehicle_records']
         if len(data_without_vehicle) > 1:
-            logger.error(f"Multiple data fields provided: {data_without_vehicle}")
+            # logger.error(f"Multiple data fields provided: {data_without_vehicle}")
             raise serializers.ValidationError("Multiple types of submission data provided. Only one is allowed.")
         
         # Only perform type match check if a data field was actually provided
@@ -534,9 +529,9 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             
             try:
                 specific_metric = metric.get_real_instance()
-                logger.info(f"Got specific metric type: {type(specific_metric).__name__}")
+                # logger.info(f"Got specific metric type: {type(specific_metric).__name__}")
             except AttributeError:
-                logger.error("Could not determine specific metric type")
+                # logger.error("Could not determine specific metric type")
                 raise serializers.ValidationError("Could not determine specific metric type.")
 
             expected_field_map = {
@@ -556,54 +551,54 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                     break
             
             if not expected_field:
-                logger.error(f"Unsupported metric type: {type(specific_metric).__name__}")
+                # logger.error(f"Unsupported metric type: {type(specific_metric).__name__}")
                 raise serializers.ValidationError(f"Unsupported metric type encountered: {type(specific_metric).__name__}")
 
             # Skip field validation for VehicleTrackingMetric since we handle it specially
             if isinstance(specific_metric, VehicleTrackingMetric):
-                logger.info(f"Found VehicleTrackingMetric with vehicle_records data")
+                # logger.info(f"Found VehicleTrackingMetric with vehicle_records data")
                 pass  # Skip the field validation
             elif provided_field != expected_field:
                 error_msg = f"Invalid data field '{provided_field}' provided for metric type '{type(specific_metric).__name__}'. Expected field: '{expected_field}'."
-                logger.error(error_msg)
+                # logger.error(error_msg)
                 raise serializers.ValidationError(error_msg)
 
             # --- Metric Type-Specific Validation ---
             if isinstance(specific_metric, BasicMetric):
                 if basic_data is None:
-                    logger.error("basic_data is required for BasicMetric")
+                    # logger.error("basic_data is required for BasicMetric")
                     raise serializers.ValidationError({"basic_data": "basic_data is required for BasicMetric."})
                 
                 unit_type = specific_metric.unit_type
                 value_numeric = basic_data.get('value_numeric')
                 value_text = basic_data.get('value_text')
                 
-                logger.info(f"Validating BasicMetric data - unit_type: {unit_type}, value_numeric: {value_numeric}, value_text: {value_text}")
+                # logger.info(f"Validating BasicMetric data - unit_type: {unit_type}, value_numeric: {value_numeric}, value_text: {value_text}")
 
                 if unit_type == 'text':
                     if value_numeric is not None:
-                        logger.error("Numeric value provided for text metric")
+                        # logger.error("Numeric value provided for text metric")
                         raise serializers.ValidationError({"basic_data": "Numeric value should not be provided for a text metric."})
                     if not value_text:
-                        logger.error("Text value required for text metric")
+                        # logger.error("Text value required for text metric")
                         raise serializers.ValidationError({"basic_data": "Text value is required for a text metric."})
                 else:
                     if value_text is not None and value_text != "":
-                        logger.error("Text value provided for non-text metric")
+                        # logger.error("Text value provided for non-text metric")
                         raise serializers.ValidationError({"basic_data": "Text value should not be provided for a non-text metric."})
                     if value_numeric is None:
-                        logger.error("Numeric value required for non-text metric")
+                        # logger.error("Numeric value required for non-text metric")
                         raise serializers.ValidationError({"basic_data": "Numeric value is required for a non-text metric."})
                     
                     rules = specific_metric.validation_rules or {}
                     if 'min' in rules and value_numeric < rules['min']:
-                        logger.error(f"Value {value_numeric} below minimum {rules['min']}")
+                        # logger.error(f"Value {value_numeric} below minimum {rules['min']}")
                         raise serializers.ValidationError({"basic_data": f"Value must be at least {rules['min']}."})
                     if 'max' in rules and value_numeric > rules['max']:
-                        logger.error(f"Value {value_numeric} above maximum {rules['max']}")
+                        # logger.error(f"Value {value_numeric} above maximum {rules['max']}")
                         raise serializers.ValidationError({"basic_data": f"Value must not exceed {rules['max']}."})
 
-        logger.info("Validation successful")
+        # logger.info("Validation successful")
         return data
 
     def create(self, validated_data):
@@ -770,21 +765,28 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
 
     def _save_vehicle_records(self, submission_instance, vehicle_records_data, update=False):
         from ..models.submission_data import VehicleRecord, VehicleMonthlyData
+        logger.info(f"[DEBUG] _save_vehicle_records called for submission {submission_instance.id}, update={update}")
+        logger.info(f"[DEBUG] Incoming vehicle_records_data: {vehicle_records_data}")
         # For update, keep track of IDs to retain
         keep_vehicle_ids = []
         for vehicle_data in vehicle_records_data:
             monthly_data = vehicle_data.pop('monthly_data', [])
             vehicle_id = vehicle_data.get('id', None)
             if update and vehicle_id:
+                # Add debug log before lookup
+                logger.info(f"Looking for VehicleRecord with id={vehicle_id} and submission_id={submission_instance.id}")
                 # Update existing vehicle record
                 try:
                     vehicle_obj = VehicleRecord.objects.get(id=vehicle_id, submission=submission_instance)
+                    logger.info(f"[DEBUG] Updating VehicleRecord id={vehicle_id} for submission {submission_instance.id}")
                     for attr, value in vehicle_data.items():
                         setattr(vehicle_obj, attr, value)
                     vehicle_obj.save()
                 except VehicleRecord.DoesNotExist:
+                    logger.warning(f"[DEBUG] VehicleRecord id={vehicle_id} not found for submission {submission_instance.id}, creating new.")
                     vehicle_obj = VehicleRecord.objects.create(submission=submission_instance, **vehicle_data)
             else:
+                logger.info(f"[DEBUG] Creating new VehicleRecord for submission {submission_instance.id} (no id or not update mode)")
                 vehicle_obj = VehicleRecord.objects.create(submission=submission_instance, **vehicle_data)
             keep_vehicle_ids.append(vehicle_obj.id)
 
@@ -795,20 +797,27 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                 if update and month_id:
                     try:
                         month_obj = VehicleMonthlyData.objects.get(id=month_id, vehicle=vehicle_obj)
+                        logger.info(f"[DEBUG] Updating VehicleMonthlyData id={month_id} for vehicle {vehicle_obj.id}")
                         for attr, value in month_data.items():
                             setattr(month_obj, attr, value)
                         month_obj.save()
                     except VehicleMonthlyData.DoesNotExist:
+                        logger.warning(f"[DEBUG] VehicleMonthlyData id={month_id} not found for vehicle {vehicle_obj.id}, creating new.")
                         month_obj = VehicleMonthlyData.objects.create(vehicle=vehicle_obj, **month_data)
                 else:
+                    logger.info(f"[DEBUG] Creating new VehicleMonthlyData for vehicle {vehicle_obj.id}")
                     month_obj = VehicleMonthlyData.objects.create(vehicle=vehicle_obj, **month_data)
                 keep_monthly_ids.append(month_obj.id)
             # Delete monthly data not in keep list (for update)
             if update:
-                VehicleMonthlyData.objects.filter(vehicle=vehicle_obj).exclude(id__in=keep_monthly_ids).delete()
+                deleted_months = VehicleMonthlyData.objects.filter(vehicle=vehicle_obj).exclude(id__in=keep_monthly_ids)
+                logger.info(f"[DEBUG] Deleting VehicleMonthlyData ids={[m.id for m in deleted_months]} for vehicle {vehicle_obj.id}")
+                deleted_months.delete()
         # Delete vehicle records not in keep list (for update)
         if update:
-            VehicleRecord.objects.filter(submission=submission_instance).exclude(id__in=keep_vehicle_ids).delete()
+            vehicles_to_delete = VehicleRecord.objects.filter(submission=submission_instance).exclude(id__in=keep_vehicle_ids)
+            logger.info(f"[DEBUG] Deleting VehicleRecord ids={[v.id for v in vehicles_to_delete]} for submission {submission_instance.id}")
+            vehicles_to_delete.delete()
 
 # --- Serializer for Batch Submissions ---
 
@@ -834,7 +843,7 @@ class ESGMetricBatchSubmissionSerializer(serializers.Serializer):
                     sub_data['assignment'] = assignment
                 
             if 'metric' not in sub_data:
-                logger.error(f"Submission {index} missing metric field")
+                # logger.error(f"Submission {index} missing metric field")
                 raise serializers.ValidationError(f"Item {index} in 'submissions' list is missing the 'metric' field.")
             # Individual item validation happens via the child ESGMetricSubmissionSerializer
         return submissions_data

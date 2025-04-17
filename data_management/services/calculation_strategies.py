@@ -120,23 +120,23 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
     
     def calculate(self, rpv, metric, year, region):
         """Calculate emissions for vehicle tracking metrics"""
-        logger.info(f"[STRATEGY-Vehicle] Calculating emissions for RPV {rpv.pk}, Metric {metric.pk}") # Log strategy start
+        # logger.info(f"[STRATEGY-Vehicle] Calculating emissions for RPV {rpv.pk}, Metric {metric.pk}") # Log strategy start
         from ..services.emissions import find_matching_emission_factor
         
         # Parse vehicle data from the aggregated text value
         try:
             vehicle_data = self._parse_vehicle_data(rpv.aggregated_text_value)
             if not vehicle_data:
-                logger.warning(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Couldn't parse vehicle data from aggregated_text_value: {rpv.aggregated_text_value}")
+                print(f"[STRATEGY-Vehicle][WARNING] RPV {rpv.pk}: Couldn't parse vehicle data from aggregated_text_value: {rpv.aggregated_text_value}")
                 return []
                 
             vehicles = vehicle_data.get('vehicles', [])
             if not vehicles:
-                logger.warning(f"[STRATEGY-Vehicle] RPV {rpv.pk}: No 'vehicles' key found in parsed data: {vehicle_data}")
+                print(f"[STRATEGY-Vehicle][WARNING] RPV {rpv.pk}: No 'vehicles' key found in parsed data: {vehicle_data}")
                 return []
-            logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Parsed {len(vehicles)} vehicles from aggregated text.")
+            # logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Parsed {len(vehicles)} vehicles from aggregated text.")
         except Exception as e:
-            logger.error(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Error parsing vehicle data: {e}", exc_info=True)
+            print(f"[STRATEGY-Vehicle][ERROR] RPV {rpv.pk}: Error parsing vehicle data: {e}")
             return []
             
         # Process each vehicle
@@ -144,30 +144,30 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
         total_fuel = Decimal('0')
         
         # First pass - calculate total fuel for proportion calculation
-        logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Calculating total fuel...")
+        # logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Calculating total fuel...")
         for idx, vehicle in enumerate(vehicles):
             try:
                 # Make sure we're checking for valid data using the new field names
                 if not vehicle.get('vehicle_type_value') or not vehicle.get('fuel_type_value'):
-                    logger.warning(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Skipping vehicle {idx} in first pass due to missing vehicle_type_value or fuel_type_value")
+                    print(f"[STRATEGY-Vehicle][WARNING] RPV {rpv.pk}: Skipping vehicle {idx} in first pass due to missing vehicle_type_value or fuel_type_value")
                     continue
                     
                 fuel_consumed = Decimal(str(vehicle.get('fuel_consumed', 0)))
-                logger.debug(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Vehicle {idx} fuel: {fuel_consumed}")
+                # logger.debug(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Vehicle {idx} fuel: {fuel_consumed}")
                 total_fuel += fuel_consumed
             except (ValueError, TypeError) as e:
-                logger.warning(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Invalid fuel value for vehicle {idx}: {vehicle.get('fuel_consumed')}. Error: {e}")
+                print(f"[STRATEGY-Vehicle][WARNING] RPV {rpv.pk}: Invalid fuel value for vehicle {idx}: {vehicle.get('fuel_consumed')}. Error: {e}")
                 continue
             
-        logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Calculated total_fuel = {total_fuel}")
+        # logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Calculated total_fuel = {total_fuel}")
             
         # No fuel consumed - nothing to calculate
         if total_fuel <= 0:
-            logger.warning(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Total fuel is zero or negative. No emissions will be calculated.")
+            print(f"[STRATEGY-Vehicle][WARNING] RPV {rpv.pk}: Total fuel is zero or negative. No emissions will be calculated.")
             return []
             
         # Second pass - calculate emissions for each vehicle
-        logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Calculating emissions per vehicle...")
+        # logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Calculating emissions per vehicle...")
         for idx, vehicle in enumerate(vehicles):
             try:
                 # Use the new field names that include _value suffix
@@ -180,7 +180,7 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
                 kilometers = Decimal(str(vehicle.get('kilometers', 0)))
                 registration = vehicle.get('registration', 'N/A')
                 
-                logger.debug(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Processing Vehicle {idx}: Type={vehicle_type}, Fuel={fuel_type}, Consumed={fuel_consumed}, Reg={registration}")
+                # logger.debug(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Processing Vehicle {idx}: Type={vehicle_type}, Fuel={fuel_type}, Consumed={fuel_consumed}, Reg={registration}")
                 
                 if not fuel_consumed or not vehicle_type or not fuel_type:
                     logger.warning(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Skipping vehicle {idx} due to missing type/fuel/consumption: {vehicle}")
@@ -188,7 +188,7 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
                     
                 # Get appropriate subcategory using metric's mapping
                 emission_sub_category = metric.get_emission_subcategory(vehicle_type, fuel_type)
-                logger.debug(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Derived subcategory for Vehicle {idx}: '{emission_sub_category}'")
+                # logger.debug(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Derived subcategory for Vehicle {idx}: '{emission_sub_category}'")
                 
                 # Find matching factor
                 factor = find_matching_emission_factor(
@@ -203,7 +203,7 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
                     logger.warning(f"[STRATEGY-Vehicle] RPV {rpv.pk}: No emission factor found for Vehicle {idx} (Type={vehicle_type}, Fuel={fuel_type}, SubCat={emission_sub_category}, Year={year}, Region={region}) - Skipping vehicle.")
                     continue
                 
-                logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Found factor for Vehicle {idx}: ID={factor.pk}, Value={factor.value}")
+                # logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Found factor for Vehicle {idx}: ID={factor.pk}, Value={factor.value}")
                     
                 # Calculate emissions
                 emission_value = fuel_consumed * factor.value
@@ -211,7 +211,7 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
                 proportion = fuel_consumed / total_fuel if total_fuel > 0 else Decimal('0') 
                 
                 # We now get labels directly from the data rather than looking them up
-                logger.debug(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Vehicle {idx} calculated emission: {emission_value}, proportion: {proportion}")
+                # logger.debug(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Vehicle {idx} calculated emission: {emission_value}, proportion: {proportion}")
                 
                 # Add to results
                 results.append({
@@ -233,7 +233,7 @@ class VehicleTrackingCalculationStrategy(EmissionCalculationStrategy):
                 logger.error(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Error processing vehicle {idx}: {e}", exc_info=True)
                 continue
                 
-        logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Finished processing vehicles. Returning {len(results)} calculation results.")
+        # logger.info(f"[STRATEGY-Vehicle] RPV {rpv.pk}: Finished processing vehicles. Returning {len(results)} calculation results.")
         return results
     
     def _parse_vehicle_data(self, text_value):
