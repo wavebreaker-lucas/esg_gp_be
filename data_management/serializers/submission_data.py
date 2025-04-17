@@ -51,6 +51,7 @@ class VehicleMonthlyDataSerializer(serializers.ModelSerializer):
         exclude = ('vehicle',)
 
 class VehicleRecordSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
     monthly_data = VehicleMonthlyDataSerializer(many=True, required=False)
     class Meta:
         model = VehicleRecord
