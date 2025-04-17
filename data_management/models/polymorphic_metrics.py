@@ -31,6 +31,28 @@ UNIT_TYPES = [
     ('custom', 'Custom Unit'),
 ]
 
+# Add new fuel type options
+FUEL_TYPE_CHOICES = [
+    ('diesel_oil', 'Diesel oil (in litre)'),
+    ('lpg', 'LPG (in KG)'),
+    ('kerosene', 'Kerosene (in litre)'),
+    ('natural_gas', 'Natural gas (in cubic meter)'),
+    ('charcoal', 'Charcoal (in KG)'),
+    ('town_gas', 'Town gas (in KG)'),
+    ('petrol', 'Petrol (in litre)'),
+    ('unleaded_petrol', 'Unleaded petrol (in litre)'),
+    ('refrigerant', 'Refrigerant/Blend'),
+]
+
+# Add source type options
+SOURCE_TYPE_CHOICES = [
+    ('electricity_generators', 'Electricity generators'),
+    ('boilers', 'Boilers'),
+    ('gas_cooking_stoves', 'Gas cooking stoves'),
+    ('ships', 'Ships'),
+    ('other', 'Other equipment'),
+]
+
 class BaseESGMetric(PolymorphicModel):
     """Base model for all ESG metrics using django-polymorphic."""
     form = models.ForeignKey(
@@ -685,6 +707,216 @@ class VehicleTrackingMetric(BaseESGMetric):
         return {
             'aggregated_numeric_value': float(total_fuel),
             # Correctly serialize the dictionary to a JSON string
+            'aggregated_text_value': json.dumps(aggregated_data_dict),
+            'aggregation_method': 'SUM',
+            'contributing_submissions_count': contributing_submissions_count
+        }
+
+# New model for fuel consumption sources
+class FuelSourceType(models.Model):
+    """Model for source types available for selection in FuelConsumptionMetric."""
+    value = models.CharField(max_length=100, unique=True, help_text="Unique identifier code for this source type")
+    label = models.CharField(max_length=255, help_text="Display name for this source type")
+    
+    class Meta:
+        ordering = ['label']
+        verbose_name = "Fuel Source Type"
+        verbose_name_plural = "Fuel Source Types"
+    
+    def __str__(self):
+        return self.label
+
+# New model for fuel consumption metric
+class FuelConsumptionMetric(BaseESGMetric):
+    """Metrics for tracking fuel consumption by equipment or generators with monthly data."""
+    
+    # Default source type choices - can be extended through admin
+    DEFAULT_SOURCE_TYPES = [
+        {"value": "electricity_generators", "label": "Electricity generators"},
+        {"value": "boilers", "label": "Boilers"},
+        {"value": "gas_cooking_stoves", "label": "Gas cooking stoves"},
+        {"value": "ships", "label": "Ships"},
+        {"value": "other", "label": "Other equipment"},
+    ]
+    
+    # Default fuel type choices - can be extended through admin
+    DEFAULT_FUEL_TYPES = [
+        {"value": "diesel_oil", "label": "Diesel oil (in litre)"},
+        {"value": "lpg", "label": "LPG (in KG)"},
+        {"value": "kerosene", "label": "Kerosene (in litre)"},
+        {"value": "natural_gas", "label": "Natural gas (in cubic meter)"},
+        {"value": "charcoal", "label": "Charcoal (in KG)"},
+        {"value": "town_gas", "label": "Town gas (in KG)"},
+        {"value": "petrol", "label": "Petrol (in litre)"},
+        {"value": "unleaded_petrol", "label": "Unleaded petrol (in litre)"},
+        {"value": "refrigerant", "label": "Refrigerant/Blend"},
+    ]
+    
+    # Default emission factor mapping
+    DEFAULT_EMISSION_MAPPING = {
+        "diesel_oil": "stationary_diesel",
+        "lpg": "stationary_lpg",
+        "kerosene": "stationary_kerosene",
+        "natural_gas": "stationary_natural_gas",
+        "charcoal": "stationary_charcoal",
+        "town_gas": "stationary_town_gas",
+        "petrol": "stationary_petrol",
+        "unleaded_petrol": "stationary_petrol",
+    }
+    
+    # Configuration fields
+    source_types = models.ManyToManyField(
+        FuelSourceType,
+        related_name="fuel_metrics",
+        help_text="Source types available for selection"
+    )
+    
+    fuel_types = models.ManyToManyField(
+        FuelType,
+        related_name="fuel_consumption_metrics",
+        help_text="Fuel types available for selection"
+    )
+    
+    # Keep emission_factor_mapping as JSONField for complex mapping
+    emission_factor_mapping = models.JSONField(
+        default=dict,
+        help_text="Mapping of fuel_type to emission subcategories"
+    )
+    
+    # For backward compatibility during migration
+    source_type_choices = models.JSONField(
+        default=list,
+        help_text="DEPRECATED: Use source_types M2M relation instead"
+    )
+    
+    fuel_type_choices = models.JSONField(
+        default=list,
+        help_text="DEPRECATED: Use fuel_types M2M relation instead"
+    )
+    
+    reporting_year = models.PositiveIntegerField(
+        default=2025,
+        help_text="Default reporting year for fuel data"
+    )
+    
+    REPORTING_FREQUENCY_CHOICES = [
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('annual', 'Annual'),
+    ]
+    
+    frequency = models.CharField(
+        max_length=20,
+        choices=REPORTING_FREQUENCY_CHOICES,
+        default='monthly',
+        help_text="Frequency of data collection for fuel consumption"
+    )
+    
+    class Meta:
+        verbose_name = "Fuel Consumption Metric"
+        verbose_name_plural = "Fuel Consumption Metrics"
+        
+    def __str__(self):
+        return f"[Fuel Consumption - {self.get_frequency_display()}] {super().__str__()}"
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set this instance to allow multiple submissions as equipment can be tracked separately
+        self.allow_multiple_submissions_per_period = True
+        
+        # Set default emission category for fuel tracking
+        if not self.emission_category:
+            self.emission_category = "stationary_combustion"
+            
+        # Initialize JSONFields with default values if they're empty
+        if not self.source_type_choices:
+            self.source_type_choices = self.DEFAULT_SOURCE_TYPES
+            
+        if not self.fuel_type_choices:
+            self.fuel_type_choices = self.DEFAULT_FUEL_TYPES
+            
+        if not self.emission_factor_mapping:
+            self.emission_factor_mapping = self.DEFAULT_EMISSION_MAPPING
+        
+    def get_emission_subcategory(self, fuel_type):
+        """
+        Dynamically determine the appropriate emission subcategory based on fuel type.
+        
+        Args:
+            fuel_type: The fuel type code (e.g., 'diesel_oil')
+            
+        Returns:
+            The appropriate emission subcategory code for lookup
+        """
+        # Try the fuel type in the mapping
+        if fuel_type in self.emission_factor_mapping:
+            return self.emission_factor_mapping[fuel_type]
+            
+        # Fall back to a constructed key if nothing else matched
+        return f"stationary_{fuel_type}"
+        
+    def calculate_aggregate(self, relevant_submission_pks: QuerySet[int], target_start_date: datetime.date, target_end_date: datetime.date, level: str) -> dict | None:
+        """Calculate aggregate for fuel consumption metrics."""
+        # Import here to avoid circular imports
+        from ..models.submission_data import FuelRecord, FuelMonthlyData
+        from .templates import ESGMetricSubmission
+        from django.db.models import Sum
+        
+        # Get all fuel records for these submissions
+        fuel_records = FuelRecord.objects.filter(
+            submission_id__in=relevant_submission_pks
+        )
+        
+        if not fuel_records.exists():
+            return None
+            
+        # Get fuel monthly data for the target period
+        monthly_data = FuelMonthlyData.objects.filter(
+            source__in=fuel_records,
+            period__gte=target_start_date,
+            period__lte=target_end_date
+        )
+        
+        if not monthly_data.exists():
+            return None
+            
+        # Aggregate fuel consumption across all sources in the period
+        total_consumption = monthly_data.aggregate(total=Sum('quantity'))['total'] or 0
+        
+        # Count distinct submissions that contributed data
+        contributing_submissions_count = fuel_records.values('submission_id').distinct().count()
+        
+        # Fetch source details with their aggregated values
+        source_details = []
+        for source in fuel_records:
+            source_monthly_data = source.monthly_data.filter(
+                period__gte=target_start_date,
+                period__lte=target_end_date
+            )
+            
+            if source_monthly_data.exists():
+                total_source_consumption = source_monthly_data.aggregate(total=Sum('quantity'))['total'] or 0
+                
+                source_details.append({
+                    'source_type_value': source.source_type.value,
+                    'source_type_label': source.source_type.label,
+                    'fuel_type_value': source.fuel_type.value,
+                    'fuel_type_label': source.fuel_type.label,
+                    'source_name': source.name,
+                    'consumption': float(total_source_consumption),
+                    'notes': source.notes
+                })
+        
+        # Create a JSON structure with the aggregated data
+        aggregated_data_dict = {
+            'total_consumption': float(total_consumption),
+            'source_count': fuel_records.count(),
+            'sources': source_details
+        }
+        
+        # For numeric value, use the total fuel consumption as the primary metric
+        return {
+            'aggregated_numeric_value': float(total_consumption),
             'aggregated_text_value': json.dumps(aggregated_data_dict),
             'aggregation_method': 'SUM',
             'contributing_submissions_count': contributing_submissions_count

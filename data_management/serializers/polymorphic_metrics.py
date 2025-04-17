@@ -5,7 +5,7 @@ from rest_framework import serializers
 from ..models.polymorphic_metrics import (
     BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
     TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric,
-    VehicleTrackingMetric
+    VehicleTrackingMetric, FuelConsumptionMetric
 )
 from ..models.templates import ESGForm # Needed for form_id write
 
@@ -76,6 +76,16 @@ class VehicleTrackingMetricSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('form',)
 
+# Add new serializer for FuelConsumptionMetric
+class FuelConsumptionMetricSerializer(serializers.ModelSerializer):
+    form_id = serializers.PrimaryKeyRelatedField(
+        queryset=ESGForm.objects.all(), source='form', write_only=True
+    )
+    class Meta:
+        model = FuelConsumptionMetric
+        fields = '__all__'
+        read_only_fields = ('form',)
+
 # --- Polymorphic Base Serializer ---
 
 class ESGMetricPolymorphicSerializer(PolymorphicSerializer):
@@ -87,7 +97,8 @@ class ESGMetricPolymorphicSerializer(PolymorphicSerializer):
         TimeSeriesMetric: TimeSeriesMetricSerializer,
         MultiFieldTimeSeriesMetric: MultiFieldTimeSeriesMetricSerializer,
         MultiFieldMetric: MultiFieldMetricSerializer,
-        VehicleTrackingMetric: VehicleTrackingMetricSerializer
+        VehicleTrackingMetric: VehicleTrackingMetricSerializer,
+        FuelConsumptionMetric: FuelConsumptionMetricSerializer
     }
     # The 'polymorphic_ctype' field is automatically added by the library 
     # to identify the model type in the JSON output.

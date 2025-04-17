@@ -4,7 +4,8 @@ from rest_polymorphic.serializers import PolymorphicSerializer
 from ..models.submission_data import (
     BasicMetricData, TabularMetricRow, MaterialMatrixDataPoint, 
     TimeSeriesDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint,
-    VehicleRecord, VehicleMonthlyData
+    VehicleRecord, VehicleMonthlyData,
+    FuelRecord, FuelMonthlyData  # Add our new models
 )
 
 # --- Serializers for Specific Submission Data Models ---
@@ -57,6 +58,19 @@ class VehicleRecordSerializer(serializers.ModelSerializer):
         model = VehicleRecord
         exclude = ('submission',)
 
+# Add serializers for fuel consumption models
+class FuelMonthlyDataSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FuelMonthlyData
+        exclude = ('source',)
+
+class FuelRecordSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+    monthly_data = FuelMonthlyDataSerializer(many=True, required=False)
+    class Meta:
+        model = FuelRecord
+        exclude = ('submission',)
+
 # --- Polymorphic Serializer for Reading Submission Data --- 
 
 class PolymorphicSubmissionDataSerializer(PolymorphicSerializer):
@@ -68,7 +82,8 @@ class PolymorphicSubmissionDataSerializer(PolymorphicSerializer):
         TimeSeriesDataPoint: TimeSeriesDataPointSerializer,
         MultiFieldTimeSeriesDataPoint: MultiFieldTimeSeriesDataPointSerializer,
         MultiFieldDataPoint: MultiFieldDataPointSerializer,
-        VehicleRecord: VehicleRecordSerializer,  # Add VehicleRecord for polymorphic support
+        VehicleRecord: VehicleRecordSerializer,
+        FuelRecord: FuelRecordSerializer  # Add FuelRecord for polymorphic support
     }
     # This serializer is primarily for READING the specific data associated
     # with a submission. It determines the type based on the related object.

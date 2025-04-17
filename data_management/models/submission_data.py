@@ -3,7 +3,8 @@ from .templates import ESGMetricSubmission
 from .polymorphic_metrics import (
     BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
     TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric,
-    VehicleTrackingMetric, VehicleType, FuelType
+    VehicleTrackingMetric, VehicleType, FuelType,
+    FuelConsumptionMetric, FuelSourceType
 )
 
 # --- Submission Data Models ---
@@ -286,4 +287,93 @@ class VehicleDataSource(models.Model):
         verbose_name_plural = "Vehicle Data Sources"
     
     def __str__(self):
-        return f"Source {self.source_reference} - {self.source_date} for {self.vehicle_monthly_data.vehicle}" 
+        return f"Source {self.source_reference} - {self.source_date} for {self.vehicle_monthly_data.vehicle}"
+
+# --- New Models for Fuel Consumption Tracking ---
+
+class FuelRecord(models.Model):
+    """Stores metadata for a single fuel consumption source in a FuelConsumptionMetric submission."""
+    submission = models.ForeignKey(
+        ESGMetricSubmission,
+        on_delete=models.CASCADE,
+        related_name='fuel_records'
+    )
+    
+    # Basic source information
+    name = models.CharField(max_length=100, help_text="Source name (e.g., Generator #1)")
+    
+    # Type information
+    source_type = models.ForeignKey(
+        FuelSourceType,
+        on_delete=models.PROTECT,
+        related_name='sources',
+        help_text="Type of source (e.g., electricity generator, heater)"
+    )
+    
+    fuel_type = models.ForeignKey(
+        FuelType,
+        on_delete=models.PROTECT,
+        related_name='fuel_sources',
+        help_text="Type of fuel used (e.g., diesel, natural gas)"
+    )
+    
+    # Additional information
+    notes = models.TextField(blank=True, help_text="Additional notes about this source")
+    is_active = models.BooleanField(default=True, help_text="Whether this source is currently active")
+    
+    class Meta:
+        ordering = ['submission', 'name']
+        verbose_name = "Fuel Record"
+        verbose_name_plural = "Fuel Records"
+    
+    def __str__(self):
+        return f"{self.name} ({self.source_type.label}) - Submission {self.submission.pk}"
+
+class FuelMonthlyData(models.Model):
+    """Stores monthly fuel consumption data for a source in a FuelConsumptionMetric submission."""
+    source = models.ForeignKey(
+        FuelRecord,
+        on_delete=models.CASCADE,
+        related_name='monthly_data'
+    )
+    
+    # Time period information
+    period = models.DateField(help_text="The month-end date this data represents")
+    
+    # Consumption data
+    quantity = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Amount of fuel consumed during this period"
+    )
+    
+    # Emission calculation fields
+    emission_calculated = models.BooleanField(
+        default=False,
+        help_text="Whether emissions have been calculated for this data point"
+    )
+    
+    emission_value = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Calculated emissions value (typically in kgCO2e)"
+    )
+    
+    emission_unit = models.CharField(
+        max_length=20,
+        default="kgCO2e",
+        help_text="Unit of emission calculation"
+    )
+    
+    class Meta:
+        ordering = ['source', 'period']
+        verbose_name = "Fuel Monthly Data"
+        verbose_name_plural = "Fuel Monthly Data"
+    
+    def __str__(self):
+        quantity_str = f"{self.quantity}" if self.quantity is not None else "N/A"
+        return f"{self.source.name} - {self.period.strftime('%b %Y')}: {quantity_str} units" 

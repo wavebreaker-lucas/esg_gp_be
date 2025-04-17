@@ -11,7 +11,8 @@ from ..models.templates import (
 # Import the new base model (might need specialized ones later)
 from ..models.polymorphic_metrics import (
     BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
-    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric, VehicleTrackingMetric
+    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric, VehicleTrackingMetric,
+    FuelConsumptionMetric  # Add our new model
 )
 # Import the specific data models needed for get_submission_data
 from ..models.submission_data import (
@@ -29,7 +30,9 @@ from .submission_data import (
     MultiFieldDataPointSerializer,
     PolymorphicSubmissionDataSerializer, # Import the new polymorphic reader
     VehicleRecordSerializer,
-    VehicleMonthlyDataSerializer
+    VehicleMonthlyDataSerializer,
+    FuelRecordSerializer,  # Add import for our new serializers
+    FuelMonthlyDataSerializer
 )
 # Import the polymorphic metric serializer
 from .polymorphic_metrics import ESGMetricPolymorphicSerializer 
@@ -326,10 +329,13 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     multifield_timeseries_data_points = MultiFieldTimeSeriesDataPointSerializer(many=True, required=False, write_only=True, allow_null=True)
     multifield_data = MultiFieldDataPointSerializer(required=False, write_only=True, allow_null=True)
 
+    vehicle_records = VehicleRecordSerializer(many=True, required=False)  # Now writable
+    
+    # Add fuel_records field for FuelConsumptionMetric
+    fuel_records = FuelRecordSerializer(many=True, required=False)  # Now writable
+
     # --- Field for reading specific submission data ---
     submission_data = serializers.SerializerMethodField(read_only=True)
-
-    vehicle_records = VehicleRecordSerializer(many=True, required=False)  # Now writable
 
     class Meta:
         model = ESGMetricSubmission
@@ -347,7 +353,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             # --- Write-only fields for submission data ---
             'basic_data', 'tabular_rows', 'material_data_points', 
             'timeseries_data_points', 'multifield_timeseries_data_points', 'multifield_data',
-            'vehicle_records',
+            'vehicle_records', 'fuel_records',  # Add fuel_records to fields list
             # --- Read-only field for output ---
             'submission_data'
         ]
@@ -433,6 +439,11 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             serializer_kwargs['many'] = True
             serializer = VehicleRecordSerializer(data_to_serialize, **serializer_kwargs)
             return serializer.data
+        elif isinstance(metric, FuelConsumptionMetric):  # Add case for FuelConsumptionMetric
+            data_to_serialize = obj.fuel_records.all()
+            serializer_kwargs['many'] = True
+            serializer = FuelRecordSerializer(data_to_serialize, **serializer_kwargs)
+            return serializer.data
         
         if data_to_serialize is not None:
             # Use the Polymorphic serializer to render the correct structure
@@ -499,7 +510,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             f for f in [
                 'basic_data', 'tabular_rows', 'material_data_points', 
                 'timeseries_data_points', 'multifield_timeseries_data_points', 'multifield_data',
-                'vehicle_records'  # Add vehicle_records as a valid data field
+                'vehicle_records', 'fuel_records'  # Add fuel_records to valid data fields
             ] if data.get(f) is not None
         ]
         
@@ -541,7 +552,8 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                 TimeSeriesMetric: 'timeseries_data_points',
                 MultiFieldTimeSeriesMetric: 'multifield_timeseries_data_points',
                 MultiFieldMetric: 'multifield_data',
-                VehicleTrackingMetric: 'vehicle_records',  # Add support for VehicleTrackingMetric
+                VehicleTrackingMetric: 'vehicle_records',
+                FuelConsumptionMetric: 'fuel_records',  # Add mapping for FuelConsumptionMetric
             }
 
             expected_field = None
@@ -611,8 +623,9 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         multifield_timeseries_data_points = validated_data.pop('multifield_timeseries_data_points', None)
         multifield_data = validated_data.pop('multifield_data', None)
         
-        # Extract nested vehicle data if present
+        # Extract nested vehicle and fuel data if present
         vehicle_records_data = validated_data.pop('vehicle_records', None)
+        fuel_records_data = validated_data.pop('fuel_records', None)  # Extract fuel records data
         
         # Set the submitted_by field from the request
         request = self.context.get('request')
@@ -676,6 +689,10 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         if vehicle_records_data is not None:
             self._save_vehicle_records(submission, vehicle_records_data)
         
+        # Handle fuel_records nested creation
+        if fuel_records_data is not None:
+            self._save_fuel_records(submission, fuel_records_data)
+        
         return submission
         
     def update(self, instance, validated_data):
@@ -688,8 +705,9 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         multifield_timeseries_data_points = validated_data.pop('multifield_timeseries_data_points', None)
         multifield_data = validated_data.pop('multifield_data', None)
         
-        # Extract nested vehicle data if present
+        # Extract nested vehicle and fuel data if present
         vehicle_records_data = validated_data.pop('vehicle_records', None)
+        fuel_records_data = validated_data.pop('fuel_records', None)  # Extract fuel records data
         
         # Update the base fields
         for attr, value in validated_data.items():
@@ -761,6 +779,10 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         if vehicle_records_data is not None:
             self._save_vehicle_records(instance, vehicle_records_data, update=True)
         
+        # Handle fuel_records nested update
+        if fuel_records_data is not None:
+            self._save_fuel_records(instance, fuel_records_data, update=True)
+        
         return instance
 
     def _save_vehicle_records(self, submission_instance, vehicle_records_data, update=False):
@@ -818,6 +840,61 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             vehicles_to_delete = VehicleRecord.objects.filter(submission=submission_instance).exclude(id__in=keep_vehicle_ids)
             logger.info(f"[DEBUG] Deleting VehicleRecord ids={[v.id for v in vehicles_to_delete]} for submission {submission_instance.id}")
             vehicles_to_delete.delete()
+
+    # Add method to save fuel records
+    def _save_fuel_records(self, submission_instance, fuel_records_data, update=False):
+        from ..models.submission_data import FuelRecord, FuelMonthlyData
+        logger.info(f"[DEBUG] _save_fuel_records called for submission {submission_instance.id}, update={update}")
+        
+        # For update, keep track of IDs to retain
+        keep_source_ids = []
+        for source_data in fuel_records_data:
+            monthly_data = source_data.pop('monthly_data', [])
+            source_id = source_data.get('id', None)
+            if update and source_id:
+                # Update existing fuel record
+                try:
+                    source_obj = FuelRecord.objects.get(id=source_id, submission=submission_instance)
+                    logger.info(f"[DEBUG] Updating FuelRecord id={source_id} for submission {submission_instance.id}")
+                    for attr, value in source_data.items():
+                        setattr(source_obj, attr, value)
+                    source_obj.save()
+                except FuelRecord.DoesNotExist:
+                    logger.warning(f"[DEBUG] FuelRecord id={source_id} not found for submission {submission_instance.id}, creating new.")
+                    source_obj = FuelRecord.objects.create(submission=submission_instance, **source_data)
+            else:
+                logger.info(f"[DEBUG] Creating new FuelRecord for submission {submission_instance.id} (no id or not update mode)")
+                source_obj = FuelRecord.objects.create(submission=submission_instance, **source_data)
+            keep_source_ids.append(source_obj.id)
+
+            # Handle monthly_data for this source
+            keep_monthly_ids = []
+            for month_data in monthly_data:
+                month_id = month_data.get('id', None)
+                if update and month_id:
+                    try:
+                        month_obj = FuelMonthlyData.objects.get(id=month_id, source=source_obj)
+                        logger.info(f"[DEBUG] Updating FuelMonthlyData id={month_id} for source {source_obj.id}")
+                        for attr, value in month_data.items():
+                            setattr(month_obj, attr, value)
+                        month_obj.save()
+                    except FuelMonthlyData.DoesNotExist:
+                        logger.warning(f"[DEBUG] FuelMonthlyData id={month_id} not found for source {source_obj.id}, creating new.")
+                        month_obj = FuelMonthlyData.objects.create(source=source_obj, **month_data)
+                else:
+                    logger.info(f"[DEBUG] Creating new FuelMonthlyData for source {source_obj.id}")
+                    month_obj = FuelMonthlyData.objects.create(source=source_obj, **month_data)
+                keep_monthly_ids.append(month_obj.id)
+            # Delete monthly data not in keep list (for update)
+            if update:
+                deleted_months = FuelMonthlyData.objects.filter(source=source_obj).exclude(id__in=keep_monthly_ids)
+                logger.info(f"[DEBUG] Deleting FuelMonthlyData ids={[m.id for m in deleted_months]} for source {source_obj.id}")
+                deleted_months.delete()
+        # Delete fuel records not in keep list (for update)
+        if update:
+            sources_to_delete = FuelRecord.objects.filter(submission=submission_instance).exclude(id__in=keep_source_ids)
+            logger.info(f"[DEBUG] Deleting FuelRecord ids={[v.id for v in sources_to_delete]} for submission {submission_instance.id}")
+            sources_to_delete.delete()
 
 # --- Serializer for Batch Submissions ---
 
