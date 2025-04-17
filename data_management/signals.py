@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .models import ESGMetricSubmission, BaseESGMetric, ReportedMetricValue
 from .models.polymorphic_metrics import BasicMetric, TimeSeriesMetric
-from .models.submission_data import VehicleMonthlyData
+from .models.submission_data import VehicleMonthlyData, FuelMonthlyData
 from .services.aggregation import calculate_report_value
 from .services.emissions import calculate_emissions_for_activity_value
 
@@ -40,6 +40,29 @@ def trigger_recalculation_on_vehicle_data_change(sender, instance, **kwargs):
     except Exception as e:
         logger.error(f"Error in vehicle monthly data signal handler: {e}", exc_info=True)
         print(f"[DEBUG] Error in vehicle data signal handler: {str(e)}")
+
+@receiver([post_save, post_delete], sender=FuelMonthlyData)
+def trigger_recalculation_on_fuel_data_change(sender, instance, **kwargs):
+    """
+    When FuelMonthlyData is saved or deleted, trigger recalculation by updating
+    the parent submission.
+    """
+    print(f"[DEBUG] Signal triggered for FuelMonthlyData {getattr(instance, 'pk', 'Unknown')}")
+    
+    # Get the parent submission through the fuel source record
+    try:
+        # For post_save, the instance is valid
+        if not kwargs.get('raw', False):  # Skip during fixture loading
+            source = instance.source
+            if source and source.submission_id:
+                submission = ESGMetricSubmission.objects.get(pk=source.submission_id)
+                
+                # Simply touch the submission to trigger its post_save signal
+                submission.save(update_fields=['updated_at'])
+                print(f"[DEBUG] Triggered recalculation by touching submission {submission.pk}")
+    except Exception as e:
+        logger.error(f"Error in fuel monthly data signal handler: {e}", exc_info=True)
+        print(f"[DEBUG] Error in fuel data signal handler: {str(e)}")
 
 @receiver([post_save, post_delete], sender=ESGMetricSubmission)
 def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
@@ -156,7 +179,7 @@ def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
             # For non-time series, non-basic metrics:
             elif not isinstance(metric, BasicMetric):
                 # Special handling for VehicleTrackingMetric
-                from .models.polymorphic_metrics import VehicleTrackingMetric
+                from .models.polymorphic_metrics import VehicleTrackingMetric, FuelConsumptionMetric
                 if isinstance(metric, VehicleTrackingMetric):
                     # For vehicle tracking, we need to aggregate based on vehicle monthly data periods
                     from .models.submission_data import VehicleRecord, VehicleMonthlyData
@@ -180,6 +203,30 @@ def trigger_recalculation_on_submission_change(sender, instance, **kwargs):
                     except Exception as e:
                         logger.error(f"Error finding vehicle monthly periods: {e}")
                         print(f"[DEBUG] Error processing vehicle periods: {e}")
+                # Special handling for FuelConsumptionMetric
+                elif isinstance(metric, FuelConsumptionMetric):
+                    # For fuel consumption, we need to aggregate based on fuel monthly data periods
+                    from .models.submission_data import FuelRecord, FuelMonthlyData
+                    
+                    try:
+                        # Find all fuel records for this submission
+                        fuel_records = FuelRecord.objects.filter(submission_id=instance_pk)
+                        
+                        if fuel_records.exists():
+                            # Get all monthly data periods for these fuel sources
+                            monthly_data_periods = FuelMonthlyData.objects.filter(
+                                source__in=fuel_records
+                            ).values_list('period', flat=True).distinct()
+                            
+                            # Add each period to recalculation set
+                            for period in monthly_data_periods:
+                                if period and assignment_start <= period <= assignment_end:
+                                    periods_to_recalculate.add((period, 'M'))
+                                
+                            print(f"[DEBUG] Found {len(periods_to_recalculate)} fuel monthly periods to recalculate")
+                    except Exception as e:
+                        logger.error(f"Error finding fuel monthly periods: {e}")
+                        print(f"[DEBUG] Error processing fuel periods: {e}")
                 else:
                     # Standard monthly aggregation for other metric types
                     if submission_period:
@@ -233,13 +280,13 @@ def clean_up_orphaned_reported_values(assignment_id, metric_id, layer_id, report
     try:
         print(f"[DEBUG] Checking for orphaned ReportedMetricValue records")
         from .models import ReportedMetricValue, ESGMetricSubmission
-        from .models.polymorphic_metrics import VehicleTrackingMetric, TimeSeriesMetric, MultiFieldTimeSeriesMetric, BaseESGMetric
+        from .models.polymorphic_metrics import VehicleTrackingMetric, TimeSeriesMetric, MultiFieldTimeSeriesMetric, FuelConsumptionMetric, BaseESGMetric
         
         # Check if this is a time series-like metric that can have monthly data
         try:
             metric = BaseESGMetric.objects.get(pk=metric_id)
             real_instance = metric.get_real_instance()
-            is_time_series_metric = isinstance(real_instance, (VehicleTrackingMetric, TimeSeriesMetric, MultiFieldTimeSeriesMetric))
+            is_time_series_metric = isinstance(real_instance, (VehicleTrackingMetric, TimeSeriesMetric, MultiFieldTimeSeriesMetric, FuelConsumptionMetric))
             print(f"[DEBUG] Metric {metric_id} is a time series metric: {is_time_series_metric}")
         except:
             is_time_series_metric = False

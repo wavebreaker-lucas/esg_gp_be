@@ -12,14 +12,31 @@ from .models.templates import (
 )
 from polymorphic.admin import PolymorphicParentModelAdmin, PolymorphicChildModelAdmin, PolymorphicChildModelFilter
 from .models.polymorphic_metrics import (
-    BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
-    TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric,
-    VehicleTrackingMetric, VehicleType, FuelType
+    BaseESGMetric, 
+    BasicMetric, 
+    TabularMetric, 
+    MaterialTrackingMatrixMetric,
+    TimeSeriesMetric, 
+    MultiFieldTimeSeriesMetric, 
+    MultiFieldMetric,
+    VehicleTrackingMetric, 
+    FuelConsumptionMetric,
+    VehicleType, 
+    FuelType, 
+    FuelSourceType
 )
 from .models.submission_data import (
-    BasicMetricData, TimeSeriesDataPoint, TabularMetricRow,
-    MaterialMatrixDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint,
-    VehicleRecord, VehicleMonthlyData, VehicleDataSource
+    BasicMetricData, 
+    TimeSeriesDataPoint, 
+    TabularMetricRow,
+    MaterialMatrixDataPoint, 
+    MultiFieldTimeSeriesDataPoint, 
+    MultiFieldDataPoint,
+    VehicleRecord, 
+    VehicleMonthlyData, 
+    VehicleDataSource, 
+    FuelRecord, 
+    FuelMonthlyData
 )
 from .models.factors import GHGEmissionFactor, PollutantFactor, EnergyConversionFactor
 from .models.results import CalculatedEmissionValue
@@ -205,6 +222,12 @@ class VehicleDataSourceInline(admin.TabularInline):
     fields = ('source_date', 'source_reference', 'kilometers', 'fuel_consumed', 'location', 'notes')
     ordering = ('source_date',)
 
+class FuelMonthlyDataInline(admin.TabularInline):
+    model = FuelMonthlyData
+    extra = 1
+    fields = ('period', 'quantity', 'emission_calculated', 'emission_value', 'emission_unit')
+    ordering = ('period',)
+
 @admin.register(ESGMetricSubmission)
 class ESGMetricSubmissionAdmin(admin.ModelAdmin):
     list_display = (
@@ -249,6 +272,9 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
             elif isinstance(metric, VehicleTrackingMetric):
                 logger.info(f"Adding VehicleRecordInline for submission {obj.pk}")
                 inlines.append(VehicleRecordInline)
+            elif isinstance(metric, FuelConsumptionMetric):
+                logger.info(f"Adding FuelRecordInline for submission {obj.pk}")
+                inlines.append(FuelRecordInline)
             # Add cases for other metric types as needed
             
             logger.info(f"Returning inlines: {[i.__name__ for i in inlines]}")
@@ -292,6 +318,11 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
                 if vehicle_count == 0:
                     return "(No vehicles)"
                 return f"{vehicle_count} vehicle(s)"
+            elif isinstance(metric, FuelConsumptionMetric):
+                source_count = obj.fuel_records.count()
+                if source_count == 0:
+                    return "(No fuel sources)"
+                return f"{source_count} fuel source(s)"
             # Add checks for other metric types (Material, MultiField, etc.) here
             else:
                 return "(Data type not shown)"
@@ -498,6 +529,30 @@ class VehicleTrackingMetricAdmin(PolymorphicChildModelAdmin):
     )
     filter_horizontal = ('vehicle_types', 'fuel_types')  # Makes ManyToMany fields easier to manage
 
+@admin.register(FuelSourceType)
+class FuelSourceTypeAdmin(admin.ModelAdmin):
+    list_display = ['value', 'label']
+    search_fields = ['value', 'label']
+    ordering = ['label']
+
+@admin.register(FuelConsumptionMetric)
+class FuelConsumptionMetricAdmin(PolymorphicChildModelAdmin):
+    base_model = FuelConsumptionMetric
+    # Custom fieldsets for better organization
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'form', 'description', 'order', 'is_required', 'help_text', 'location')
+        }),
+        ('Fuel Configuration', {
+            'fields': ('source_types', 'fuel_types', 'emission_factor_mapping', 'reporting_year', 
+                     'frequency')
+        }),
+        ('Emission Configuration', {
+            'fields': ('emission_category', 'emission_sub_category')
+        })
+    )
+    filter_horizontal = ('source_types', 'fuel_types')  # Makes ManyToMany fields easier to manage
+
 @admin.register(BaseESGMetric)
 class BaseESGMetricAdmin(PolymorphicParentModelAdmin):
     base_model = BaseESGMetric
@@ -510,7 +565,7 @@ class BaseESGMetricAdmin(PolymorphicParentModelAdmin):
         MultiFieldTimeSeriesMetric,
         MultiFieldMetric,
         VehicleTrackingMetric,
-        # Add other metric types here if they are created and registered
+        FuelConsumptionMetric,
     )
     list_display = ('name', 'form', 'polymorphic_ctype', 'order', 'location', 'is_required')
     list_filter = (PolymorphicChildModelFilter, 'form', 'location', 'is_required') # Filter by specific metric type
@@ -800,6 +855,15 @@ class VehicleMonthlyDataAdmin(admin.ModelAdmin):
     raw_id_fields = ['vehicle']
     inlines = [VehicleDataSourceInline]
 
+@admin.register(FuelMonthlyData)
+class FuelMonthlyDataAdmin(admin.ModelAdmin):
+    list_display = ['source', 'period', 'quantity', 'emission_calculated', 'emission_value']
+    list_filter = ['period', 'emission_calculated', 'source__source_type__value', 'source__fuel_type__value']
+    search_fields = ['source__name', 'source__source_type__label', 'source__fuel_type__label']
+    ordering = ['source', 'period']
+    date_hierarchy = 'period'
+    raw_id_fields = ['source']
+
 @admin.register(VehicleDataSource)
 class VehicleDataSourceAdmin(admin.ModelAdmin):
     list_display = ['source_reference', 'source_date', 'get_vehicle', 'kilometers', 'fuel_consumed', 'location']
@@ -812,3 +876,93 @@ class VehicleDataSourceAdmin(admin.ModelAdmin):
         return obj.vehicle_monthly_data.vehicle if obj.vehicle_monthly_data else None
     get_vehicle.short_description = "Vehicle"
     get_vehicle.admin_order_field = "vehicle_monthly_data__vehicle"
+
+@admin.register(FuelRecord)
+class FuelRecordAdmin(admin.ModelAdmin):
+    list_display = ['name', 'source_type', 'fuel_type', 'submission', 'is_active']
+    list_filter = ['source_type__value', 'fuel_type__value', 'is_active', 'submission__metric']
+    search_fields = ['name', 'notes', 'source_type__label', 'fuel_type__label']
+    raw_id_fields = ['submission', 'source_type', 'fuel_type']
+    inlines = [FuelMonthlyDataInline]
+
+# Custom form for FuelRecord that uses the ForeignKey relationships
+class FuelRecordForm(forms.ModelForm):
+    class Meta:
+        model = FuelRecord
+        fields = '__all__'
+        widgets = {
+            'submission': forms.HiddenInput(),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        instance = kwargs.get('instance')
+        initial = kwargs.get('initial', {})
+        
+        submission_id = None
+        if instance and instance.submission_id:
+            submission_id = instance.submission_id
+        elif 'submission' in initial:
+            submission_id = initial.get('submission')
+        
+        if submission_id:
+            try:
+                # Get the submission and metric
+                submission = ESGMetricSubmission.objects.get(pk=submission_id)
+                metric = submission.metric.get_real_instance()
+                
+                # Only proceed if it's a FuelConsumptionMetric
+                if isinstance(metric, FuelConsumptionMetric):
+                    # Filter choices to only those associated with this metric
+                    self.fields['source_type'].queryset = metric.source_types.all()
+                    self.fields['fuel_type'].queryset = metric.fuel_types.all()
+                    
+                    logger.info(f"Loaded source type and fuel choices from metric {metric.pk} for submission {submission_id}")
+            except Exception as e:
+                logger.error(f"Error loading choices for FuelRecordForm: {e}", exc_info=True)
+
+class FuelRecordInline(admin.StackedInline):
+    """Inline admin for FuelRecord objects in the ESGMetricSubmission admin."""
+    model = FuelRecord
+    form = FuelRecordForm
+    extra = 1
+    fields = ('name', 'source_type', 'fuel_type', 'notes', 'is_active')
+
+    def get_formset(self, request, obj=None, **kwargs):
+        """Override to customize the inline formset for FuelRecords."""
+        formset = super().get_formset(request, obj, **kwargs)
+        
+        # Store the original __init__ method
+        original_init = formset.__init__
+        
+        # Define a new __init__ method that sets up the source and fuel type choices
+        def new_init(self, *args, **kwargs):
+            # Call the original __init__
+            original_init(self, *args, **kwargs)
+            
+            # Set up source and fuel type choices for each form
+            if obj is not None:
+                try:
+                    # Get the specific metric instance
+                    metric = obj.metric.get_real_instance()
+                    if isinstance(metric, FuelConsumptionMetric):
+                        # Get the source and fuel types
+                        source_types = metric.source_types.all()
+                        fuel_types = metric.fuel_types.all()
+                        
+                        # Apply to each form in the formset
+                        for form in self.forms:
+                            form.fields['source_type'].queryset = source_types
+                            form.fields['fuel_type'].queryset = fuel_types
+                            
+                        # Also set for the empty form
+                        if hasattr(self, 'empty_form'):
+                            self.empty_form.fields['source_type'].queryset = source_types
+                            self.empty_form.fields['fuel_type'].queryset = fuel_types
+                except Exception as e:
+                    logger.error(f"Error setting up source and fuel types in inline formset: {e}")
+        
+        # Replace the formset's __init__ method
+        formset.__init__ = new_init
+        
+        return formset
