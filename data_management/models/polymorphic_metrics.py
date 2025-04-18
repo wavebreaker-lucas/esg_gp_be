@@ -609,10 +609,18 @@ class VehicleTrackingMetric(BaseESGMetric):
         return f"[Vehicle Tracking - {self.get_frequency_display()}] {super().__str__()}"
     
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Ensure default is True for new instances
-        if 'requires_evidence' not in kwargs and getattr(self, 'requires_evidence', None) is None:
-             self.requires_evidence = True # Set default here
+        requires_evidence_kwarg = kwargs.pop('requires_evidence', None) # Check if passed
+
+        super().__init__(*args, **kwargs) # Let super init (sets requires_evidence=False)
+
+        # Now, set our desired default *if* it wasn't passed explicitly
+        if requires_evidence_kwarg is None:
+             self.requires_evidence = True # Override the superclass default
+        elif requires_evidence_kwarg is not None:
+            # If it *was* passed, make sure to set it
+            self.requires_evidence = requires_evidence_kwarg
+
+        # Restore other logic
         self.allow_multiple_submissions_per_period = False
         self.aggregates_inputs = True
         # Set default emission category for vehicle tracking
@@ -833,10 +841,18 @@ class FuelConsumptionMetric(BaseESGMetric):
         return f"[Fuel Consumption - {self.get_frequency_display()}] {super().__str__()}"
     
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Ensure default is True for new instances
-        if 'requires_evidence' not in kwargs and getattr(self, 'requires_evidence', None) is None:
-             self.requires_evidence = True # Set default here
+        requires_evidence_kwarg = kwargs.pop('requires_evidence', None) # Check if passed
+
+        super().__init__(*args, **kwargs) # Let super init (sets requires_evidence=False)
+
+        # Now, set our desired default *if* it wasn't passed explicitly
+        if requires_evidence_kwarg is None:
+             self.requires_evidence = True # Override the superclass default
+        elif requires_evidence_kwarg is not None:
+            # If it *was* passed, make sure to set it
+            self.requires_evidence = requires_evidence_kwarg
+
+        # Restore other logic
         self.allow_multiple_submissions_per_period = False
         self.aggregates_inputs = True
         # Set default emission category for fuel tracking
