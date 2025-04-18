@@ -904,6 +904,7 @@ class FuelConsumptionMetric(BaseESGMetric):
                 total_source_consumption = source_monthly_data.aggregate(total=Sum('quantity'))['total'] or 0
                 
                 source_details.append({
+                    'id': source.id,  # <-- Added for emission uniqueness
                     'source_type_value': source.source_type.value,
                     'source_type_label': source.source_type.label,
                     'fuel_type_value': source.fuel_type.value,
