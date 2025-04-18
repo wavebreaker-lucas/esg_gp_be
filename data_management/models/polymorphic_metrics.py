@@ -610,6 +610,9 @@ class VehicleTrackingMetric(BaseESGMetric):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Ensure default is True for new instances
+        if 'requires_evidence' not in kwargs and getattr(self, 'requires_evidence', None) is None:
+             self.requires_evidence = True # Set default here
         self.allow_multiple_submissions_per_period = False
         self.aggregates_inputs = True
         # Set default emission category for vehicle tracking
@@ -831,6 +834,9 @@ class FuelConsumptionMetric(BaseESGMetric):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Ensure default is True for new instances
+        if 'requires_evidence' not in kwargs and getattr(self, 'requires_evidence', None) is None:
+             self.requires_evidence = True # Set default here
         self.allow_multiple_submissions_per_period = False
         self.aggregates_inputs = True
         # Set default emission category for fuel tracking

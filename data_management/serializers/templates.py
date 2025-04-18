@@ -294,10 +294,10 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
         from ..models.submission_data import VehicleRecord, FuelRecord
 
     def get_uploaded_by_name(self, obj):
-        return obj.uploaded_by.get_full_name() if obj.uploaded_by else None
+        return obj.uploaded_by.email if obj.uploaded_by else None
 
     def get_edited_by_name(self, obj):
-        return obj.edited_by.get_full_name() if obj.edited_by else None
+        return obj.edited_by.email if obj.edited_by else None
 
     def get_layer_name(self, obj):
         return obj.layer.company_name if obj.layer else None
