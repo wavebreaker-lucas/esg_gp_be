@@ -4,11 +4,12 @@ from datetime import datetime
 # Import the new polymorphic metric models
 from ..models.polymorphic_metrics import (
     BaseESGMetric, TimeSeriesMetric, MaterialTrackingMatrixMetric,
-    MultiFieldTimeSeriesMetric, VehicleTrackingMetric
+    MultiFieldTimeSeriesMetric, VehicleTrackingMetric, FuelConsumptionMetric
 )
 
 # Import VehicleRecord with absolute path
 from data_management.models.submission_data import VehicleRecord  # Added for direct access
+from data_management.models.submission_data import FuelRecord # Added for direct access
 
 # Configure logging to show in console
 logging.basicConfig(
@@ -83,6 +84,38 @@ def find_relevant_evidence(submission, user=None):
                 base_query | vehicle_query
             ).distinct()  # Ensure no duplicates
         
+        # --- NEW: Add Fuel Source Check ---
+        elif isinstance(specific_metric, FuelConsumptionMetric):
+            # Get the base query
+            from django.db.models import Q
+            base_query = Q(
+                intended_metric=submission.metric,
+                layer=submission.layer
+            )
+            
+            # Add source_identifier if present
+            if submission.source_identifier:
+                base_query &= Q(source_identifier=submission.source_identifier)
+            
+            # Add period if present
+            if submission.reporting_period:
+                base_query &= Q(period=submission.reporting_period)
+            
+            # Add user filter if present
+            if user:
+                base_query &= Q(uploaded_by=user)
+            
+            # Create a query for matching fuel sources
+            fuel_query = Q(target_fuel_source_id__in=FuelRecord.objects.filter(
+                submission=submission
+            ).values_list('id', flat=True))
+            
+            # Apply the combined filter
+            evidence_query = ESGMetricEvidence.objects.filter(
+                base_query | fuel_query
+            ).distinct() # Ensure no duplicates
+        # --- END: Fuel Source Check ---
+        
         # Determine if time-based by checking the type
         is_time_based = isinstance(specific_metric, (
             TimeSeriesMetric,
@@ -97,4 +130,4 @@ def find_relevant_evidence(submission, user=None):
         # If we can't determine the type, just continue with the basic matching
         pass
     
-    return evidence_query.select_related('layer', 'intended_metric', 'target_vehicle') 
+    return evidence_query.select_related('layer', 'intended_metric', 'target_vehicle', 'target_fuel_source') 

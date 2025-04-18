@@ -18,7 +18,7 @@ from ..models.polymorphic_metrics import (
 from ..models.submission_data import (
     BasicMetricData, TabularMetricRow, MaterialMatrixDataPoint, 
     TimeSeriesDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint,
-    VehicleRecord  # Added import for VehicleRecord
+    VehicleRecord, FuelRecord  # Added import for VehicleRecord and FuelRecord
 )
 # Import the new submission data serializers
 from .submission_data import (
@@ -256,6 +256,21 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
     # Add target_vehicle_info field for read operations
     target_vehicle_info = serializers.SerializerMethodField(read_only=True)
     
+    # --- Add Fuel Source Linking ---
+    # Add target_fuel_source_id field for write operations
+    target_fuel_source_id = serializers.PrimaryKeyRelatedField(
+        source='target_fuel_source',
+        queryset=FuelRecord.objects.all(),
+        required=False,
+        allow_null=True,
+        write_only=True
+    )
+    
+    # Add target_fuel_source_info field for read operations
+    target_fuel_source_info = serializers.SerializerMethodField(read_only=True)
+    
+    # --- End Fuel Source Linking ---
+
     class Meta:
         model = ESGMetricEvidence
         # submission field points to ESGMetricSubmission, intended_metric points to BaseESGMetric - OK
@@ -266,38 +281,47 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
             'period', 'was_manually_edited', 'edited_at', 
             'edited_by', 'edited_by_name', 'intended_metric', # Removed submission
             'layer_id', 'layer_name', 'source_identifier', # Added source_identifier
-            'target_vehicle_id', 'target_vehicle_info' # Added vehicle fields
+            'target_vehicle_id', 'target_vehicle_info', # Added vehicle fields
+            'target_fuel_source_id', 'target_fuel_source_info' # Added fuel source fields
         ]
         read_only_fields = [
-            'uploaded_by', 'uploaded_at', 'is_processed_by_ocr', 
-            'extracted_value', 'period', 'was_manually_edited',
-            'edited_at', 'edited_by', 'layer_name',
-            'target_vehicle_info' # Added as read-only
+            'id', 'filename', 'file_type', 'uploaded_by_name', 'uploaded_at',
+            'is_processed_by_ocr', 'edited_at', 'edited_by_name',
+            'layer_name', 'target_vehicle_info', 'target_fuel_source_info' # Added fuel source info
         ]
-    
+        # Ensure imports are present
+        # from data_management.models import VehicleRecord
+        from ..models.submission_data import VehicleRecord, FuelRecord
+
     def get_uploaded_by_name(self, obj):
-        if obj.uploaded_by:
-            return obj.uploaded_by.email
-        return None
-        
+        return obj.uploaded_by.get_full_name() if obj.uploaded_by else None
+
     def get_edited_by_name(self, obj):
-        if obj.edited_by:
-            return obj.edited_by.email
-        return None
-        
+        return obj.edited_by.get_full_name() if obj.edited_by else None
+
     def get_layer_name(self, obj):
-        if obj.layer:
-            return obj.layer.company_name
-        return None
-    
+        return obj.layer.company_name if obj.layer else None
+        
     def get_target_vehicle_info(self, obj):
-        """Return basic information about the target vehicle if set"""
+        """Return basic info about the linked vehicle."""
         if obj.target_vehicle:
+            # Access related fields directly or via properties/methods on VehicleRecord
             return {
                 'id': obj.target_vehicle.id,
-                'registration_number': obj.target_vehicle.registration_number,
-                'brand': obj.target_vehicle.brand,
-                'model': obj.target_vehicle.model
+                'registration': obj.target_vehicle.registration_number,
+                'type': obj.target_vehicle.vehicle_type.label if obj.target_vehicle.vehicle_type else None,
+                'fuel': obj.target_vehicle.fuel_type.label if obj.target_vehicle.fuel_type else None
+            }
+        return None
+        
+    def get_target_fuel_source_info(self, obj):
+        """Return basic info about the linked fuel source."""
+        if obj.target_fuel_source:
+            return {
+                'id': obj.target_fuel_source.id,
+                'name': obj.target_fuel_source.name,
+                'type': obj.target_fuel_source.source_type.label if obj.target_fuel_source.source_type else None,
+                'fuel': obj.target_fuel_source.fuel_type.label if obj.target_fuel_source.fuel_type else None
             }
         return None
 

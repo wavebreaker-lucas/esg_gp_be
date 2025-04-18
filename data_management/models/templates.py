@@ -275,6 +275,16 @@ class ESGMetricEvidence(models.Model):
         help_text="The specific vehicle this evidence relates to, if any."
     )
     
+    # NEW: Direct link to a specific fuel source
+    target_fuel_source = models.ForeignKey(
+        'data_management.FuelRecord',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='evidence_files',
+        help_text="The specific fuel source this evidence relates to, if any."
+    )
+    
     # OCR-related fields remain the same, relate to the evidence file itself
     enable_ocr_processing = models.BooleanField(default=True, help_text="Whether OCR processing is available for this evidence file")
     is_processed_by_ocr = models.BooleanField(default=False, help_text="Whether OCR processing has been attempted")
