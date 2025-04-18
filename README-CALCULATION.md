@@ -70,6 +70,18 @@ This approach allows:
 * Updates to emission factor mappings without code changes
 * Flexible configuration to match available emission factors in the database
 
+#### 2.2 Dynamic Factor Mapping for Fuel Consumption
+
+For the `FuelConsumptionMetric`, a similar dynamic approach is used:
+
+* The **base emission category** is set to "stationary_combustion".
+* The `get_emission_subcategory(fuel_type)` method dynamically selects the appropriate emission subcategory based on the source's fuel type (e.g., "diesel_oil" → "stationary_diesel").
+* The `emission_factor_mapping` field on the metric allows overrides.
+
+This allows:
+* A single metric definition to handle different emission factors for different fuel types.
+* Updates to emission factor mappings without code changes.
+
 ### 3. Calculated Result Models (`data_management/models/results.py`)
 
 These models store the output of the calculations, providing traceability back to the source data and the factor used.
@@ -78,9 +90,9 @@ These models store the output of the calculations, providing traceability back t
     *   Stores the calculated GHG emission value (e.g., kgCO2e).
     *   Links to the source `ReportedMetricValue` (`source_activity_value`).
     *   Links to the `GHGEmissionFactor` used (`emission_factor`).
-    *   Links to specific `VehicleRecord` for vehicle-based calculations.
+    *   Links to specific `VehicleRecord` or `FuelRecord` for corresponding calculations.
     *   Includes copied context (assignment, layer, period, level, scope).
-    *   Uses a unique_together constraint on [`source_activity_value`, `emission_factor`, `related_group_id`, `is_primary_record`, `vehicle_record`] to ensure data integrity.
+    *   Uses a `unique_together` constraint on [`source_activity_value`, `emission_factor`, `related_group_id`, `is_primary_record`, `vehicle_record`, `fuel_record`] to ensure data integrity.
 
 *   **`CalculatedPollutantValue`**:
     *   Stores calculated NOx, SOx, and PM values (typically in grams).
@@ -124,7 +136,7 @@ The vehicle emissions calculation extends the standard emissions calculation wit
 Emission factors are populated and maintained through management commands:
 
 *   **`populate_emission_factors` command:**
-    * Creates/updates emission factors for electricity, towngas, and transport
+    * Creates/updates emission factors for electricity, towngas, transport, and **stationary combustion**.
     * Includes factors for different years (2023, 2025) to support multi-year reporting
     * Handles various regions (HK, PRC, ALL) and vehicle/fuel combinations
     * Ensures correct factors exist for all supported vehicle types and fuel types
@@ -140,21 +152,21 @@ Emission factors are populated and maintained through management commands:
     - **Manually via functions:** Using `calculate_emissions_for_activity_value`, `calculate_emissions_for_assignment`, or `recalculate_all_emissions`.
 2.  **Select Activity Data:** The process identifies `ReportedMetricValue` records that require calculation (filtering on `metric__emission_category` and `metric__emission_sub_category`).
 3.  **Lookup Factor:** For a given `ReportedMetricValue`:
-    *   The linked `BaseESGMetric` instance is retrieved.
+    *   The linked `BaseESGMetric` instance (and its specific type) is retrieved.
     *   Relevant linking keys (`emission_category`, `emission_sub_category`) are extracted from the metric definition.
-    *   **For VehicleTrackingMetric**: The emission_subcategory is dynamically determined using the `get_emission_subcategory` method
+    *   **For VehicleTrackingMetric/FuelConsumptionMetric**: The emission_subcategory is dynamically determined using the `get_emission_subcategory` method.
     *   Context is extracted:
         *   `year` from the `ReportedMetricValue.reporting_period`
         *   `region` from the `BaseESGMetric.location` field (NOT from the layer)
     *   Factors are queried with robust fallback logic (exact match → combined regions → universal regions → earlier years).
     *   Emission scope is determined by the matched factor in the database, not inferred from categories.
 4.  **Perform Calculation:** When a matching factor is found:
-    *   The activity amount is retrieved from `ReportedMetricValue.aggregated_numeric_value`.
-    *   For vehicle tracking metrics, specialized logic in `calculate_vehicle_emissions` function processes the structured vehicle data.
+    *   The activity amount is retrieved from `ReportedMetricValue.aggregated_numeric_value` or `ReportedMetricValue.aggregated_text_value` (if structured data like vehicles/fuel sources).
+    *   The appropriate calculation strategy is selected based on the metric type (`get_strategy_for_metric`).
+    *   The strategy processes the activity data (e.g., looping through vehicles or fuel sources in `aggregated_text_value`).
     *   Unit conversion is performed if needed, with common conversions handled automatically.
-    *   The (potentially converted) activity amount is multiplied by the factor value.
-    *   For vehicle metrics, calculations are performed separately for each vehicle record.
-5.  **Store Result:** The calculated value is saved into the `CalculatedEmissionValue` model, linking back to the source `ReportedMetricValue` and the factor used. For vehicle metrics, each vehicle gets its own record.
+    *   The (potentially converted) activity amount for each component (vehicle/source) is multiplied by the factor value.
+5.  **Store Result:** The calculated value is saved into the `CalculatedEmissionValue` model, linking back to the source `ReportedMetricValue` and the factor used. For metrics with multiple components (vehicles/fuel sources), each component gets its own record linked to the appropriate `VehicleRecord` or `FuelRecord`, and a primary summary record is created.
 6.  **Cleanup:** Orphaned calculations (those with no valid source RPVs) are automatically removed during recalculation.
 
 ## Implementation Status
@@ -163,8 +175,8 @@ Emission factors are populated and maintained through management commands:
     *   Relies on metric configuration (`emission_category`, `emission_sub_category`, `location`) and factor database.
     *   Scope is determined by the factor database, not inferred by the system.
     *   **Automatic triggering** implemented via Django signals in `data_management/signals.py`.
-    *   **Special handling for VehicleTrackingMetric** with dynamic emission subcategory mapping.
-    *   **Vehicle-specific calculation logic** implemented with proper per-vehicle record uniqueness constraints.
+    *   **Special handling for VehicleTrackingMetric and FuelConsumptionMetric** with dynamic emission subcategory mapping and calculation strategies.
+    *   **Component-specific calculation logic** implemented with proper per-vehicle/per-fuel-source record uniqueness constraints.
 *   **Pollutant Calculation:** To be implemented in `data_management/services/pollutants.py`.
 *   **Energy Conversion Calculation:** To be implemented in `data_management/services/energy.py`.
 

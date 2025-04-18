@@ -610,7 +610,7 @@ class VehicleTrackingMetric(BaseESGMetric):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.allow_multiple_submissions_per_period = True
+        self.allow_multiple_submissions_per_period = False
         self.aggregates_inputs = True
         # Set default emission category for vehicle tracking
         if not self.emission_category:
@@ -831,7 +831,7 @@ class FuelConsumptionMetric(BaseESGMetric):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.allow_multiple_submissions_per_period = True
+        self.allow_multiple_submissions_per_period = False
         self.aggregates_inputs = True
         # Set default emission category for fuel tracking
         if not self.emission_category:

@@ -107,6 +107,76 @@ The system provides:
    - Calculate: fuel_consumed * emission_factor
    - Store in CalculatedEmissionValue, linked to specific vehicle record
 
+### FuelConsumptionMetric
+
+The FuelConsumptionMetric is a specialized metric designed for tracking fuel consumption data from stationary sources like generators, boilers, or other equipment, with support for emissions calculations.
+
+#### Key Features
+
+- **Multiple Source Support**: Tracks fuel consumption from various sources within a single metric.
+- **Source Metadata**: Records source name, source type, and fuel type.
+- **Monthly Data Tracking**: Captures fuel quantity consumed on a monthly basis.
+- **Multi-level Data Structure**: Organizes data hierarchically:
+  - FuelRecord: Stores static source information (name, source type, fuel type).
+  - FuelMonthlyData: Aggregates fuel quantity consumed for each month.
+- **Emissions Calculation**: Integrates with the emissions calculation system using appropriate factors based on fuel type.
+  - Properly calculates emissions for each source individually based on its specific fuel type.
+  - Uses unique constraints to ensure calculation integrity per fuel record.
+
+#### Implementation Details
+
+##### Data Structure
+
+The FuelConsumptionMetric uses a hierarchical data structure similar to VehicleTrackingMetric:
+
+1. **FuelConsumptionMetric** (`polymorphic_metrics.py`)
+   - Configures available source types (e.g., electricity generators, boilers).
+   - Configures available fuel types (e.g., diesel oil, LPG, natural gas) via `StationaryFuelType`.
+   - Defines the emission factor mapping between fuel types and emission subcategories.
+   - Provides dynamic subcategory selection via `get_emission_subcategory(fuel_type)`.
+   - Implements `calculate_aggregate()` to sum fuel consumption across sources.
+
+2. **FuelRecord** (`submission_data.py`)
+   - Stores per-source metadata (name, notes).
+   - Links to its parent ESGMetricSubmission.
+   - Links to `FuelSourceType` and `StationaryFuelType` models for classification.
+
+3. **FuelMonthlyData** (`submission_data.py`)
+   - Links to a parent FuelRecord.
+   - Stores monthly consumption data (period, quantity).
+
+##### Emissions Calculation Integration
+
+FuelConsumptionMetric integrates with the emissions calculation system through:
+
+1. **Dynamic Emission Category Mapping**: Uses a default `emission_category` ("stationary_combustion") and derives the `emission_sub_category` based on fuel type using `get_emission_subcategory(fuel_type)`.
+2. **Specialized Handling in Emissions Calculation Service**:
+   - Detects FuelConsumptionMetric type during calculation.
+   - Uses the metric's `get_emission_subcategory` to determine appropriate emission factor.
+   - Creates individual emission calculations per fuel record.
+   - Ensures uniqueness by including fuel_record in `unique_together` constraint.
+   - Handles unit conversion implicitly via factor lookup.
+
+##### Admin Interface Integration
+
+The system provides:
+- Admin interfaces for `FuelConsumptionMetric`, `FuelRecord`, `FuelMonthlyData`, `FuelSourceType`, `StationaryFuelType`.
+- Inline editing for hierarchical data (e.g., monthly data within fuel records).
+
+##### Example Data Flow
+
+1. **Data Entry**:
+   - Create a FuelRecord for "Generator #1" with type "electricity_generators" and fuel "diesel_oil".
+   - Add FuelMonthlyData for each month (Jan-Dec).
+2. **Aggregation**:
+   - FuelConsumptionMetric's `calculate_aggregate` sums fuel consumption.
+   - Result stored in ReportedMetricValue.
+3. **Emissions Calculation**:
+   - Dynamic subcategory lookup: "diesel_oil" → "stationary_diesel".
+   - Find appropriate emission factor (e.g., 2.6167 kgCO2e/liter).
+   - Calculate: fuel_consumed * emission_factor.
+   - Store in CalculatedEmissionValue, linked to specific fuel record.
+
 ## Layer Support
 
 (This section remains largely the same, as layer support applies to both inputs and reported values)
