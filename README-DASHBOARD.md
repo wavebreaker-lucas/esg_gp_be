@@ -207,8 +207,8 @@ The endpoints use Django's ORM for efficient database queries and include parame
 
 ## Security
 
-- All dashboard endpoints require user authentication (`@login_required`).
-- The endpoints are read-only (`@require_GET`).
+- All dashboard endpoints require user authentication using DRF's `IsAuthenticated` permission class, consistent with other API endpoints.
+- The endpoints are read-only (HTTP GET method only).
 - Error handling prevents exposing sensitive information in error messages.
 
 ## Future Enhancements
