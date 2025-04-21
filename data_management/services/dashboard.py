@@ -101,32 +101,36 @@ def get_total_emissions(
         for item in scope_data:
             item['percentage'] = (item['total'] / total) * 100
     
-    # Group by category
+    # Group by category and scope
     category_data = list(queryset.values(
-            'source_activity_value__metric__emission_category'
+            'source_activity_value__metric__emission_category',
+            'emission_scope'
         )
         .annotate(
             category=F('source_activity_value__metric__emission_category'),
+            scope=F('emission_scope'),
             total=Sum('calculated_value')
         )
-        .order_by('category'))
+        .order_by('category', 'scope'))
     
     # Calculate percentages for category data
     if total > 0:
         for item in category_data:
             item['percentage'] = (item['total'] / total) * 100
     
-    # Group by subcategory
+    # Group by subcategory and scope
     subcategory_data = list(queryset.values(
             'source_activity_value__metric__emission_category',
-            'source_activity_value__metric__emission_sub_category'
+            'source_activity_value__metric__emission_sub_category',
+            'emission_scope'
         )
         .annotate(
             category=F('source_activity_value__metric__emission_category'),
             subcategory=F('source_activity_value__metric__emission_sub_category'),
+            scope=F('emission_scope'),
             total=Sum('calculated_value')
         )
-        .order_by('category', 'subcategory'))
+        .order_by('category', 'subcategory', 'scope'))
     
     # Calculate percentages for subcategory data
     if total > 0:
