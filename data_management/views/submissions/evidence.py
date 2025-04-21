@@ -12,7 +12,7 @@ from ...services.bill_analyzer import UtilityBillAnalyzer
 from accounts.permissions import BakerTillyAdmin
 from accounts.models import LayerProfile
 from ...models.polymorphic_metrics import BaseESGMetric, BasicMetric
-from ...models.submission_data import BasicMetricData, VehicleRecord
+from ...models.submission_data import BasicMetricData, VehicleRecord, FuelRecord
 
 
 class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
@@ -113,6 +113,18 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             except VehicleRecord.DoesNotExist:
                 return Response({'error': 'Vehicle not found'}, status=404)
         
+        # --- Add Fuel Source Handling ---
+        target_fuel_source_id = request.data.get('target_fuel_source_id')
+        target_fuel_source = None
+        if target_fuel_source_id:
+            try:
+                # Ensure FuelRecord is imported if not already
+                target_fuel_source = FuelRecord.objects.get(id=target_fuel_source_id)
+                # Optional: Add permission check for fuel source access
+            except FuelRecord.DoesNotExist:
+                return Response({'error': 'Fuel Source not found'}, status=404)
+        # --- End Fuel Source Handling ---
+        
         # Create standalone evidence record
         evidence = ESGMetricEvidence.objects.create(
             file=file_obj,
@@ -124,7 +136,8 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
             intended_metric=metric,  # Use the new field for metric relationship
             layer=layer,  # Set the layer
             source_identifier=source_identifier,  # Set the source identifier
-            target_vehicle=target_vehicle  # Set the target vehicle
+            target_vehicle=target_vehicle,  # Set the target vehicle
+            target_fuel_source=target_fuel_source # Pass the fetched fuel source
         )
         
         # Prepare response - use serializer to include layer_id and layer_name
