@@ -303,14 +303,20 @@ class ESGMetricEvidenceSerializer(serializers.ModelSerializer):
         return obj.layer.company_name if obj.layer else None
         
     def get_target_vehicle_info(self, obj):
-        """Return basic info about the linked vehicle."""
+        """Return basic info about the target vehicle, if linked."""
         if obj.target_vehicle:
-            # Access related fields directly or via properties/methods on VehicleRecord
             return {
                 'id': obj.target_vehicle.id,
                 'registration': obj.target_vehicle.registration_number,
-                'type': obj.target_vehicle.vehicle_type.label if obj.target_vehicle.vehicle_type else None,
-                'fuel': obj.target_vehicle.fuel_type.label if obj.target_vehicle.fuel_type else None
+                # Use the string representation of the related objects for type/fuel
+                'type': str(obj.target_vehicle.vehicle_type) if obj.target_vehicle.vehicle_type else None,
+                'fuel': str(obj.target_vehicle.fuel_type) if obj.target_vehicle.fuel_type else None,
+                # --- Added fields ---
+                'brand': obj.target_vehicle.brand,
+                'model': obj.target_vehicle.model,
+                'notes': obj.target_vehicle.notes,
+                'is_active': obj.target_vehicle.is_active
+                # --- End added fields ---
             }
         return None
         
