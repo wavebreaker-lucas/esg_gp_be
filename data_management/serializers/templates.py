@@ -836,34 +836,66 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                 vehicle_obj = VehicleRecord.objects.create(submission=submission_instance, **vehicle_data)
             keep_vehicle_ids.append(vehicle_obj.id)
 
-            # Handle monthly_data for this vehicle
+            # Initialize keep_monthly_ids for the current vehicle
             keep_monthly_ids = []
+
+            # Process monthly data
             for month_data in monthly_data:
-                month_id = month_data.get('id', None)
-                if update and month_id:
+                month_id = month_data.get('id')
+                period = month_data.get('period')
+                kilometers = month_data.get('kilometers')
+                fuel_consumed = month_data.get('fuel_consumed')
+
+                if month_id:
+                    # Update existing monthly data
                     try:
                         month_obj = VehicleMonthlyData.objects.get(id=month_id, vehicle=vehicle_obj)
-                        logger.info(f"[DEBUG] Updating VehicleMonthlyData id={month_id} for vehicle {vehicle_obj.id}")
-                        for attr, value in month_data.items():
-                            setattr(month_obj, attr, value)
+                        # Update fields
+                        month_obj.period = period
+                        month_obj.kilometers = kilometers
+                        month_obj.fuel_consumed = fuel_consumed
+                        # TODO: Add other fields? emission_calculated, emission_value etc?
                         month_obj.save()
+                        keep_monthly_ids.append(month_id)
                     except VehicleMonthlyData.DoesNotExist:
-                        logger.warning(f"[DEBUG] VehicleMonthlyData id={month_id} not found for vehicle {vehicle_obj.id}, creating new.")
-                        month_obj = VehicleMonthlyData.objects.create(vehicle=vehicle_obj, **month_data)
+                        logger.warning(f"VehicleMonthlyData with id {month_id} for vehicle {vehicle_obj.id} not found during update.")
+                        # Optionally create it if missing? Or just skip? Skipping for now.
+                        pass # Or raise an error?
                 else:
-                    logger.info(f"[DEBUG] Creating new VehicleMonthlyData for vehicle {vehicle_obj.id}")
-                    month_obj = VehicleMonthlyData.objects.create(vehicle=vehicle_obj, **month_data)
-                keep_monthly_ids.append(month_obj.id)
-            # Delete monthly data not in keep list (for update)
+                    # Create new monthly data
+                    month_obj = VehicleMonthlyData.objects.create(
+                        vehicle=vehicle_obj,
+                        period=period,
+                        kilometers=kilometers,
+                        fuel_consumed=fuel_consumed
+                        # TODO: Add other fields?
+                    )
+                    # --- FIX STARTS HERE ---
+                    # Add the newly created object's ID to the keep list
+                    keep_monthly_ids.append(month_obj.id)
+                    # --- FIX ENDS HERE ---
+
+            # Monthly data cleanup (only if updating the submission)
             if update:
-                deleted_months = VehicleMonthlyData.objects.filter(vehicle=vehicle_obj).exclude(id__in=keep_monthly_ids)
-                logger.info(f"[DEBUG] Deleting VehicleMonthlyData ids={[m.id for m in deleted_months]} for vehicle {vehicle_obj.id}")
-                deleted_months.delete()
-        # Delete vehicle records not in keep list (for update)
+                # Find monthly data linked to this vehicle in DB but NOT in the keep list
+                deleted_months = VehicleMonthlyData.objects.filter(
+                    vehicle=vehicle_obj).exclude(id__in=keep_monthly_ids)
+                if deleted_months.exists():
+                    count = deleted_months.count()
+                    logger.info(f"Deleting {count} orphaned VehicleMonthlyData records for vehicle {vehicle_obj.id} (IDs not in {keep_monthly_ids}): {list(deleted_months.values_list('id', flat=True))}")
+                    deleted_months.delete()
+
+        # Vehicle record cleanup (only if updating the submission)
         if update:
-            vehicles_to_delete = VehicleRecord.objects.filter(submission=submission_instance).exclude(id__in=keep_vehicle_ids)
-            logger.info(f"[DEBUG] Deleting VehicleRecord ids={[v.id for v in vehicles_to_delete]} for submission {submission_instance.id}")
-            vehicles_to_delete.delete()
+            # Find vehicle records linked to this submission but NOT in the keep list
+            deleted_vehicles = VehicleRecord.objects.filter(
+                submission=submission_instance).exclude(id__in=keep_vehicle_ids)
+            if deleted_vehicles.exists():
+                count = deleted_vehicles.count()
+                logger.info(f"Deleting {count} orphaned VehicleRecord records for submission {submission_instance.id} (IDs not in {keep_vehicle_ids}): {list(deleted_vehicles.values_list('id', flat=True))}")
+                deleted_vehicles.delete()
+
+        return submission_instance # Return the updated submission instance
 
     # Add method to save fuel records
     def _save_fuel_records(self, submission_instance, fuel_records_data, update=False):
@@ -905,10 +937,18 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                     except FuelMonthlyData.DoesNotExist:
                         logger.warning(f"[DEBUG] FuelMonthlyData id={month_id} not found for source {source_obj.id}, creating new.")
                         month_obj = FuelMonthlyData.objects.create(source=source_obj, **month_data)
+                    # --- FIX STARTS HERE ---
+                    # Add the newly created object's ID to the keep list
+                    keep_monthly_ids.append(month_obj.id)
+                    # --- FIX ENDS HERE ---
                 else:
                     logger.info(f"[DEBUG] Creating new FuelMonthlyData for source {source_obj.id}")
                     month_obj = FuelMonthlyData.objects.create(source=source_obj, **month_data)
-                keep_monthly_ids.append(month_obj.id)
+                    # --- FIX STARTS HERE ---
+                    # Add the newly created object's ID to the keep list
+                    keep_monthly_ids.append(month_obj.id)
+                    # --- FIX ENDS HERE ---
+
             # Delete monthly data not in keep list (for update)
             if update:
                 deleted_months = FuelMonthlyData.objects.filter(source=source_obj).exclude(id__in=keep_monthly_ids)
