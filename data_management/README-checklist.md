@@ -357,6 +357,72 @@ Example Response:
 
 The integrated report provides additional value by identifying relationships between different ESG dimensions and providing a more strategic view of overall ESG performance.
 
+## Layer-Based Report Organization
+
+The ESG Checklist System organizes reports based on organizational layers (e.g., company divisions, departments, or business units), making it easy to manage and access reports within your organizational hierarchy.
+
+### Layer Association
+
+Reports are directly associated with organizational layers:
+
+- Each report is automatically linked to the same layer as its source submission(s)
+- For combined reports, the layer of the primary submission is used
+- This approach aligns reporting with your actual organizational structure
+
+### Retrieving Reports by Layer
+
+To retrieve all reports for a specific organizational layer:
+
+```
+GET /api/checklist-reports/layer/123/
+```
+
+This endpoint returns all reports associated with the specified layer, grouped by company/entity:
+
+```json
+{
+  "layer_id": 123,
+  "summary": {
+    "entity_count": 3,
+    "report_count": 12,
+    "latest_report_date": "2023-12-15"
+  },
+  "reports_by_entity": {
+    "Division A": [
+      {
+        "id": 456,
+        "report_type": "SINGLE",
+        "title": "Environmental Compliance Report",
+        "company": "Division A",
+        "generated_at": "2023-12-15 10:30:45",
+        "overall_compliance": 78.5,
+        "content": "...",
+        "word_count": 1245,
+        "version": 1,
+        "primary_submission_id": 789
+      },
+      // Other reports for Division A
+    ],
+    "Division B": [
+      // Reports for Division B
+    ],
+    "Division C": [
+      // Reports for Division C
+    ]
+  }
+}
+```
+
+### Benefits of Layer-Based Organization
+
+The layer-based approach offers several advantages:
+
+1. **Organizational Relevance**: Reports are organized according to your actual business structure
+2. **Comprehensive Views**: Managers can see all ESG reporting for their area of responsibility
+3. **Simplified Access**: No need to query by submissions or templates - direct layer access
+4. **Consolidated Metrics**: Summary statistics provide immediate insights into compliance across the layer
+5. **Permission Integration**: Uses existing layer-based permission system for access control
+
 ## Configuration Options
 
 | Option | Description |
