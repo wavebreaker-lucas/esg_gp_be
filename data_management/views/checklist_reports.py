@@ -223,144 +223,16 @@ def prepare_combined_checklist_data(submissions):
 @permission_classes([IsAuthenticated])
 def generate_checklist_report(request):
     """
-    Generate an AI report based on checklist submission data.
-    
-    Expected payload:
-    {
-        "submission_id": 123
-    }
+    This endpoint is disabled as the system only supports combined ESG reports.
+    Individual checklist reports are not supported to ensure comprehensive ESG assessment.
+    Please use the combined report endpoints instead.
     """
-    submission_id = request.data.get('submission_id')
-    
-    if not submission_id:
-        return Response({
-            "error": "submission_id is required"
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        # Get the submission
-        submission = ESGMetricSubmission.objects.get(id=submission_id)
-        
-        # Check if the submission is for a ChecklistMetric
-        if not isinstance(submission.metric, ChecklistMetric):
-            return Response({
-                "error": "Submission must be for a ChecklistMetric"
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Check if a report already exists for this submission
-        existing_report = ChecklistReport.objects.filter(
-            primary_submission=submission,
-            report_type='SINGLE'
-        ).order_by('-version').first()
-        
-        # If a report exists and regenerate flag is not set, return the existing report
-        if existing_report and not request.data.get('regenerate', False):
-            return Response({
-                "report": existing_report.to_dict(),
-                "status": "retrieved_existing"
-            })
-        
-        # Prepare checklist data for AI
-        checklist_data = prepare_checklist_data_for_ai(submission)
-        
-        # Unified prompt that combines elements from all three report types
-        unified_prompt = (
-            "Generate a comprehensive ESG report based on the following compliance checklist data. "
-            "The report should include:\n\n"
-            "1. Executive Summary: Provide a concise overview of the overall compliance status, "
-            "highlighting the compliance percentage, major strengths, and critical areas for improvement.\n\n"
-            "2. Key Findings: Analyze the performance in each major category, identifying patterns "
-            "and notable observations.\n\n"
-            "3. Improvement Plan: Identify items marked as 'NO', prioritize them by importance, "
-            "and provide specific, actionable recommendations to address each gap.\n\n"
-            "4. Conclusion: Summarize the overall ESG performance and provide strategic recommendations "
-            "for ongoing improvement.\n\n"
-            "The report should be well-structured, professional, and provide actionable insights. "
-            "Focus on practical implementation guidance for addressing compliance gaps."
-        )
-        
-        # Prepare data for OpenAI
-        try:
-            # If no API settings are configured, return mock data for development
-            if not hasattr(settings, 'OPENROUTER_API_KEY') or not settings.OPENROUTER_API_KEY:
-                report_text = f"[MOCK REPORT - No OpenRouter API key configured]\n\n" \
-                             f"ESG Report for {checklist_data['metadata']['company_name']}\n" \
-                             f"Overall Compliance: {checklist_data['summary']['compliance_percentage']}%\n\n" \
-                             f"This is a placeholder for the unified ESG report."
-            else:
-                # Configure OpenAI client with OpenRouter settings
-                client = OpenAI(
-                    base_url="https://openrouter.ai/api/v1",
-                    api_key=settings.OPENROUTER_API_KEY,
-                )
-                
-                # Call OpenAI API (with OpenRouter configuration)
-                completion = client.chat.completions.create(
-                    extra_headers={
-                        "HTTP-Referer": settings.SITE_URL if hasattr(settings, 'SITE_URL') else "https://esg-platform.example.com",
-                        "X-Title": "ESG Platform API" 
-                    },
-                    # Choose an appropriate model - using a default if not specified
-                    model=getattr(settings, 'OPENROUTER_MODEL', "google/gemini-pro"),
-                    messages=[
-                        {"role": "system", "content": "You are an ESG reporting specialist who analyzes compliance data and generates professional, actionable reports."},
-                        {"role": "user", "content": f"{unified_prompt}\n\nCHECKLIST DATA:\n{json.dumps(checklist_data, indent=2)}"}
-                    ],
-                    temperature=0.2,  # Low temperature for more consistent reporting
-                    max_tokens=4000  # Adjust based on report length needs
-                )
-                
-                report_text = completion.choices[0].message.content
-            
-            # Create report response structure
-            report_data = {
-                "title": f"{checklist_data['metadata']['checklist_type']} Compliance Report",
-                "company": checklist_data['metadata']['company_name'],
-                "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "compliance_percentage": checklist_data['summary']['compliance_percentage'],
-                "content": report_text
-            }
-            
-            # Store the report if it's not a mock report
-            if hasattr(settings, 'OPENROUTER_API_KEY') and settings.OPENROUTER_API_KEY:
-                # If regenerating, increment version number
-                version = 1
-                if existing_report:
-                    version = existing_report.version + 1
-                
-                # Create new report record
-                stored_report = ChecklistReport.create_from_single_report(submission_id, report_data)
-                
-                if version > 1:
-                    stored_report.version = version
-                    stored_report.save()
-                
-                # Add report ID to the response
-                report_data["report_id"] = stored_report.id
-                report_data["version"] = stored_report.version
-            
-            # Return the report
-            return Response({
-                "report": report_data,
-                "status": "generated_new"
-            })
-            
-        except Exception as e:
-            logger.error(f"Error calling AI service: {str(e)}")
-            return Response({
-                "error": f"Error generating report: {str(e)}"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-    except ESGMetricSubmission.DoesNotExist:
-        return Response({
-            "error": f"Submission with ID {submission_id} not found"
-        }, status=status.HTTP_404_NOT_FOUND)
-    
-    except Exception as e:
-        logger.error(f"Error in generate_checklist_report: {str(e)}")
-        return Response({
-            "error": f"Error generating report: {str(e)}"
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response({
+        "error": "Individual checklist reports are disabled",
+        "message": "This system only supports combined ESG reports that include Environmental, Social, and Governance components.",
+        "recommended_endpoint": "/api/checklist-reports/generate-for-layer/",
+        "usage": "POST to /api/checklist-reports/generate-for-layer/ with {'layer_id': your_layer_id}"
+    }, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

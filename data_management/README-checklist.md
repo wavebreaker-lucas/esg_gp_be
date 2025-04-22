@@ -282,45 +282,13 @@ Different scoring methods are available:
 
 ## AI Report Generation
 
-The system provides two AI-powered report generation endpoints that analyze checklist responses and provide detailed insights and recommendations.
+The system provides AI-powered report generation that analyzes checklist responses across all three ESG dimensions (Environmental, Social, and Governance) and provides detailed insights and recommendations in a comprehensive report.
 
-### Single Checklist Report
+> **Note:** The system only supports combined ESG reports that include all three ESG dimensions (Environmental, Social, and Governance). Individual checklist reports are disabled to ensure comprehensive and balanced ESG assessment.
 
-Generate a report for a single checklist submission (Environmental, Social, or Governance):
+### Combined ESG Report Generation
 
-```
-POST /api/checklist-reports/generate/
-```
-
-```json
-{
-  "submission_id": 123
-}
-```
-
-This endpoint produces a comprehensive report for the specific checklist that includes:
-- Executive Summary with compliance percentage
-- Key Findings across all categories
-- Detailed analysis of compliance gaps
-- Actionable recommendations for improvement
-- Overall assessment and strategic guidance
-
-Example Response:
-```json
-{
-  "report": {
-    "title": "Environmental Compliance Report",
-    "company": "Example Corp",
-    "generated_at": "2023-12-15T10:30:45Z",
-    "compliance_percentage": 78.5,
-    "content": "Executive Summary\n\nExample Corp demonstrates a 78.5% compliance rate with environmental standards..."
-  }
-}
-```
-
-### Combined ESG Report
-
-Generate a unified report that analyzes all three ESG dimensions together (Environmental, Social, and Governance):
+Generate a unified report that analyzes all three ESG dimensions together:
 
 ```
 POST /api/checklist-reports/generate-combined/
@@ -355,7 +323,7 @@ Example Response:
 }
 ```
 
-The integrated report provides additional value by identifying relationships between different ESG dimensions and providing a more strategic view of overall ESG performance.
+The integrated report provides significant value by identifying relationships between different ESG dimensions and providing a strategic view of overall ESG performance.
 
 ## Automated Combined Report Generation
 
