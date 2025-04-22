@@ -357,6 +357,58 @@ Example Response:
 
 The integrated report provides additional value by identifying relationships between different ESG dimensions and providing a more strategic view of overall ESG performance.
 
+## Report Versioning and Regeneration
+
+The system maintains a complete history of generated reports through a versioning system:
+
+### Report Persistence and Versioning
+
+- Each generated report is saved in the database with a unique ID
+- Reports maintain a version number, starting at 1
+- Multiple reports can exist for the same submission(s)
+- All versions are preserved for audit and historical analysis
+
+### Regenerating Reports
+
+When requesting a new report, you can choose to regenerate an existing one:
+
+```
+POST /api/checklist-reports/generate/
+```
+
+```json
+{
+  "submission_id": 123,
+  "regenerate": true
+}
+```
+
+- If `regenerate` is not provided or `false`, an existing report will be returned if one exists
+- If `regenerate` is `true`, a new report will be generated with an incremented version number
+- The original report remains in the database and accessible through the API
+
+Example response when regenerating:
+```json
+{
+  "report": {
+    "title": "Environmental Compliance Report",
+    "company": "Example Corp",
+    "generated_at": "2023-12-16T14:45:22Z",
+    "compliance_percentage": 78.5,
+    "content": "...",
+    "report_id": 458,
+    "version": 2
+  },
+  "status": "generated_new"
+}
+```
+
+This versioning system is useful for:
+- Tracking changes in recommendations over time
+- Comparing assessment approaches after updates
+- Providing a complete audit trail for compliance purposes
+- Generating different report styles for the same data
+
 ## Layer-Based Report Organization
 
 The ESG Checklist System organizes reports based on organizational layers (e.g., company divisions, departments, or business units), making it easy to manage and access reports within your organizational hierarchy.
@@ -377,7 +429,7 @@ To retrieve all reports for a specific organizational layer:
 GET /api/checklist-reports/layer/123/
 ```
 
-This endpoint returns all reports associated with the specified layer, grouped by company/entity:
+This endpoint returns all reports associated with the specified layer, including all versions, grouped by company/entity:
 
 ```json
 {
@@ -398,6 +450,18 @@ This endpoint returns all reports associated with the specified layer, grouped b
         "overall_compliance": 78.5,
         "content": "...",
         "word_count": 1245,
+        "version": 2,
+        "primary_submission_id": 789
+      },
+      {
+        "id": 450,
+        "report_type": "SINGLE",
+        "title": "Environmental Compliance Report",
+        "company": "Division A",
+        "generated_at": "2023-12-10 09:15:30",
+        "overall_compliance": 75.2,
+        "content": "...",
+        "word_count": 1180,
         "version": 1,
         "primary_submission_id": 789
       },
@@ -442,4 +506,4 @@ The system comes with three pre-configured checklist types:
 2. **Social Checklist**: Covers labor practices, health & safety, diversity, community, human rights, and supply chain
 3. **Governance Checklist**: Covers ethics, compliance, transparency, and stakeholder engagement
 
-These can be customized or extended based on specific reporting requirements and industry standards. 
+These can be customized or extended based on specific reporting requirements and industry standards.
