@@ -435,18 +435,6 @@ class ChecklistResponse(models.Model):
         help_text="Score value if scoring is enabled"
     )
     
-    # Evidence reference
-    has_evidence = models.BooleanField(
-        default=False,
-        help_text="Whether supporting evidence has been provided for this item"
-    )
-    
-    evidence_reference = models.CharField(
-        max_length=255,
-        blank=True,
-        help_text="Reference to evidence file or document"
-    )
-    
     class Meta:
         ordering = ['submission', 'category_id', 'item_id']
         unique_together = ['submission', 'category_id', 'item_id']
