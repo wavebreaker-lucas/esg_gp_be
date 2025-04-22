@@ -12,6 +12,7 @@ from openai import OpenAI
 from django.conf import settings
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from django.db.models import Q
 
 from ..models.templates import ESGMetricSubmission
 from ..models.polymorphic_metrics import ChecklistMetric
@@ -599,4 +600,69 @@ def get_report_by_id(request, report_id):
         logger.error(f"Error retrieving report {report_id}: {str(e)}")
         return Response({
             "error": f"Error retrieving report: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_reports_by_layer(request, layer_id):
+    """
+    Retrieve all checklist reports associated with a specific organizational layer.
+    This provides a consolidated view of all ESG reporting for a business unit.
+    
+    Args:
+        layer_id: The ID of the organizational layer
+    """
+    try:
+        # Query for all reports where the primary or related submissions belong to this layer
+        # First, find all submissions for this layer
+        layer_submissions = ESGMetricSubmission.objects.filter(layer_id=layer_id)
+        
+        if not layer_submissions.exists():
+            return Response({
+                "layer_id": layer_id,
+                "reports": [],
+                "message": "No submissions found for this layer"
+            })
+        
+        # Get reports where a layer submission is the primary submission
+        primary_reports = ChecklistReport.objects.filter(
+            primary_submission__in=layer_submissions
+        )
+        
+        # Get reports where a layer submission is a related submission
+        related_reports = ChecklistReport.objects.filter(
+            related_submissions__in=layer_submissions
+        )
+        
+        # Combine the querysets and remove duplicates
+        all_reports = primary_reports.union(related_reports).order_by('-generated_at', '-version')
+        
+        # Group reports by company/entity
+        reports_by_entity = {}
+        
+        for report in all_reports:
+            company = report.company
+            
+            if company not in reports_by_entity:
+                reports_by_entity[company] = []
+                
+            reports_by_entity[company].append(report.to_dict())
+            
+        # Prepare a summary of compliance statistics
+        summary = {
+            "entity_count": len(reports_by_entity),
+            "report_count": all_reports.count(),
+            "latest_report_date": all_reports.first().generated_at.strftime("%Y-%m-%d") if all_reports.exists() else None,
+        }
+        
+        return Response({
+            "layer_id": layer_id,
+            "summary": summary,
+            "reports_by_entity": reports_by_entity
+        })
+        
+    except Exception as e:
+        logger.error(f"Error retrieving reports for layer {layer_id}: {str(e)}")
+        return Response({
+            "error": f"Error retrieving reports: {str(e)}"
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 

@@ -18,8 +18,9 @@ from .views.form_definition import metrics as metric_views
 from .views.dashboard_api import total_emissions_api, emissions_time_series_api, vehicle_emissions_breakdown_api
 from .views.checklist_reports import (
     generate_checklist_report, generate_combined_checklist_report,
-    get_reports_by_submission, get_report_by_id
+    get_reports_by_submission, get_report_by_id, get_reports_by_layer
 )
+from .views.polymorphic_views import BaseESGMetricViewSet
 
 # Create a router for ViewSets
 router = DefaultRouter()
@@ -37,6 +38,7 @@ router.register(r'esg-metrics', metric_views.ESGMetricViewSet, basename='esgmetr
 router.register(r'reported-metric-values', ReportedMetricValueViewSet, basename='reported-metric-value')
 router.register(r'vehicle-types', VehicleTypeViewSet, basename='vehicle-type')
 router.register(r'fuel-types', FuelTypeViewSet, basename='fuel-type')
+router.register(r'polymorphic-metrics', BaseESGMetricViewSet, basename='polymorphic-metric')
 
 # Export the router's URLs
 # Assuming this urls.py is included under /api/ in your main urls.py
@@ -64,4 +66,5 @@ urlpatterns += [
     # Saved Reports endpoints
     path('checklist-reports/submission/<int:submission_id>/', get_reports_by_submission, name='get_reports_by_submission'),
     path('checklist-reports/<int:report_id>/', get_report_by_id, name='get_report_by_id'),
+    path('checklist-reports/layer/<int:layer_id>/', get_reports_by_layer, name='get_reports_by_layer'),
 ] 
