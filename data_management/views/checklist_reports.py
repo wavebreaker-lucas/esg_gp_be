@@ -134,12 +134,10 @@ def generate_checklist_report(request):
     
     Expected payload:
     {
-        "submission_id": 123,
-        "report_type": "comprehensive" | "executive" | "improvement"
+        "submission_id": 123
     }
     """
     submission_id = request.data.get('submission_id')
-    report_type = request.data.get('report_type', 'comprehensive')
     
     if not submission_id:
         return Response({
@@ -159,29 +157,21 @@ def generate_checklist_report(request):
         # Prepare checklist data for AI
         checklist_data = prepare_checklist_data_for_ai(submission)
         
-        # Configure prompt based on report type
-        prompts = {
-            "comprehensive": (
-                "Generate a comprehensive ESG report based on the following compliance checklist data. "
-                "Include all categories and subcategories, highlighting strengths, weaknesses, and specific "
-                "recommendations for improvement. The report should be well-structured with sections for each "
-                "major category and clear, actionable insights."
-            ),
-            "executive": (
-                "Generate an executive summary of this ESG compliance checklist data. "
-                "Focus on the most critical findings, overall compliance percentage, major strengths, "
-                "and priority areas for improvement. Keep it concise and strategic, suitable for executive "
-                "leadership review."
-            ),
-            "improvement": (
-                "Generate a focused improvement plan based on this ESG checklist data. "
-                "Identify all items marked as 'NO', prioritize them by importance, and provide specific, "
-                "actionable recommendations to address each gap. Include implementation guidance and "
-                "potential timelines for addressing the issues."
-            )
-        }
-        
-        prompt = prompts.get(report_type, prompts["comprehensive"])
+        # Unified prompt that combines elements from all three report types
+        unified_prompt = (
+            "Generate a comprehensive ESG report based on the following compliance checklist data. "
+            "The report should include:\n\n"
+            "1. Executive Summary: Provide a concise overview of the overall compliance status, "
+            "highlighting the compliance percentage, major strengths, and critical areas for improvement.\n\n"
+            "2. Key Findings: Analyze the performance in each major category, identifying patterns "
+            "and notable observations.\n\n"
+            "3. Improvement Plan: Identify items marked as 'NO', prioritize them by importance, "
+            "and provide specific, actionable recommendations to address each gap.\n\n"
+            "4. Conclusion: Summarize the overall ESG performance and provide strategic recommendations "
+            "for ongoing improvement.\n\n"
+            "The report should be well-structured, professional, and provide actionable insights. "
+            "Focus on practical implementation guidance for addressing compliance gaps."
+        )
         
         # Prepare data for OpenAI
         try:
@@ -190,7 +180,7 @@ def generate_checklist_report(request):
                 report_text = f"[MOCK REPORT - No OpenRouter API key configured]\n\n" \
                              f"ESG Report for {checklist_data['metadata']['company_name']}\n" \
                              f"Overall Compliance: {checklist_data['summary']['compliance_percentage']}%\n\n" \
-                             f"This is a placeholder for the {report_type} report."
+                             f"This is a placeholder for the unified ESG report."
             else:
                 # Configure OpenAI client with OpenRouter settings
                 client = OpenAI(
@@ -208,7 +198,7 @@ def generate_checklist_report(request):
                     model=getattr(settings, 'OPENROUTER_MODEL', "google/gemini-pro"),
                     messages=[
                         {"role": "system", "content": "You are an ESG reporting specialist who analyzes compliance data and generates professional, actionable reports."},
-                        {"role": "user", "content": f"{prompt}\n\nCHECKLIST DATA:\n{json.dumps(checklist_data, indent=2)}"}
+                        {"role": "user", "content": f"{unified_prompt}\n\nCHECKLIST DATA:\n{json.dumps(checklist_data, indent=2)}"}
                     ],
                     temperature=0.2,  # Low temperature for more consistent reporting
                     max_tokens=4000  # Adjust based on report length needs
@@ -223,7 +213,6 @@ def generate_checklist_report(request):
                     "company": checklist_data['metadata']['company_name'],
                     "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "compliance_percentage": checklist_data['summary']['compliance_percentage'],
-                    "report_type": report_type,
                     "content": report_text
                 }
             })
