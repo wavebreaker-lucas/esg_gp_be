@@ -96,6 +96,20 @@ env_checklist = ChecklistMetric.objects.create(
 )
 ```
 
+## Creating the E/S/G Checklists
+
+The system includes a management command to create all three standard ESG checklists at once:
+
+```bash
+python manage.py create_esg_checklists --env-form-id=1 --soc-form-id=2 --gov-form-id=3
+```
+
+To see available forms:
+
+```bash
+python manage.py create_esg_checklists --list-forms
+```
+
 ## API Interaction
 
 ### Submitting Checklist Responses
@@ -268,7 +282,80 @@ Different scoring methods are available:
 
 ## AI Report Generation
 
-The checklist data structure is designed to be easily converted to input for AI report generation. The hierarchical format with clear categories and consistent YES/NO/NA responses enables detailed analysis and actionable recommendations.
+The system provides two AI-powered report generation endpoints that analyze checklist responses and provide detailed insights and recommendations.
+
+### Single Checklist Report
+
+Generate a report for a single checklist submission (Environmental, Social, or Governance):
+
+```
+POST /api/checklist-reports/generate/
+```
+
+```json
+{
+  "submission_id": 123
+}
+```
+
+This endpoint produces a comprehensive report for the specific checklist that includes:
+- Executive Summary with compliance percentage
+- Key Findings across all categories
+- Detailed analysis of compliance gaps
+- Actionable recommendations for improvement
+- Overall assessment and strategic guidance
+
+Example Response:
+```json
+{
+  "report": {
+    "title": "Environmental Compliance Report",
+    "company": "Example Corp",
+    "generated_at": "2023-12-15T10:30:45Z",
+    "compliance_percentage": 78.5,
+    "content": "Executive Summary\n\nExample Corp demonstrates a 78.5% compliance rate with environmental standards..."
+  }
+}
+```
+
+### Combined ESG Report
+
+Generate a unified report that analyzes all three ESG dimensions together (Environmental, Social, and Governance):
+
+```
+POST /api/checklist-reports/generate-combined/
+```
+
+```json
+{
+  "submission_ids": [123, 124, 125]  // E, S, G submission IDs
+}
+```
+
+This endpoint produces a holistic ESG report that includes:
+- Executive Summary with integrated ESG assessment
+- Comparative analysis of E, S, and G performance
+- Cross-cutting patterns and systemic issues
+- Strategic improvement plan across all ESG areas
+- Holistic ESG maturity assessment
+
+Example Response:
+```json
+{
+  "report": {
+    "title": "Integrated ESG Compliance Report",
+    "company": "Example Corp",
+    "generated_at": "2023-12-15T10:30:45Z",
+    "overall_compliance": 81.3,
+    "environmental_compliance": 78.5,
+    "social_compliance": 85.2,
+    "governance_compliance": 76.8,
+    "content": "Integrated ESG Assessment\n\nExample Corp demonstrates an overall ESG compliance rate of 81.3%..."
+  }
+}
+```
+
+The integrated report provides additional value by identifying relationships between different ESG dimensions and providing a more strategic view of overall ESG performance.
 
 ## Configuration Options
 

@@ -11,10 +11,12 @@ import json
 from openai import OpenAI
 from django.conf import settings
 from django.utils import timezone
+from django.shortcuts import get_object_or_404
 
 from ..models.templates import ESGMetricSubmission
 from ..models.polymorphic_metrics import ChecklistMetric
 from ..models.submission_data import ChecklistResponse
+from ..models.reporting import ChecklistReport
 
 logger = logging.getLogger(__name__)
 
@@ -240,6 +242,19 @@ def generate_checklist_report(request):
                 "error": "Submission must be for a ChecklistMetric"
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # Check if a report already exists for this submission
+        existing_report = ChecklistReport.objects.filter(
+            primary_submission=submission,
+            report_type='SINGLE'
+        ).order_by('-version').first()
+        
+        # If a report exists and regenerate flag is not set, return the existing report
+        if existing_report and not request.data.get('regenerate', False):
+            return Response({
+                "report": existing_report.to_dict(),
+                "status": "retrieved_existing"
+            })
+        
         # Prepare checklist data for AI
         checklist_data = prepare_checklist_data_for_ai(submission)
         
@@ -292,15 +307,37 @@ def generate_checklist_report(request):
                 
                 report_text = completion.choices[0].message.content
             
+            # Create report response structure
+            report_data = {
+                "title": f"{checklist_data['metadata']['checklist_type']} Compliance Report",
+                "company": checklist_data['metadata']['company_name'],
+                "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "compliance_percentage": checklist_data['summary']['compliance_percentage'],
+                "content": report_text
+            }
+            
+            # Store the report if it's not a mock report
+            if hasattr(settings, 'OPENROUTER_API_KEY') and settings.OPENROUTER_API_KEY:
+                # If regenerating, increment version number
+                version = 1
+                if existing_report:
+                    version = existing_report.version + 1
+                
+                # Create new report record
+                stored_report = ChecklistReport.create_from_single_report(submission_id, report_data)
+                
+                if version > 1:
+                    stored_report.version = version
+                    stored_report.save()
+                
+                # Add report ID to the response
+                report_data["report_id"] = stored_report.id
+                report_data["version"] = stored_report.version
+            
             # Return the report
             return Response({
-                "report": {
-                    "title": f"{checklist_data['metadata']['checklist_type']} Compliance Report",
-                    "company": checklist_data['metadata']['company_name'],
-                    "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "compliance_percentage": checklist_data['summary']['compliance_percentage'],
-                    "content": report_text
-                }
+                "report": report_data,
+                "status": "generated_new"
             })
             
         except Exception as e:
@@ -358,6 +395,24 @@ def generate_combined_checklist_report(request):
             return Response({
                 "error": f"Submissions with IDs {non_checklist_submissions} are not checklist submissions"
             }, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Use first submission (typically ENV) as primary for report storage
+        primary_submission_id = submission_ids[0]
+        
+        # Check if a report already exists for these submissions
+        # For simplicity, we'll just check primary_submission for now
+        primary_submission = ESGMetricSubmission.objects.get(id=primary_submission_id)
+        existing_report = ChecklistReport.objects.filter(
+            primary_submission=primary_submission,
+            report_type='COMBINED'
+        ).order_by('-version').first()
+        
+        # If a report exists and regenerate flag is not set, return the existing report
+        if existing_report and not request.data.get('regenerate', False):
+            return Response({
+                "report": existing_report.to_dict(),
+                "status": "retrieved_existing"
+            })
         
         # Prepare combined checklist data
         combined_data = prepare_combined_checklist_data(submissions)
@@ -417,18 +472,44 @@ def generate_combined_checklist_report(request):
                 
                 report_text = completion.choices[0].message.content
             
+            # Create report response structure
+            report_data = {
+                "title": "Integrated ESG Compliance Report",
+                "company": combined_data['metadata']['company_name'],
+                "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "overall_compliance": combined_data['summary']['overall_compliance_percentage'],
+                "environmental_compliance": combined_data['summary']['environmental_compliance'],
+                "social_compliance": combined_data['summary']['social_compliance'],
+                "governance_compliance": combined_data['summary']['governance_compliance'],
+                "content": report_text
+            }
+            
+            # Store the report if it's not a mock report
+            if hasattr(settings, 'OPENROUTER_API_KEY') and settings.OPENROUTER_API_KEY:
+                # If regenerating, increment version number
+                version = 1
+                if existing_report:
+                    version = existing_report.version + 1
+                
+                # Create new report record
+                stored_report = ChecklistReport.create_from_combined_report(
+                    primary_submission_id,
+                    submission_ids,
+                    report_data
+                )
+                
+                if version > 1:
+                    stored_report.version = version
+                    stored_report.save()
+                
+                # Add report ID to the response
+                report_data["report_id"] = stored_report.id
+                report_data["version"] = stored_report.version
+            
             # Return the report
             return Response({
-                "report": {
-                    "title": "Integrated ESG Compliance Report",
-                    "company": combined_data['metadata']['company_name'],
-                    "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "overall_compliance": combined_data['summary']['overall_compliance_percentage'],
-                    "environmental_compliance": combined_data['summary']['environmental_compliance'],
-                    "social_compliance": combined_data['summary']['social_compliance'],
-                    "governance_compliance": combined_data['summary']['governance_compliance'],
-                    "content": report_text
-                }
+                "report": report_data,
+                "status": "generated_new"
             })
             
         except Exception as e:
@@ -441,4 +522,81 @@ def generate_combined_checklist_report(request):
         logger.error(f"Error in generate_combined_checklist_report: {str(e)}")
         return Response({
             "error": f"Error generating combined report: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_reports_by_submission(request, submission_id):
+    """
+    Retrieve all reports associated with a specific checklist submission.
+    This includes both single reports where this is the primary submission,
+    and combined reports where this submission is included.
+    
+    Args:
+        submission_id: The ID of the checklist submission
+    """
+    try:
+        # Verify the submission exists
+        submission = get_object_or_404(ESGMetricSubmission, id=submission_id)
+        
+        # Get reports where this is the primary submission
+        primary_reports = ChecklistReport.objects.filter(
+            primary_submission=submission
+        ).order_by('-version', '-generated_at')
+        
+        # Get reports where this is included as a related submission
+        related_reports = ChecklistReport.objects.filter(
+            related_submissions=submission
+        ).order_by('-version', '-generated_at')
+        
+        # Combine and remove duplicates (a report might appear in both queries)
+        all_reports = list(primary_reports)
+        for report in related_reports:
+            if report not in all_reports:
+                all_reports.append(report)
+        
+        # Convert to dictionaries for the response
+        report_data = [report.to_dict() for report in all_reports]
+        
+        return Response({
+            "submission_id": submission_id,
+            "reports": report_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error retrieving reports for submission {submission_id}: {str(e)}")
+        return Response({
+            "error": f"Error retrieving reports: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_report_by_id(request, report_id):
+    """
+    Retrieve a specific checklist report by its ID.
+    
+    Args:
+        report_id: The ID of the checklist report
+    """
+    try:
+        report = get_object_or_404(ChecklistReport, id=report_id)
+        
+        # Get related submissions if it's a combined report
+        related_submissions = []
+        if report.report_type == 'COMBINED':
+            related_submissions = list(report.related_submissions.values_list('id', flat=True))
+        
+        # Prepare the response data
+        report_data = report.to_dict()
+        
+        # Add related submissions if applicable
+        if related_submissions:
+            report_data["related_submission_ids"] = related_submissions
+        
+        return Response(report_data)
+        
+    except Exception as e:
+        logger.error(f"Error retrieving report {report_id}: {str(e)}")
+        return Response({
+            "error": f"Error retrieving report: {str(e)}"
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
