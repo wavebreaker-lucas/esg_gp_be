@@ -6,6 +6,7 @@ from django.db import models
 from django.utils import timezone
 import json
 from .templates import ESGMetricSubmission
+from accounts.models import LayerProfile
 
 class ChecklistReport(models.Model):
     """
@@ -21,6 +22,15 @@ class ChecklistReport(models.Model):
     title = models.CharField(max_length=255)
     company = models.CharField(max_length=255)
     generated_at = models.DateTimeField(default=timezone.now)
+    
+    # Direct layer association
+    layer = models.ForeignKey(
+        LayerProfile,
+        on_delete=models.CASCADE,
+        related_name='checklist_reports',
+        null=True,  # Allow null initially for migration
+        help_text="The organizational layer this report belongs to"
+    )
     
     # Submission references
     primary_submission = models.ForeignKey(
@@ -106,6 +116,7 @@ class ChecklistReport(models.Model):
             company=report_data.get('company', 'Unknown'),
             generated_at=timezone.now(),
             primary_submission=submission,
+            layer=submission.layer,  # Set the layer directly from the submission
             overall_compliance=report_data.get('compliance_percentage', 0),
             content=report_data.get('content', ''),
         )
@@ -131,6 +142,7 @@ class ChecklistReport(models.Model):
             company=report_data.get('company', 'Unknown'),
             generated_at=timezone.now(),
             primary_submission=primary_submission,
+            layer=primary_submission.layer,  # Set the layer from primary submission
             overall_compliance=report_data.get('overall_compliance', 0),
             environmental_compliance=report_data.get('environmental_compliance'),
             social_compliance=report_data.get('social_compliance'),

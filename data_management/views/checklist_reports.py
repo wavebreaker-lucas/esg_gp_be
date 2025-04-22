@@ -14,6 +14,9 @@ from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 
+from accounts.models import LayerProfile
+from accounts.services import has_layer_access
+
 from ..models.templates import ESGMetricSubmission
 from ..models.polymorphic_metrics import ChecklistMetric
 from ..models.submission_data import ChecklistResponse
@@ -606,36 +609,26 @@ def get_report_by_id(request, report_id):
 @permission_classes([IsAuthenticated])
 def get_reports_by_layer(request, layer_id):
     """
-    Retrieve all checklist reports associated with a specific organizational layer.
-    This provides a consolidated view of all ESG reporting for a business unit.
-    
-    Args:
-        layer_id: The ID of the organizational layer
+    Get all reports for an organizational layer, grouped by entity.
     """
     try:
-        # Query for all reports where the primary or related submissions belong to this layer
-        # First, find all submissions for this layer
-        layer_submissions = ESGMetricSubmission.objects.filter(layer_id=layer_id)
+        # Check if layer exists and user has access
+        layer = LayerProfile.objects.get(id=layer_id)
         
-        if not layer_submissions.exists():
+        if not has_layer_access(request.user, layer_id):
+            return Response({
+                "error": "You do not have permission to view this layer's reports"
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get all reports for this layer directly using the new layer field
+        all_reports = ChecklistReport.objects.filter(layer=layer_id).order_by('-generated_at')
+        
+        if not all_reports.exists():
             return Response({
                 "layer_id": layer_id,
-                "reports": [],
-                "message": "No submissions found for this layer"
+                "message": "No reports found for this layer",
+                "reports_by_entity": {}
             })
-        
-        # Get reports where a layer submission is the primary submission
-        primary_reports = ChecklistReport.objects.filter(
-            primary_submission__in=layer_submissions
-        )
-        
-        # Get reports where a layer submission is a related submission
-        related_reports = ChecklistReport.objects.filter(
-            related_submissions__in=layer_submissions
-        )
-        
-        # Combine the querysets and remove duplicates
-        all_reports = primary_reports.union(related_reports).order_by('-generated_at', '-version')
         
         # Group reports by company/entity
         reports_by_entity = {}
@@ -660,6 +653,11 @@ def get_reports_by_layer(request, layer_id):
             "summary": summary,
             "reports_by_entity": reports_by_entity
         })
+        
+    except LayerProfile.DoesNotExist:
+        return Response({
+            "error": f"Layer with ID {layer_id} not found"
+        }, status=status.HTTP_404_NOT_FOUND)
         
     except Exception as e:
         logger.error(f"Error retrieving reports for layer {layer_id}: {str(e)}")
