@@ -337,7 +337,7 @@ To check which checklists are completed for a specific layer:
 GET /api/checklist-status/123/
 ```
 
-This endpoint returns a comprehensive status of all three ESG checklists:
+This endpoint performs a comprehensive check of completion status, verifying that all required checklist items have been answered:
 
 ```json
 {
@@ -345,27 +345,44 @@ This endpoint returns a comprehensive status of all three ESG checklists:
     "complete": true,
     "submission_id": 456,
     "reporting_period": "2023-12-31",
-    "submitted_at": "2023-12-15T10:30:45Z"
+    "submitted_at": "2023-12-15T10:30:45Z",
+    "completion_percentage": 100.0,
+    "answered_items": 42,
+    "total_items": 50,
+    "required_items": 42,
+    "missing_required": 0
   },
   "SOC": {
-    "complete": true,
+    "complete": false,
     "submission_id": 457,
     "reporting_period": "2023-12-31",
-    "submitted_at": "2023-12-16T14:20:30Z"
+    "submitted_at": "2023-12-16T14:20:30Z",
+    "completion_percentage": 85.7,
+    "answered_items": 30,
+    "total_items": 35,
+    "required_items": 35,
+    "missing_required": 5
   },
   "GOV": {
     "complete": false,
     "submission_id": null,
     "reporting_period": null,
-    "submitted_at": null
+    "submitted_at": null,
+    "completion_percentage": 0.0,
+    "answered_items": 0,
+    "total_items": 0,
+    "required_items": 0,
+    "missing_required": 0
   },
   "all_complete": false
 }
 ```
 
+The system considers a checklist "complete" only when all required items have been answered with a valid response (YES, NO, or NA). The completion percentage is calculated based on the number of required items that have been answered.
+
 ### Automated Combined Report Generation
 
-Once all three checklists are completed, you can generate a combined report with a single API call:
+Once all three checklists are properly completed, you can generate a combined report with a single API call:
 
 ```
 POST /api/checklist-reports/generate-for-layer/

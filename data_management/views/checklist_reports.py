@@ -25,6 +25,100 @@ from ..models.reporting import ChecklistReport
 
 logger = logging.getLogger(__name__)
 
+def count_required_items(checklist_structure):
+    """
+    Count the number of required items in a checklist structure.
+    
+    Args:
+        checklist_structure: The structure JSON from a ChecklistMetric
+        
+    Returns:
+        int: Count of required items
+    """
+    total_required = 0
+    
+    # Handle different possible structures
+    if 'categories' in checklist_structure:
+        # Standard structure with categories
+        for category in checklist_structure.get('categories', []):
+            for subcategory in category.get('subcategories', []):
+                for item in subcategory.get('items', []):
+                    if item.get('required', True):  # Default to required if not specified
+                        total_required += 1
+    elif 'items' in checklist_structure:
+        # Simpler flat structure
+        for item in checklist_structure.get('items', []):
+            if item.get('required', True):
+                total_required += 1
+    
+    return total_required
+
+def check_checklist_completion(submission):
+    """
+    Perform a detailed check of checklist completion.
+    
+    Args:
+        submission: ESGMetricSubmission instance
+        
+    Returns:
+        dict: Completion details including status, percentages, and counts
+    """
+    if not submission or not isinstance(submission.metric, ChecklistMetric):
+        return {
+            "complete": False,
+            "completion_percentage": 0,
+            "answered_items": 0,
+            "total_items": 0,
+            "required_items": 0,
+            "missing_required": 0
+        }
+    
+    # Get the checklist structure
+    checklist_structure = submission.metric.checklist_structure
+    
+    # Count required items from structure
+    required_items_count = count_required_items(checklist_structure)
+    
+    # Count total items (including non-required)
+    total_items = 0
+    for category in checklist_structure.get('categories', []):
+        for subcategory in category.get('subcategories', []):
+            total_items += len(subcategory.get('items', []))
+    
+    # Count answered items
+    responses = ChecklistResponse.objects.filter(
+        submission=submission
+    )
+    
+    answered_items = responses.filter(
+        response__in=['YES', 'NO', 'NA']
+    ).count()
+    
+    # Count answered required items
+    answered_required = responses.filter(
+        response__in=['YES', 'NO', 'NA']
+    ).count()  # This is simplified; ideally we'd match against required items
+    
+    # Calculate missing required items
+    missing_required = max(0, required_items_count - answered_required)
+    
+    # Calculate completion percentage (based on required items)
+    completion_percentage = 0
+    if required_items_count > 0:
+        completion_percentage = (answered_required / required_items_count) * 100
+    
+    # Determine if complete - only if all required items are answered
+    is_complete = (missing_required == 0 and required_items_count > 0)
+    
+    return {
+        "complete": is_complete,
+        "completion_percentage": round(completion_percentage, 1),
+        "answered_items": answered_items,
+        "total_items": total_items,
+        "required_items": required_items_count,
+        "missing_required": missing_required
+    }
+
 def prepare_checklist_data_for_ai(submission):
     """
     Prepare checklist submission data in a format optimized for AI processing.
@@ -542,7 +636,7 @@ def get_reports_by_layer(request, layer_id):
 @permission_classes([IsAuthenticated])
 def get_checklist_status(request, layer_id):
     """
-    Get completion status of all three ESG checklists for a specific layer.
+    Get detailed completion status of all three ESG checklists for a specific layer.
     Returns which checklists are completed and whether all are ready for report generation.
     """
     try:
@@ -554,9 +648,24 @@ def get_checklist_status(request, layer_id):
         
         # Initialize status with all checklist types
         status_data = {
-            "ENV": {"complete": False, "submission_id": None, "reporting_period": None},
-            "SOC": {"complete": False, "submission_id": None, "reporting_period": None},
-            "GOV": {"complete": False, "submission_id": None, "reporting_period": None},
+            "ENV": {
+                "complete": False,
+                "submission_id": None,
+                "reporting_period": None,
+                "completion_percentage": 0
+            },
+            "SOC": {
+                "complete": False,
+                "submission_id": None,
+                "reporting_period": None,
+                "completion_percentage": 0
+            },
+            "GOV": {
+                "complete": False,
+                "submission_id": None,
+                "reporting_period": None,
+                "completion_percentage": 0
+            },
             "all_complete": False
         }
         
@@ -570,15 +679,21 @@ def get_checklist_status(request, layer_id):
             ).order_by('-reporting_period').first()
             
             if submission:
-                # Check if the submission has responses
-                has_responses = ChecklistResponse.objects.filter(submission=submission).exists()
-                if has_responses:
-                    status_data[checklist_type] = {
-                        "complete": True,
-                        "submission_id": submission.id,
-                        "reporting_period": submission.reporting_period.isoformat() if submission.reporting_period else None,
-                        "submitted_at": submission.submitted_at.isoformat() if submission.submitted_at else None
-                    }
+                # Perform detailed completion check
+                completion_status = check_checklist_completion(submission)
+                
+                # Update status data with completion details
+                status_data[checklist_type] = {
+                    "complete": completion_status["complete"],
+                    "submission_id": submission.id,
+                    "reporting_period": submission.reporting_period.isoformat() if submission.reporting_period else None,
+                    "submitted_at": submission.submitted_at.isoformat() if submission.submitted_at else None,
+                    "completion_percentage": completion_status["completion_percentage"],
+                    "answered_items": completion_status["answered_items"],
+                    "total_items": completion_status["total_items"],
+                    "required_items": completion_status["required_items"],
+                    "missing_required": completion_status["missing_required"]
+                }
         
         # Check if all are complete
         status_data["all_complete"] = all([
@@ -616,6 +731,8 @@ def generate_combined_report_for_layer(request):
         entity_name = request.data.get('entity_name', None)  # Optional filter
         reporting_period = request.data.get('reporting_period', None)  # Optional - defaults to latest
         regenerate = request.data.get('regenerate', False)
+        # Option to override completeness check (for admin/testing only)
+        force_incomplete = request.data.get('force_incomplete', False) and request.user.is_staff  
         
         if not layer_id:
             return Response({
@@ -630,6 +747,7 @@ def generate_combined_report_for_layer(request):
         
         # 1. Find the latest complete E/S/G submission set
         submissions_by_type = {}
+        completion_status = {}
         query = ESGMetricSubmission.objects.filter(
             layer_id=layer_id,
             metric__polymorphic_ctype__model='checklistmetric'
@@ -641,16 +759,19 @@ def generate_combined_report_for_layer(request):
         if reporting_period:
             query = query.filter(reporting_period=reporting_period)
         
-        # Find latest submission for each type
+        # Find latest submission for each type and check completion
         for checklist_type in ["ENV", "SOC", "GOV"]:
             submission = query.filter(
                 metric__checklist_type=checklist_type
             ).order_by('-reporting_period').first()
             
             if submission:
-                # Check if the submission has responses
-                has_responses = ChecklistResponse.objects.filter(submission=submission).exists()
-                if has_responses:
+                # Perform detailed completion check
+                completion = check_checklist_completion(submission)
+                completion_status[checklist_type] = completion
+                
+                # Only include truly complete submissions (or if force_incomplete is enabled)
+                if completion["complete"] or force_incomplete:
                     submissions_by_type[checklist_type] = submission
         
         # 2. Validate we have all required checklist types
@@ -658,9 +779,25 @@ def generate_combined_report_for_layer(request):
         missing_types = [t for t in required_types if t not in submissions_by_type]
         
         if missing_types:
+            # Provide detailed information about what's missing
+            error_details = {}
+            for missing_type in missing_types:
+                if missing_type in completion_status:
+                    error_details[missing_type] = {
+                        "reason": "incomplete",
+                        "completion_percentage": completion_status[missing_type]["completion_percentage"],
+                        "missing_required": completion_status[missing_type]["missing_required"]
+                    }
+                else:
+                    error_details[missing_type] = {
+                        "reason": "not_found",
+                        "message": "No submission found for this checklist type"
+                    }
+            
             return Response({
-                "error": "Missing required checklist submissions",
-                "missing_types": missing_types,
+                "error": "Some required checklists are missing or incomplete",
+                "missing_or_incomplete": missing_types,
+                "details": error_details,
                 "available_types": list(submissions_by_type.keys())
             }, status=status.HTTP_400_BAD_REQUEST)
         
