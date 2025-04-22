@@ -16,6 +16,7 @@ from .views import (
 from .views.form_definition import metrics as metric_views
 # Import dashboard API views
 from .views.dashboard_api import total_emissions_api, emissions_time_series_api, vehicle_emissions_breakdown_api
+from .views.checklist_reports import generate_checklist_report
 
 # Create a router for ViewSets
 router = DefaultRouter()
@@ -52,4 +53,7 @@ urlpatterns += [
     path('dashboard/total-emissions/', total_emissions_api, name='dashboard-total-emissions'),
     path('dashboard/emissions-time-series/', emissions_time_series_api, name='dashboard-emissions-time-series'),
     path('dashboard/vehicle-emissions/', vehicle_emissions_breakdown_api, name='dashboard-vehicle-emissions'),
+
+    # Checklist Reports
+    path('checklist-reports/generate/', generate_checklist_report, name='generate_checklist_report'),
 ] 
