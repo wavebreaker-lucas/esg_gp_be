@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework import status
 import logging
 import json
-import openai
+from openai import OpenAI
 from django.conf import settings
 from django.utils import timezone
 
@@ -185,20 +185,27 @@ def generate_checklist_report(request):
         
         # Prepare data for OpenAI
         try:
-            # Call OpenAI API
-            if not settings.OPENAI_API_KEY:
-                # If no API key is configured, return mock data for development
-                report_text = f"[MOCK REPORT - No OpenAI API key configured]\n\n" \
+            # If no API settings are configured, return mock data for development
+            if not hasattr(settings, 'OPENROUTER_API_KEY') or not settings.OPENROUTER_API_KEY:
+                report_text = f"[MOCK REPORT - No OpenRouter API key configured]\n\n" \
                              f"ESG Report for {checklist_data['metadata']['company_name']}\n" \
                              f"Overall Compliance: {checklist_data['summary']['compliance_percentage']}%\n\n" \
                              f"This is a placeholder for the {report_type} report."
             else:
-                # Configure OpenAI
-                openai.api_key = settings.OPENAI_API_KEY
+                # Configure OpenAI client with OpenRouter settings
+                client = OpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=settings.OPENROUTER_API_KEY,
+                )
                 
-                # Call OpenAI API
-                response = openai.ChatCompletion.create(
-                    model="gpt-4",
+                # Call OpenAI API (with OpenRouter configuration)
+                completion = client.chat.completions.create(
+                    extra_headers={
+                        "HTTP-Referer": settings.SITE_URL if hasattr(settings, 'SITE_URL') else "https://esg-platform.example.com",
+                        "X-Title": "ESG Platform API" 
+                    },
+                    # Choose an appropriate model - using a default if not specified
+                    model=getattr(settings, 'OPENROUTER_MODEL', "google/gemini-pro"),
                     messages=[
                         {"role": "system", "content": "You are an ESG reporting specialist who analyzes compliance data and generates professional, actionable reports."},
                         {"role": "user", "content": f"{prompt}\n\nCHECKLIST DATA:\n{json.dumps(checklist_data, indent=2)}"}
@@ -207,7 +214,7 @@ def generate_checklist_report(request):
                     max_tokens=4000  # Adjust based on report length needs
                 )
                 
-                report_text = response.choices[0].message.content
+                report_text = completion.choices[0].message.content
             
             # Return the report
             return Response({
@@ -222,7 +229,7 @@ def generate_checklist_report(request):
             })
             
         except Exception as e:
-            logger.error(f"Error calling OpenAI API: {str(e)}")
+            logger.error(f"Error calling AI service: {str(e)}")
             return Response({
                 "error": f"Error generating report: {str(e)}"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

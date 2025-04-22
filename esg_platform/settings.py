@@ -250,3 +250,8 @@ AZURE_CONTENT_UNDERSTANDING = {
 # Default layer for submissions without a specific layer
 # Set to None to use the first available Group layer
 DEFAULT_LAYER_ID = 1  # Currently using layer 1 for existing data
+
+# OpenRouter AI settings
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'google/gemini-2.0-flash-001')
+SITE_URL = os.getenv('SITE_URL', 'https://esg-platform.example.com')
