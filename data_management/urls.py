@@ -18,7 +18,8 @@ from .views.form_definition import metrics as metric_views
 from .views.dashboard_api import total_emissions_api, emissions_time_series_api, vehicle_emissions_breakdown_api
 from .views.checklist_reports import (
     generate_checklist_report, generate_combined_checklist_report,
-    get_reports_by_submission, get_report_by_id, get_reports_by_layer
+    get_reports_by_submission, get_report_by_id, get_reports_by_layer,
+    get_checklist_status, generate_combined_report_for_layer
 )
 from .views.polymorphic_views import BaseESGMetricViewSet
 
@@ -62,6 +63,10 @@ urlpatterns += [
     # Checklist Reports
     path('checklist-reports/generate/', generate_checklist_report, name='generate_checklist_report'),
     path('checklist-reports/generate-combined/', generate_combined_checklist_report, name='generate_combined_checklist_report'),
+    
+    # New automated ESG reporting endpoints
+    path('checklist-status/<int:layer_id>/', get_checklist_status, name='get_checklist_status'),
+    path('checklist-reports/generate-for-layer/', generate_combined_report_for_layer, name='generate_combined_report_for_layer'),
     
     # Saved Reports endpoints
     path('checklist-reports/submission/<int:submission_id>/', get_reports_by_submission, name='get_reports_by_submission'),

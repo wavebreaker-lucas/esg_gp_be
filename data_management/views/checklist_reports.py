@@ -13,6 +13,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from rest_framework.request import Request
 
 from accounts.models import LayerProfile
 from accounts.services import has_layer_access
@@ -663,4 +664,177 @@ def get_reports_by_layer(request, layer_id):
         logger.error(f"Error retrieving reports for layer {layer_id}: {str(e)}")
         return Response({
             "error": f"Error retrieving reports: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_checklist_status(request, layer_id):
+    """
+    Get completion status of all three ESG checklists for a specific layer.
+    Returns which checklists are completed and whether all are ready for report generation.
+    """
+    try:
+        # Check if layer exists and user has access
+        if not has_layer_access(request.user, layer_id):
+            return Response({
+                "error": "You do not have permission to view this layer's checklist status"
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Initialize status with all checklist types
+        status_data = {
+            "ENV": {"complete": False, "submission_id": None, "reporting_period": None},
+            "SOC": {"complete": False, "submission_id": None, "reporting_period": None},
+            "GOV": {"complete": False, "submission_id": None, "reporting_period": None},
+            "all_complete": False
+        }
+        
+        # Find latest submission for each checklist type
+        for checklist_type in ["ENV", "SOC", "GOV"]:
+            # Get latest submission of this checklist type for this layer
+            submission = ESGMetricSubmission.objects.filter(
+                layer_id=layer_id,
+                metric__polymorphic_ctype__model='checklistmetric',
+                metric__checklist_type=checklist_type
+            ).order_by('-reporting_period').first()
+            
+            if submission:
+                # Check if the submission has responses
+                has_responses = ChecklistResponse.objects.filter(submission=submission).exists()
+                if has_responses:
+                    status_data[checklist_type] = {
+                        "complete": True,
+                        "submission_id": submission.id,
+                        "reporting_period": submission.reporting_period.isoformat() if submission.reporting_period else None,
+                        "submitted_at": submission.submitted_at.isoformat() if submission.submitted_at else None
+                    }
+        
+        # Check if all are complete
+        status_data["all_complete"] = all([
+            status_data["ENV"]["complete"], 
+            status_data["SOC"]["complete"], 
+            status_data["GOV"]["complete"]
+        ])
+        
+        return Response(status_data)
+        
+    except Exception as e:
+        logger.error(f"Error retrieving checklist status for layer {layer_id}: {str(e)}")
+        return Response({
+            "error": f"Error retrieving checklist status: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_combined_report_for_layer(request):
+    """
+    Generate combined report automatically using latest submissions for a layer.
+    The system will automatically find the latest ENV, SOC, and GOV submissions
+    for the specified layer and generate a combined report.
+    
+    Expected payload:
+    {
+        "layer_id": 123,
+        "entity_name": "Optional entity name filter",
+        "reporting_period": "Optional specific reporting period (YYYY-MM-DD)",
+        "regenerate": false
+    }
+    """
+    try:
+        layer_id = request.data.get('layer_id')
+        entity_name = request.data.get('entity_name', None)  # Optional filter
+        reporting_period = request.data.get('reporting_period', None)  # Optional - defaults to latest
+        regenerate = request.data.get('regenerate', False)
+        
+        if not layer_id:
+            return Response({
+                "error": "layer_id is required"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if layer exists and user has access
+        if not has_layer_access(request.user, layer_id):
+            return Response({
+                "error": "You do not have permission to generate reports for this layer"
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # 1. Find the latest complete E/S/G submission set
+        submissions_by_type = {}
+        query = ESGMetricSubmission.objects.filter(
+            layer_id=layer_id,
+            metric__polymorphic_ctype__model='checklistmetric'
+        )
+        
+        # Apply optional filters
+        if entity_name:
+            query = query.filter(layer__name=entity_name)
+        if reporting_period:
+            query = query.filter(reporting_period=reporting_period)
+        
+        # Find latest submission for each type
+        for checklist_type in ["ENV", "SOC", "GOV"]:
+            submission = query.filter(
+                metric__checklist_type=checklist_type
+            ).order_by('-reporting_period').first()
+            
+            if submission:
+                # Check if the submission has responses
+                has_responses = ChecklistResponse.objects.filter(submission=submission).exists()
+                if has_responses:
+                    submissions_by_type[checklist_type] = submission
+        
+        # 2. Validate we have all required checklist types
+        required_types = ["ENV", "SOC", "GOV"]
+        missing_types = [t for t in required_types if t not in submissions_by_type]
+        
+        if missing_types:
+            return Response({
+                "error": "Missing required checklist submissions",
+                "missing_types": missing_types,
+                "available_types": list(submissions_by_type.keys())
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 3. Check if a combined report already exists for these submissions
+        submission_ids = [submissions_by_type[t].id for t in required_types]
+        primary_id = submissions_by_type["ENV"].id  # Use ENV as primary
+        
+        # Look for existing report with these submissions
+        existing_report = None
+        if not regenerate:
+            # Find reports where the primary submission matches
+            primary_reports = ChecklistReport.objects.filter(
+                primary_submission_id=primary_id,
+                report_type='COMBINED'
+            )
+            
+            # Check if any of these reports have the other two submissions as related
+            for report in primary_reports:
+                related_ids = report.related_submissions.values_list('id', flat=True)
+                if set(submission_ids).issubset(set([primary_id] + list(related_ids))):
+                    existing_report = report
+                    break
+            
+            if existing_report:
+                return Response({
+                    "status": "existing_report",
+                    "message": "An existing report was found for these submissions",
+                    "report": existing_report.to_dict()
+                })
+        
+        # 4. Generate the combined report
+        # Create a request object for the existing combined report endpoint
+        combined_request = request._request.copy()
+        combined_request.POST = combined_request.POST.copy()
+        combined_request.POST['submission_ids'] = submission_ids
+        
+        # Call the existing endpoint function
+        wrapped_request = Request(combined_request)
+        wrapped_request.user = request.user
+        wrapped_request.data = {'submission_ids': submission_ids}
+        
+        # Call the existing implementation
+        return generate_combined_checklist_report(wrapped_request)
+        
+    except Exception as e:
+        logger.error(f"Error generating combined report for layer: {str(e)}")
+        return Response({
+            "error": f"Error generating combined report: {str(e)}"
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 

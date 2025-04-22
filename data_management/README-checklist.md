@@ -357,6 +357,93 @@ Example Response:
 
 The integrated report provides additional value by identifying relationships between different ESG dimensions and providing a more strategic view of overall ESG performance.
 
+## Automated Combined Report Generation
+
+For a more streamlined reporting workflow, the system provides endpoints that automatically find and combine the appropriate ESG checklists based on organizational structure:
+
+### Checking Checklist Status
+
+To check which checklists are completed for a specific layer:
+
+```
+GET /api/checklist-status/123/
+```
+
+This endpoint returns a comprehensive status of all three ESG checklists:
+
+```json
+{
+  "ENV": {
+    "complete": true,
+    "submission_id": 456,
+    "reporting_period": "2023-12-31",
+    "submitted_at": "2023-12-15T10:30:45Z"
+  },
+  "SOC": {
+    "complete": true,
+    "submission_id": 457,
+    "reporting_period": "2023-12-31",
+    "submitted_at": "2023-12-16T14:20:30Z"
+  },
+  "GOV": {
+    "complete": false,
+    "submission_id": null,
+    "reporting_period": null,
+    "submitted_at": null
+  },
+  "all_complete": false
+}
+```
+
+### Automated Combined Report Generation
+
+Once all three checklists are completed, you can generate a combined report with a single API call:
+
+```
+POST /api/checklist-reports/generate-for-layer/
+```
+
+```json
+{
+  "layer_id": 123,
+  "regenerate": false
+}
+```
+
+This endpoint:
+1. Automatically finds the latest ENV, SOC, and GOV checklist submissions for the layer
+2. Validates that all three checklist types are complete
+3. Checks if a report already exists for these submissions (returns it if found)
+4. Generates a new combined report if needed or if regenerate=true is specified
+
+Optional parameters:
+- `entity_name`: Filter for a specific entity name within the layer
+- `reporting_period`: Use submissions from a specific reporting period
+- `regenerate`: Force generation of a new report even if one exists
+
+Example response:
+```json
+{
+  "report": {
+    "id": 458,
+    "report_type": "COMBINED",
+    "title": "Integrated ESG Compliance Report",
+    "company": "Division A",
+    "generated_at": "2023-12-16T14:45:22Z",
+    "overall_compliance": 81.3,
+    "environmental_compliance": 78.5,
+    "social_compliance": 85.2,
+    "governance_compliance": 76.8,
+    "content": "Integrated ESG Assessment...",
+    "word_count": 3245,
+    "version": 1
+  },
+  "status": "generated_new"
+}
+```
+
+This approach eliminates the need for users to manually specify which submissions to include in the combined report.
+
 ## Report Versioning and Regeneration
 
 The system maintains a complete history of generated reports through a versioning system:
