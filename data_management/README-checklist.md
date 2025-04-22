@@ -96,15 +96,129 @@ env_checklist = ChecklistMetric.objects.create(
 )
 ```
 
-## Submitting Responses
+## API Interaction
 
-To submit responses to a checklist:
+### Submitting Checklist Responses
 
-1. Create an `ESGMetricSubmission` linked to the ChecklistMetric
-2. Create `ChecklistResponse` objects for each item being answered
-3. Set the response to YES, NO, or NA with optional remarks
+To submit responses to a checklist via the API, use the standard submission endpoint with a JSON payload containing all responses:
 
-Example:
+#### Create New Submission
+
+```
+POST /api/metric-submissions/
+```
+
+```json
+{
+  "metric": 123,
+  "assignment": 456,
+  "reporting_period": "2023-12-31",
+  "checklist_responses": [
+    {
+      "category_id": "1.1",
+      "subcategory_name": "EMS Framework",
+      "item_id": "a",
+      "item_text": "Are environmental policies documented and accessible?",
+      "response": "YES",
+      "remarks": "Policies available on intranet and physical copies"
+    },
+    {
+      "category_id": "1.1",
+      "subcategory_name": "Objectives and Targets",
+      "item_id": "b",
+      "item_text": "Are environmental objectives and targets clearly defined?",
+      "response": "NO",
+      "remarks": "Objectives exist but lack specific targets"
+    },
+    {
+      "category_id": "1.1",
+      "subcategory_name": "Objectives and Targets",
+      "item_id": "c",
+      "item_text": "Is there a plan to achieve these objectives and targets?",
+      "response": "YES",
+      "remarks": ""
+    }
+    // Include all responses in the checklist
+  ]
+}
+```
+
+#### Update Existing Submission
+
+```
+PUT /api/metric-submissions/789/
+```
+
+```json
+{
+  "id": 789,
+  "metric": 123,
+  "assignment": 456,
+  "reporting_period": "2023-12-31",
+  "checklist_responses": [
+    // Include ALL responses, even unchanged ones
+    // Any existing responses not included will be deleted
+    // The system uses full-replacement for the responses list
+  ]
+}
+```
+
+### Response Processing
+
+The serializer handles:
+
+1. Creating or updating the `ESGMetricSubmission` record
+2. For each item in `checklist_responses`:
+   - If it matches an existing response (by category_id/item_id combo), update it
+   - If no match exists, create a new response
+3. Delete any existing responses not included in the update payload
+4. Process all changes in a single transaction
+
+### Retrieving Submissions
+
+To retrieve a checklist submission with all its responses:
+
+```
+GET /api/metric-submissions/789/
+```
+
+Response:
+
+```json
+{
+  "id": 789,
+  "metric": {
+    "id": 123,
+    "name": "Environmental Compliance Checklist",
+    "metric_subtype": "ChecklistMetric",
+    // Other metric fields
+  },
+  "assignment": 456,
+  "reporting_period": "2023-12-31",
+  "submitted_at": "2023-12-15T10:30:45Z",
+  "submitted_by": {
+    "id": 101,
+    "username": "user@example.com",
+    // Other user fields
+  },
+  "checklist_responses": [
+    {
+      "id": 501,
+      "category_id": "1.1",
+      "subcategory_name": "EMS Framework",
+      "item_id": "a",
+      "item_text": "Are environmental policies documented and accessible?",
+      "response": "YES",
+      "remarks": "Policies available on intranet and physical copies"
+    },
+    // All other responses
+  ]
+}
+```
+
+## Python API Examples
+
+To submit responses to a checklist through Python code:
 
 ```python
 from data_management.models.templates import ESGMetricSubmission
