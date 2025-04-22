@@ -126,6 +126,92 @@ def prepare_checklist_data_for_ai(submission):
         "categories": categories
     }
 
+def prepare_combined_checklist_data(submissions):
+    """
+    Prepare and combine data from multiple checklist submissions (E, S, G).
+    
+    Args:
+        submissions: A list of ESGMetricSubmission instances
+        
+    Returns:
+        A structured dictionary with combined checklist data
+    """
+    if not submissions:
+        raise ValueError("No submissions provided")
+    
+    # Organize by checklist type (ENV, SOC, GOV)
+    organized_data = {
+        "ENV": None,
+        "SOC": None,
+        "GOV": None
+    }
+    
+    # Process each submission
+    total_items = 0
+    total_yes = 0
+    total_no = 0
+    total_na = 0
+    
+    # Determine company and reporting period from first submission
+    company_name = "Unknown"
+    reporting_period = "Unknown"
+    submission_ids = []
+    
+    for submission in submissions:
+        if not isinstance(submission.metric, ChecklistMetric):
+            continue
+            
+        checklist_type = submission.metric.checklist_type
+        submission_data = prepare_checklist_data_for_ai(submission)
+        
+        # Store the submission data by type
+        organized_data[checklist_type] = submission_data
+        
+        # Update overall statistics
+        total_items += submission_data["summary"]["total_items"]
+        total_yes += submission_data["summary"]["yes_count"]
+        total_no += submission_data["summary"]["no_count"]
+        total_na += submission_data["summary"]["na_count"]
+        
+        # Collect metadata from the first valid submission
+        if company_name == "Unknown" and "company_name" in submission_data["metadata"]:
+            company_name = submission_data["metadata"]["company_name"]
+            
+        if reporting_period == "Unknown" and "reporting_period" in submission_data["metadata"]:
+            reporting_period = submission_data["metadata"]["reporting_period"]
+            
+        submission_ids.append(submission.id)
+    
+    # Calculate overall compliance percentage
+    overall_compliance = round((total_yes / total_items) * 100, 2) if total_items > 0 else 0
+    
+    # Create combined structure
+    combined_data = {
+        "metadata": {
+            "submission_ids": submission_ids,
+            "company_name": company_name,
+            "reporting_period": reporting_period,
+            "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+        },
+        "summary": {
+            "total_items": total_items,
+            "yes_count": total_yes,
+            "no_count": total_no,
+            "na_count": total_na,
+            "overall_compliance_percentage": overall_compliance,
+            "environmental_compliance": organized_data["ENV"]["summary"]["compliance_percentage"] if organized_data["ENV"] else None,
+            "social_compliance": organized_data["SOC"]["summary"]["compliance_percentage"] if organized_data["SOC"] else None,
+            "governance_compliance": organized_data["GOV"]["summary"]["compliance_percentage"] if organized_data["GOV"] else None
+        },
+        "checklists": {
+            "environmental": organized_data["ENV"],
+            "social": organized_data["SOC"],
+            "governance": organized_data["GOV"]
+        }
+    }
+    
+    return combined_data
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def generate_checklist_report(request):
@@ -232,4 +318,127 @@ def generate_checklist_report(request):
         logger.error(f"Error in generate_checklist_report: {str(e)}")
         return Response({
             "error": f"Error generating report: {str(e)}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_combined_checklist_report(request):
+    """
+    Generate a comprehensive ESG report that combines data from multiple checklist submissions.
+    Typically this would include Environmental, Social, and Governance checklists.
+    
+    Expected payload:
+    {
+        "submission_ids": [123, 124, 125]  // E, S, G submission IDs
+    }
+    """
+    submission_ids = request.data.get('submission_ids', [])
+    
+    if not submission_ids or not isinstance(submission_ids, list) or len(submission_ids) == 0:
+        return Response({
+            "error": "submission_ids must be a non-empty array of submission IDs"
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Get all the submissions
+        submissions = ESGMetricSubmission.objects.filter(id__in=submission_ids)
+        
+        if not submissions.exists():
+            return Response({
+                "error": f"No submissions found with the provided IDs"
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verify that all submissions are for ChecklistMetric
+        non_checklist_submissions = []
+        for submission in submissions:
+            if not isinstance(submission.metric, ChecklistMetric):
+                non_checklist_submissions.append(submission.id)
+        
+        if non_checklist_submissions:
+            return Response({
+                "error": f"Submissions with IDs {non_checklist_submissions} are not checklist submissions"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Prepare combined checklist data
+        combined_data = prepare_combined_checklist_data(submissions)
+        
+        # Unified prompt for combined ESG report
+        combined_prompt = (
+            "Generate a comprehensive integrated ESG report that analyzes data from Environmental, "
+            "Social, and Governance checklists together. The report should include:\n\n"
+            "1. Executive Summary: Provide a concise overview of the overall ESG compliance status, "
+            "with separate sections highlighting Environmental, Social, and Governance performance. "
+            "Include the overall compliance percentage and comparison between E, S, and G areas.\n\n"
+            "2. Performance by ESG Pillar: Analyze each pillar (Environmental, Social, Governance) "
+            "separately, highlighting key strengths and weaknesses in each area.\n\n"
+            "3. Key Findings: Identify patterns across all three pillars, noting any correlations or "
+            "systemic issues that span multiple ESG areas.\n\n"
+            "4. Strategic Improvement Plan: Prioritize the most critical gaps across all three areas, "
+            "providing specific, actionable recommendations with implementation guidance.\n\n"
+            "5. Conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
+            "recommendations for integrated ESG improvement.\n\n"
+            "The report should be well-structured, professional, and provide actionable insights "
+            "while considering the interconnections between Environmental, Social, and Governance factors."
+        )
+        
+        # Prepare data for OpenAI
+        try:
+            # If no API settings are configured, return mock data for development
+            if not hasattr(settings, 'OPENROUTER_API_KEY') or not settings.OPENROUTER_API_KEY:
+                report_text = f"[MOCK REPORT - No OpenRouter API key configured]\n\n" \
+                             f"Integrated ESG Report for {combined_data['metadata']['company_name']}\n" \
+                             f"Overall Compliance: {combined_data['summary']['overall_compliance_percentage']}%\n" \
+                             f"Environmental: {combined_data['summary']['environmental_compliance']}%\n" \
+                             f"Social: {combined_data['summary']['social_compliance']}%\n" \
+                             f"Governance: {combined_data['summary']['governance_compliance']}%\n\n" \
+                             f"This is a placeholder for the combined ESG report."
+            else:
+                # Configure OpenAI client with OpenRouter settings
+                client = OpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=settings.OPENROUTER_API_KEY,
+                )
+                
+                # Call OpenAI API (with OpenRouter configuration)
+                completion = client.chat.completions.create(
+                    extra_headers={
+                        "HTTP-Referer": settings.SITE_URL if hasattr(settings, 'SITE_URL') else "https://esg-platform.example.com",
+                        "X-Title": "ESG Platform API" 
+                    },
+                    # Choose an appropriate model - using a default if not specified
+                    model=getattr(settings, 'OPENROUTER_MODEL', "google/gemini-pro"),
+                    messages=[
+                        {"role": "system", "content": "You are an ESG reporting specialist who analyzes environmental, social, and governance compliance data to generate comprehensive, integrated ESG reports."},
+                        {"role": "user", "content": f"{combined_prompt}\n\nCOMBINED ESG DATA:\n{json.dumps(combined_data, indent=2)}"}
+                    ],
+                    temperature=0.2,  # Low temperature for more consistent reporting
+                    max_tokens=4000  # Adjust based on report length needs
+                )
+                
+                report_text = completion.choices[0].message.content
+            
+            # Return the report
+            return Response({
+                "report": {
+                    "title": "Integrated ESG Compliance Report",
+                    "company": combined_data['metadata']['company_name'],
+                    "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "overall_compliance": combined_data['summary']['overall_compliance_percentage'],
+                    "environmental_compliance": combined_data['summary']['environmental_compliance'],
+                    "social_compliance": combined_data['summary']['social_compliance'],
+                    "governance_compliance": combined_data['summary']['governance_compliance'],
+                    "content": report_text
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error calling AI service for combined report: {str(e)}")
+            return Response({
+                "error": f"Error generating combined report: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+    except Exception as e:
+        logger.error(f"Error in generate_combined_checklist_report: {str(e)}")
+        return Response({
+            "error": f"Error generating combined report: {str(e)}"
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
