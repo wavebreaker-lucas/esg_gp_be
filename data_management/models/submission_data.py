@@ -4,7 +4,8 @@ from .polymorphic_metrics import (
     BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
     TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric,
     VehicleTrackingMetric, VehicleType, FuelType,
-    FuelConsumptionMetric, FuelSourceType, StationaryFuelType
+    FuelConsumptionMetric, FuelSourceType, StationaryFuelType,
+    ChecklistMetric
 )
 
 # --- Submission Data Models ---
@@ -376,4 +377,82 @@ class FuelMonthlyData(models.Model):
     
     def __str__(self):
         quantity_str = f"{self.quantity}" if self.quantity is not None else "N/A"
-        return f"{self.source.name} - {self.period.strftime('%b %Y')}: {quantity_str} units" 
+        return f"{self.source.name} - {self.period.strftime('%b %Y')}: {quantity_str} units"
+
+# Add ChecklistResponse model after the existing models
+class ChecklistResponse(models.Model):
+    """Stores individual YES/NO responses for each item in a ChecklistMetric submission."""
+    submission = models.ForeignKey(
+        ESGMetricSubmission,
+        on_delete=models.CASCADE,
+        related_name='checklist_responses'
+    )
+    
+    # Item identifiers - allows linking response to specific checklist item
+    category_id = models.CharField(
+        max_length=20,
+        help_text="ID of the category (e.g., '1.1')"
+    )
+    
+    subcategory_name = models.CharField(
+        max_length=100,
+        help_text="Name of the subcategory (e.g., 'Monitoring and Review')"
+    )
+    
+    item_id = models.CharField(
+        max_length=20,
+        help_text="ID of the specific item (e.g., 'a')"
+    )
+    
+    item_text = models.TextField(
+        help_text="Full text of the checklist item"
+    )
+    
+    # Response data
+    response = models.CharField(
+        max_length=10,
+        choices=[
+            ('YES', 'Yes'),
+            ('NO', 'No'),
+            ('NA', 'Not Applicable')
+        ],
+        null=True,
+        blank=True,
+        help_text="The YES/NO response for this item"
+    )
+    
+    remarks = models.TextField(
+        blank=True,
+        help_text="Additional remarks or explanation for this response"
+    )
+    
+    # Optional score if scoring is enabled
+    score = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Score value if scoring is enabled"
+    )
+    
+    # Evidence reference
+    has_evidence = models.BooleanField(
+        default=False,
+        help_text="Whether supporting evidence has been provided for this item"
+    )
+    
+    evidence_reference = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Reference to evidence file or document"
+    )
+    
+    class Meta:
+        ordering = ['submission', 'category_id', 'item_id']
+        unique_together = ['submission', 'category_id', 'item_id']
+        verbose_name = "Checklist Response"
+        verbose_name_plural = "Checklist Responses"
+    
+    def __str__(self):
+        response_display = self.response if self.response else "Not answered"
+        return f"Item {self.category_id}.{self.item_id} ({response_display}) - Submission {self.submission.pk}" 

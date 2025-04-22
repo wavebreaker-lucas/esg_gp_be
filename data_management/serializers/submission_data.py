@@ -5,7 +5,7 @@ from ..models.submission_data import (
     BasicMetricData, TabularMetricRow, MaterialMatrixDataPoint, 
     TimeSeriesDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint,
     VehicleRecord, VehicleMonthlyData,
-    FuelRecord, FuelMonthlyData  # Add our new models
+    FuelRecord, FuelMonthlyData, ChecklistResponse  # Add ChecklistResponse
 )
 
 # --- Serializers for Specific Submission Data Models ---
@@ -71,6 +71,13 @@ class FuelRecordSerializer(serializers.ModelSerializer):
         model = FuelRecord
         exclude = ('submission',)
 
+# Add serializer for ChecklistResponse
+class ChecklistResponseSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(read_only=True)
+    class Meta:
+        model = ChecklistResponse
+        exclude = ('submission',)
+
 # --- Polymorphic Serializer for Reading Submission Data --- 
 
 class PolymorphicSubmissionDataSerializer(PolymorphicSerializer):
@@ -83,7 +90,8 @@ class PolymorphicSubmissionDataSerializer(PolymorphicSerializer):
         MultiFieldTimeSeriesDataPoint: MultiFieldTimeSeriesDataPointSerializer,
         MultiFieldDataPoint: MultiFieldDataPointSerializer,
         VehicleRecord: VehicleRecordSerializer,
-        FuelRecord: FuelRecordSerializer  # Add FuelRecord for polymorphic support
+        FuelRecord: FuelRecordSerializer,
+        ChecklistResponse: ChecklistResponseSerializer  # Add ChecklistResponse serializer
     }
     # This serializer is primarily for READING the specific data associated
     # with a submission. It determines the type based on the related object.

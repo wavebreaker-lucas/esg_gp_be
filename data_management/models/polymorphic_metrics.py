@@ -951,4 +951,123 @@ class FuelConsumptionMetric(BaseESGMetric):
             'contributing_submissions_count': contributing_submissions_count
         }
 
-# class NarrativeMetric(BaseESGMetric): ...
+# New ChecklistMetric class for ESG checklists
+class ChecklistMetric(BaseESGMetric):
+    """
+    Metrics representing YES/NO compliance checklists with hierarchical structure.
+    Designed for ESG performance assessments with categories, subcategories, and individual items.
+    """
+    # Structure of the checklist stored as JSON
+    checklist_structure = models.JSONField(
+        default=list,
+        help_text="Structure of the checklist with categories, subcategories, and items"
+    )
+    
+    # Configuration options
+    show_item_ids = models.BooleanField(
+        default=True,
+        help_text="Whether to display item IDs (e.g., '1.1.a') in the checklist"
+    )
+    
+    allow_partial_submission = models.BooleanField(
+        default=True,
+        help_text="Allow users to save incomplete checklists as drafts"
+    )
+    
+    require_remarks_for_no = models.BooleanField(
+        default=False,
+        help_text="Require remarks when an item is marked as 'NO'"
+    )
+    
+    # Scoring configuration (optional)
+    enable_scoring = models.BooleanField(
+        default=False,
+        help_text="Enable numerical scoring for checklist items"
+    )
+    
+    scoring_method = models.CharField(
+        max_length=20,
+        choices=[
+            ('SIMPLE', 'Simple Count (YES=1, NO=0)'),
+            ('WEIGHTED', 'Weighted (Each item has a weight)'),
+            ('CUSTOM', 'Custom formula')
+        ],
+        default='SIMPLE',
+        help_text="Method used for calculating compliance score"
+    )
+    
+    scoring_weights = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Weights for items when using weighted scoring method"
+    )
+    
+    # Checklist type to separate E/S/G checklists
+    CHECKLIST_TYPE_CHOICES = [
+        ('ENV', 'Environmental'),
+        ('SOC', 'Social'),
+        ('GOV', 'Governance'),
+        ('GEN', 'General/Other')
+    ]
+    
+    checklist_type = models.CharField(
+        max_length=3,
+        choices=CHECKLIST_TYPE_CHOICES,
+        default='GEN',
+        help_text="The primary ESG category this checklist belongs to"
+    )
+    
+    class Meta:
+        verbose_name = "Checklist Metric"
+        verbose_name_plural = "Checklist Metrics"
+    
+    def __str__(self):
+        return f"[{self.get_checklist_type_display()} Checklist] {super().__str__()}"
+    
+    def calculate_aggregate(self, relevant_submission_pks: QuerySet[int], target_start_date: datetime.date, target_end_date: datetime.date, level: str) -> dict | None:
+        """Calculate aggregate for checklist metrics."""
+        # Import here to avoid circular imports
+        from .submission_data import ChecklistResponse
+        from .templates import ESGMetricSubmission
+        
+        # Find the most recent submission within the relevant set
+        last_submission_pk = ESGMetricSubmission.objects.filter(
+            pk__in=relevant_submission_pks
+        ).order_by('-submitted_at', '-pk').values_list('pk', flat=True).first()
+        
+        if not last_submission_pk:
+            return None
+        
+        # Get responses for this submission
+        responses = ChecklistResponse.objects.filter(submission_id=last_submission_pk)
+        
+        if not responses.exists():
+            return None
+        
+        # Calculate compliance stats
+        total_items = responses.count()
+        yes_count = responses.filter(response='YES').count()
+        no_count = responses.filter(response='NO').count()
+        na_count = total_items - yes_count - no_count  # Items without YES/NO answers
+        
+        if total_items == 0:
+            compliance_percentage = 0
+        else:
+            compliance_percentage = (yes_count / total_items) * 100
+        
+        # Create summary data
+        summary_data = {
+            'total_items': total_items,
+            'yes_count': yes_count,
+            'no_count': no_count,
+            'na_count': na_count,
+            'compliance_percentage': round(compliance_percentage, 2)
+        }
+        
+        # For aggregated value, use the compliance percentage
+        return {
+            'aggregated_numeric_value': compliance_percentage,
+            'aggregated_text_value': json.dumps(summary_data),
+            'aggregation_method': 'LAST',
+            'contributing_submissions_count': 1  # Only the latest submission
+        }
