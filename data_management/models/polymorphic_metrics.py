@@ -5,6 +5,10 @@ import datetime
 from django.db.models import QuerySet, Sum, Avg
 from django.utils import timezone # Needed for potential 'LAST' logic refinement
 import json
+import logging
+
+# Initialize logger at the module level
+logger = logging.getLogger(__name__)
 
 # Choices definitions (can be moved to a central location later if needed)
 LOCATION_CHOICES = [
@@ -383,8 +387,6 @@ class TimeSeriesMetric(BaseESGMetric):
             aggregated_numeric = None
             contributing_submissions_count = 0 # Mark as unknown contribution
             # Maybe log a warning here?
-            import logging
-            logger = logging.getLogger(__name__)
             logger.warning(f"Unsupported aggregation method '{self.aggregation_method}' for TimeSeriesMetric {self.pk}")
 
         # Return None if the chosen method didn't produce a value (e.g., LAST found no submission)
@@ -1024,24 +1026,40 @@ class ChecklistMetric(BaseESGMetric):
     def __str__(self):
         return f"[{self.get_checklist_type_display()} Checklist] {super().__str__()}"
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Ensure aggregates_inputs is set to True for ChecklistMetric
+        self.aggregates_inputs = True
+        logger.info(f"ChecklistMetric.__init__ called for ID {getattr(self, 'id', 'new')} - Set aggregates_inputs={self.aggregates_inputs}")
+        
     def calculate_aggregate(self, relevant_submission_pks: QuerySet[int], target_start_date: datetime.date, target_end_date: datetime.date, level: str) -> dict | None:
         """Calculate aggregate for checklist metrics."""
         # Import here to avoid circular imports
         from .submission_data import ChecklistResponse
         from .templates import ESGMetricSubmission
         
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"ChecklistMetric.calculate_aggregate called - metric_id: {self.id}, relevant_pks: {list(relevant_submission_pks)[:5]}, period: {target_start_date} to {target_end_date}, level: {level}")
+        
         # Find the most recent submission within the relevant set
         last_submission_pk = ESGMetricSubmission.objects.filter(
             pk__in=relevant_submission_pks
         ).order_by('-submitted_at', '-pk').values_list('pk', flat=True).first()
         
+        logger.info(f"Last submission PK found: {last_submission_pk}")
+        
         if not last_submission_pk:
+            logger.warning(f"No submission found in relevant_submission_pks for ChecklistMetric {self.id}")
             return None
         
         # Get responses for this submission
         responses = ChecklistResponse.objects.filter(submission_id=last_submission_pk)
         
+        logger.info(f"Found {responses.count()} responses for submission {last_submission_pk}")
+        
         if not responses.exists():
+            logger.warning(f"No responses found for submission {last_submission_pk}")
             return None
         
         # Calculate compliance stats
@@ -1055,6 +1073,8 @@ class ChecklistMetric(BaseESGMetric):
         else:
             compliance_percentage = (yes_count / total_items) * 100
         
+        logger.info(f"Calculated compliance: {compliance_percentage}% (YES: {yes_count}, NO: {no_count}, NA: {na_count}, Total: {total_items})")
+        
         # Create summary data
         summary_data = {
             'total_items': total_items,
@@ -1064,10 +1084,14 @@ class ChecklistMetric(BaseESGMetric):
             'compliance_percentage': round(compliance_percentage, 2)
         }
         
-        # For aggregated value, use the compliance percentage
-        return {
+        result = {
             'aggregated_numeric_value': compliance_percentage,
             'aggregated_text_value': json.dumps(summary_data),
             'aggregation_method': 'LAST',
             'contributing_submissions_count': 1  # Only the latest submission
         }
+        
+        logger.info(f"ChecklistMetric.calculate_aggregate returning: {result}")
+        
+        # For aggregated value, use the compliance percentage
+        return result
