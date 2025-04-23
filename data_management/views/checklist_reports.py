@@ -314,48 +314,28 @@ def prepare_combined_checklist_data(submissions):
     
     return combined_data
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def generate_checklist_report(request):
+def _generate_combined_report(submission_ids, regenerate=False, user=None):
     """
-    This endpoint is disabled as the system only supports combined ESG reports.
-    Individual checklist reports are not supported to ensure comprehensive ESG assessment.
-    Please use the combined report endpoints instead.
-    """
-    return Response({
-        "error": "Individual checklist reports are disabled",
-        "message": "This system only supports combined ESG reports that include Environmental, Social, and Governance components.",
-        "recommended_endpoint": "/api/checklist-reports/generate-for-layer/",
-        "usage": "POST to /api/checklist-reports/generate-for-layer/ with {'layer_id': your_layer_id}"
-    }, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def generate_combined_checklist_report(request):
-    """
-    Generate a comprehensive ESG report that combines data from multiple checklist submissions.
-    Typically this would include Environmental, Social, and Governance checklists.
+    Helper function to generate a combined ESG report from multiple submission IDs.
     
-    Expected payload:
-    {
-        "submission_ids": [123, 124, 125]  // E, S, G submission IDs
-    }
+    Args:
+        submission_ids: List of submission IDs (ENV, SOC, GOV)
+        regenerate: Whether to regenerate if a report already exists
+        user: The user making the request (for audit purposes)
+        
+    Returns:
+        tuple: (report_data, status_message, status_code)
     """
-    submission_ids = request.data.get('submission_ids', [])
-    
-    if not submission_ids or not isinstance(submission_ids, list) or len(submission_ids) == 0:
-        return Response({
-            "error": "submission_ids must be a non-empty array of submission IDs"
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
     try:
         # Get all the submissions
         submissions = ESGMetricSubmission.objects.filter(id__in=submission_ids)
         
         if not submissions.exists():
-            return Response({
-                "error": f"No submissions found with the provided IDs"
-            }, status=status.HTTP_404_NOT_FOUND)
+            return (
+                {"error": f"No submissions found with the provided IDs"},
+                "not_found",
+                status.HTTP_404_NOT_FOUND
+            )
         
         # Verify that all submissions are for ChecklistMetric
         non_checklist_submissions = []
@@ -364,9 +344,11 @@ def generate_combined_checklist_report(request):
                 non_checklist_submissions.append(submission.id)
         
         if non_checklist_submissions:
-            return Response({
-                "error": f"Submissions with IDs {non_checklist_submissions} are not checklist submissions"
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return (
+                {"error": f"Submissions with IDs {non_checklist_submissions} are not checklist submissions"},
+                "invalid_submissions",
+                status.HTTP_400_BAD_REQUEST
+            )
             
         # Use first submission (typically ENV) as primary for report storage
         primary_submission_id = submission_ids[0]
@@ -380,11 +362,12 @@ def generate_combined_checklist_report(request):
         ).order_by('-version').first()
         
         # If a report exists and regenerate flag is not set, return the existing report
-        if existing_report and not request.data.get('regenerate', False):
-            return Response({
-                "report": existing_report.to_dict(),
-                "status": "retrieved_existing"
-            })
+        if existing_report and not regenerate:
+            return (
+                {"report": existing_report.to_dict()},
+                "retrieved_existing",
+                status.HTTP_200_OK
+            )
         
         # Prepare combined checklist data
         combined_data = prepare_combined_checklist_data(submissions)
@@ -479,22 +462,75 @@ def generate_combined_checklist_report(request):
                 report_data["version"] = stored_report.version
             
             # Return the report
-            return Response({
-                "report": report_data,
-                "status": "generated_new"
-            })
+            return (
+                {"report": report_data},
+                "generated_new",
+                status.HTTP_200_OK
+            )
             
         except Exception as e:
             logger.error(f"Error calling AI service for combined report: {str(e)}")
-            return Response({
-                "error": f"Error generating combined report: {str(e)}"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return (
+                {"error": f"Error generating combined report: {str(e)}"},
+                "error",
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         
     except Exception as e:
-        logger.error(f"Error in generate_combined_checklist_report: {str(e)}")
+        logger.error(f"Error in _generate_combined_report: {str(e)}")
+        return (
+            {"error": f"Error generating combined report: {str(e)}"},
+            "error",
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_checklist_report(request):
+    """
+    This endpoint is disabled as the system only supports combined ESG reports.
+    Individual checklist reports are not supported to ensure comprehensive ESG assessment.
+    Please use the combined report endpoints instead.
+    """
+    return Response({
+        "error": "Individual checklist reports are disabled",
+        "message": "This system only supports combined ESG reports that include Environmental, Social, and Governance components.",
+        "recommended_endpoint": "/api/checklist-reports/generate-for-layer/",
+        "usage": "POST to /api/checklist-reports/generate-for-layer/ with {'layer_id': your_layer_id}"
+    }, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_combined_checklist_report(request):
+    """
+    Generate a comprehensive ESG report that combines data from multiple checklist submissions.
+    Typically this would include Environmental, Social, and Governance checklists.
+    
+    Expected payload:
+    {
+        "submission_ids": [123, 124, 125]  // E, S, G submission IDs
+    }
+    """
+    submission_ids = request.data.get('submission_ids', [])
+    regenerate = request.data.get('regenerate', False)
+    
+    if not submission_ids or not isinstance(submission_ids, list) or len(submission_ids) == 0:
         return Response({
-            "error": f"Error generating combined report: {str(e)}"
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            "error": "submission_ids must be a non-empty array of submission IDs"
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Call the helper function to generate the report
+    response_data, status_msg, status_code = _generate_combined_report(
+        submission_ids=submission_ids,
+        regenerate=regenerate,
+        user=request.user
+    )
+    
+    # Add status message if it's not an error
+    if status_code == status.HTTP_200_OK:
+        response_data["status"] = status_msg
+    
+    return Response(response_data, status=status_code)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -851,19 +887,18 @@ def generate_combined_report_for_layer(request):
                     "report": existing_report.to_dict()
                 })
         
-        # 4. Generate the combined report
-        # Create a request object for the existing combined report endpoint
-        combined_request = request._request.copy()
-        combined_request.POST = combined_request.POST.copy()
-        combined_request.POST['submission_ids'] = submission_ids
+        # 4. Generate the combined report using the helper function
+        response_data, status_msg, status_code = _generate_combined_report(
+            submission_ids=submission_ids,
+            regenerate=regenerate,
+            user=request.user
+        )
         
-        # Call the existing endpoint function
-        wrapped_request = Request(combined_request)
-        wrapped_request.user = request.user
-        wrapped_request.data = {'submission_ids': submission_ids}
+        # Add status message if it's not an error
+        if status_code == status.HTTP_200_OK:
+            response_data["status"] = status_msg
         
-        # Call the existing implementation
-        return generate_combined_checklist_report(wrapped_request)
+        return Response(response_data, status=status_code)
         
     except Exception as e:
         logger.error(f"Error generating combined report for layer: {str(e)}")
