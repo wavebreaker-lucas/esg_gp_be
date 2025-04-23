@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from rest_framework.request import Request
+from django.contrib.contenttypes.models import ContentType
 
 from accounts.models import LayerProfile
 from accounts.services import has_layer_access
@@ -669,13 +670,23 @@ def get_checklist_status(request, layer_id):
             "all_complete": False
         }
         
+        # Get the content type for ChecklistMetric
+        from django.contrib.contenttypes.models import ContentType
+        from ..models.polymorphic_metrics import ChecklistMetric
+        checklist_content_type = ContentType.objects.get_for_model(ChecklistMetric)
+        
         # Find latest submission for each checklist type
         for checklist_type in ["ENV", "SOC", "GOV"]:
-            # Get latest submission of this checklist type for this layer
+            # First get all checklist metric IDs of the specific type
+            checklist_metrics = ChecklistMetric.objects.filter(
+                polymorphic_ctype=checklist_content_type,
+                checklist_type=checklist_type
+            ).values_list('id', flat=True)
+            
+            # Then filter submissions by these metric IDs
             submission = ESGMetricSubmission.objects.filter(
                 layer_id=layer_id,
-                metric__polymorphic_ctype__model='checklistmetric',
-                metric__checklist_type=checklist_type
+                metric_id__in=checklist_metrics
             ).order_by('-reporting_period').first()
             
             if submission:
@@ -759,10 +770,22 @@ def generate_combined_report_for_layer(request):
         if reporting_period:
             query = query.filter(reporting_period=reporting_period)
         
+        # Get the content type for ChecklistMetric
+        from django.contrib.contenttypes.models import ContentType
+        from ..models.polymorphic_metrics import ChecklistMetric
+        checklist_content_type = ContentType.objects.get_for_model(ChecklistMetric)
+        
         # Find latest submission for each type and check completion
         for checklist_type in ["ENV", "SOC", "GOV"]:
+            # First get all checklist metric IDs of the specific type
+            checklist_metrics = ChecklistMetric.objects.filter(
+                polymorphic_ctype=checklist_content_type,
+                checklist_type=checklist_type
+            ).values_list('id', flat=True)
+            
+            # Then filter submissions by these metric IDs
             submission = query.filter(
-                metric__checklist_type=checklist_type
+                metric_id__in=checklist_metrics
             ).order_by('-reporting_period').first()
             
             if submission:
