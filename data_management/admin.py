@@ -24,7 +24,8 @@ from .models.polymorphic_metrics import (
     VehicleType, 
     FuelType, 
     FuelSourceType,
-    StationaryFuelType
+    StationaryFuelType,
+    ChecklistMetric
 )
 from .models.submission_data import (
     BasicMetricData, 
@@ -37,7 +38,8 @@ from .models.submission_data import (
     VehicleMonthlyData, 
     VehicleDataSource, 
     FuelRecord, 
-    FuelMonthlyData
+    FuelMonthlyData,
+    ChecklistResponse
 )
 from .models.factors import GHGEmissionFactor, PollutantFactor, EnergyConversionFactor
 from .models.results import CalculatedEmissionValue
@@ -573,6 +575,7 @@ class BaseESGMetricAdmin(PolymorphicParentModelAdmin):
         MultiFieldMetric,
         VehicleTrackingMetric,
         FuelConsumptionMetric,
+        ChecklistMetric,  # Add ChecklistMetric to child models
     )
     list_display = ('name', 'form', 'polymorphic_ctype', 'order', 'location', 'is_required')
     list_filter = (PolymorphicChildModelFilter, 'form', 'location', 'is_required') # Filter by specific metric type
@@ -973,3 +976,31 @@ class FuelRecordInline(admin.StackedInline):
         formset.__init__ = new_init
         
         return formset
+
+@admin.register(ChecklistMetric)
+class ChecklistMetricAdmin(PolymorphicChildModelAdmin):
+    base_model = ChecklistMetric
+    # Custom fieldsets for better organization
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'form', 'description', 'order', 'is_required', 'help_text', 'location')
+        }),
+        ('Checklist Configuration', {
+            'fields': ('checklist_structure', 'checklist_type', 'show_item_ids', 'allow_partial_submission', 'require_remarks_for_no')
+        }),
+        ('Scoring Configuration', {
+            'fields': ('enable_scoring', 'scoring_method', 'scoring_weights')
+        })
+    )
+
+@admin.register(ChecklistResponse)
+class ChecklistResponseAdmin(admin.ModelAdmin):
+    list_display = ['submission', 'category_id', 'item_id', 'response', 'remarks']
+    list_filter = ['response', 'submission__metric', 'category_id']
+    search_fields = ['item_text', 'remarks', 'category_id', 'item_id']
+    raw_id_fields = ['submission']
+    
+    # Add the ability to filter by required vs. optional items
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.select_related('submission', 'submission__metric')
