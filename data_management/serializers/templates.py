@@ -12,13 +12,13 @@ from ..models.templates import (
 from ..models.polymorphic_metrics import (
     BaseESGMetric, BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
     TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric, VehicleTrackingMetric,
-    FuelConsumptionMetric  # Add our new model
+    FuelConsumptionMetric, ChecklistMetric  # Add ChecklistMetric
 )
 # Import the specific data models needed for get_submission_data
 from ..models.submission_data import (
     BasicMetricData, TabularMetricRow, MaterialMatrixDataPoint, 
     TimeSeriesDataPoint, MultiFieldTimeSeriesDataPoint, MultiFieldDataPoint,
-    VehicleRecord, FuelRecord  # Added import for VehicleRecord and FuelRecord
+    VehicleRecord, FuelRecord, ChecklistResponse  # Added import for VehicleRecord, FuelRecord, and ChecklistResponse
 )
 # Import the new submission data serializers
 from .submission_data import (
@@ -32,7 +32,8 @@ from .submission_data import (
     VehicleRecordSerializer,
     VehicleMonthlyDataSerializer,
     FuelRecordSerializer,  # Add import for our new serializers
-    FuelMonthlyDataSerializer
+    FuelMonthlyDataSerializer,
+    ChecklistResponseSerializer
 )
 # Import the polymorphic metric serializer
 from .polymorphic_metrics import ESGMetricPolymorphicSerializer 
@@ -364,6 +365,9 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     # Add fuel_records field for FuelConsumptionMetric
     fuel_records = FuelRecordSerializer(many=True, required=False)  # Now writable
 
+    # Add checklist_responses field for ChecklistMetric
+    checklist_responses = ChecklistResponseSerializer(many=True, required=False)  # Now writable
+
     # --- Field for reading specific submission data ---
     submission_data = serializers.SerializerMethodField(read_only=True)
 
@@ -383,7 +387,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             # --- Write-only fields for submission data ---
             'basic_data', 'tabular_rows', 'material_data_points', 
             'timeseries_data_points', 'multifield_timeseries_data_points', 'multifield_data',
-            'vehicle_records', 'fuel_records',  # Add fuel_records to fields list
+            'vehicle_records', 'fuel_records', 'checklist_responses',  # Add checklist_responses
             # --- Read-only field for output ---
             'submission_data'
         ]
@@ -431,56 +435,85 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
     #     pass 
     
     def get_submission_data(self, obj):
-        """Serialize the specific submission data based on the metric type."""
-        try:
-            # Ensure we have the specific metric instance
-            metric = obj.metric.get_real_instance()
-        except AttributeError:
-            return None # Or return an error indication
-            
-        data_to_serialize = None
-        serializer_kwargs = {'context': self.context}
+        """
+        Return the submission data in the appropriate format based on the metric type.
+        """
+        from ..models.polymorphic_metrics import (
+            BasicMetric, TabularMetric, MaterialTrackingMatrixMetric,
+            TimeSeriesMetric, MultiFieldTimeSeriesMetric, MultiFieldMetric,
+            VehicleTrackingMetric, FuelConsumptionMetric, ChecklistMetric
+        )
+        from ..serializers.submission_data import (
+            BasicMetricDataSerializer, TabularMetricRowSerializer,
+            MaterialMatrixDataPointSerializer, TimeSeriesDataPointSerializer,
+            MultiFieldTimeSeriesDataPointSerializer, MultiFieldDataPointSerializer,
+            VehicleRecordSerializer, FuelRecordSerializer, ChecklistResponseSerializer
+        )
         
-        # Determine which related data to fetch based on metric type
-        if isinstance(metric, BasicMetric):
+        # Get the actual metric type
+        try:
+            metric_instance = obj.metric.get_real_instance()
+        except AttributeError:
+            # Fall back to base type if get_real_instance fails
+            metric_instance = obj.metric
+        
+        if isinstance(metric_instance, BasicMetric):
             try:
                 data_to_serialize = obj.basic_data
+                if data_to_serialize:
+                    return BasicMetricDataSerializer(data_to_serialize, context=self.context).data
             except BasicMetricData.DoesNotExist:
                 pass # No data submitted yet
-        elif isinstance(metric, TabularMetric):
-            data_to_serialize = obj.tabular_rows.all()
-            serializer_kwargs['many'] = True
-        elif isinstance(metric, MaterialTrackingMatrixMetric):
-            data_to_serialize = obj.material_data_points.all()
-            serializer_kwargs['many'] = True
-        elif isinstance(metric, TimeSeriesMetric):
-            data_to_serialize = obj.timeseries_data_points.all()
-            serializer_kwargs['many'] = True
-        elif isinstance(metric, MultiFieldTimeSeriesMetric):
-            data_to_serialize = obj.multifield_timeseries_data_points.all()
-            serializer_kwargs['many'] = True
-        elif isinstance(metric, MultiFieldMetric):
+            return None
+        elif isinstance(metric_instance, TabularMetric):
+            rows = obj.tabular_rows.all()
+            if rows.exists():
+                return TabularMetricRowSerializer(rows, many=True, context=self.context).data
+            return []
+        elif isinstance(metric_instance, MaterialTrackingMatrixMetric):
+            points = obj.material_data_points.all()
+            if points.exists():
+                return MaterialMatrixDataPointSerializer(points, many=True, context=self.context).data
+            return []
+        elif isinstance(metric_instance, TimeSeriesMetric):
+            points = obj.timeseries_data_points.all()
+            if points.exists():
+                return TimeSeriesDataPointSerializer(points, many=True, context=self.context).data
+            return []
+        elif isinstance(metric_instance, MultiFieldTimeSeriesMetric):
+            points = obj.multifield_timeseries_data_points.all()
+            if points.exists():
+                return MultiFieldTimeSeriesDataPointSerializer(points, many=True, context=self.context).data
+            return []
+        elif isinstance(metric_instance, MultiFieldMetric):
             try:
                 data_to_serialize = obj.multifield_data
+                if data_to_serialize:
+                    return MultiFieldDataPointSerializer(data_to_serialize, context=self.context).data
             except MultiFieldDataPoint.DoesNotExist:
                 pass
-        elif isinstance(metric, VehicleTrackingMetric):
-            data_to_serialize = obj.vehicle_records.all()
-            serializer_kwargs['many'] = True
-            serializer = VehicleRecordSerializer(data_to_serialize, **serializer_kwargs)
-            return serializer.data
-        elif isinstance(metric, FuelConsumptionMetric):  # Add case for FuelConsumptionMetric
-            data_to_serialize = obj.fuel_records.all()
-            serializer_kwargs['many'] = True
-            serializer = FuelRecordSerializer(data_to_serialize, **serializer_kwargs)
-            return serializer.data
-        
-        if data_to_serialize is not None:
-            # Use the Polymorphic serializer to render the correct structure
-            serializer = PolymorphicSubmissionDataSerializer(data_to_serialize, **serializer_kwargs)
-            return serializer.data
-        
-        return None # Return None if no data found or metric type unhandled
+            return None
+        elif isinstance(metric_instance, VehicleTrackingMetric):
+            # For vehicle tracking, include all vehicle records
+            vehicle_records = obj.vehicle_records.all()
+            if vehicle_records.exists():
+                return VehicleRecordSerializer(vehicle_records, many=True).data
+            return []
+        elif isinstance(metric_instance, FuelConsumptionMetric):
+            # For fuel consumption, include all fuel records
+            fuel_records = obj.fuel_records.all()
+            if fuel_records.exists():
+                return FuelRecordSerializer(fuel_records, many=True).data
+            return []
+        elif isinstance(metric_instance, ChecklistMetric):
+            # For checklists, include all checklist responses
+            checklist_responses = obj.checklist_responses.all()
+            if checklist_responses.exists():
+                return ChecklistResponseSerializer(checklist_responses, many=True).data
+            return []
+            
+        # If we got here with no match, return None
+        return None
 
     def get_evidence(self, obj):
         """
@@ -540,7 +573,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             f for f in [
                 'basic_data', 'tabular_rows', 'material_data_points', 
                 'timeseries_data_points', 'multifield_timeseries_data_points', 'multifield_data',
-                'vehicle_records', 'fuel_records'  # Add fuel_records to valid data fields
+                'vehicle_records', 'fuel_records', 'checklist_responses'  # Add checklist_responses to valid data fields
             ] if data.get(f) is not None
         ]
         
@@ -549,7 +582,8 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         if not provided_data_fields:
             # Special case for VehicleTrackingMetric - if we're submitting for a vehicle tracking metric
             # and there's no error yet, don't raise an error about missing data fields
-            if not is_creating or not isinstance(metric, VehicleTrackingMetric) or 'vehicle_records' not in data:
+            if not is_creating or (not isinstance(metric, VehicleTrackingMetric) and not isinstance(metric, ChecklistMetric)) or \
+               ('vehicle_records' not in data and 'checklist_responses' not in data):
                 # logger.error("No submission data provided")
                 raise serializers.ValidationError("No submission data provided (e.g., basic_data, tabular_rows, etc.).")
         
@@ -559,7 +593,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"Metric of type BasicMetric requires 'basic_data' field, got {provided_data_fields}.")
         
         # Ensure only one type of data is provided (except vehicle_records can be combined)
-        data_without_vehicle = [f for f in provided_data_fields if f != 'vehicle_records']
+        data_without_vehicle = [f for f in provided_data_fields if f != 'vehicle_records' and f != 'checklist_responses']
         if len(data_without_vehicle) > 1:
             # logger.error(f"Multiple data fields provided: {data_without_vehicle}")
             raise serializers.ValidationError("Multiple types of submission data provided. Only one is allowed.")
@@ -584,6 +618,7 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
                 MultiFieldMetric: 'multifield_data',
                 VehicleTrackingMetric: 'vehicle_records',
                 FuelConsumptionMetric: 'fuel_records',  # Add mapping for FuelConsumptionMetric
+                ChecklistMetric: 'checklist_responses',  # Add mapping for ChecklistMetric
             }
 
             expected_field = None
@@ -599,6 +634,10 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             # Skip field validation for VehicleTrackingMetric since we handle it specially
             if isinstance(specific_metric, VehicleTrackingMetric):
                 # logger.info(f"Found VehicleTrackingMetric with vehicle_records data")
+                pass  # Skip the field validation
+            # Skip field validation for ChecklistMetric since we handle it similarly
+            elif isinstance(specific_metric, ChecklistMetric):
+                # logger.info(f"Found ChecklistMetric with checklist_responses data")
                 pass  # Skip the field validation
             elif provided_field != expected_field:
                 error_msg = f"Invalid data field '{provided_field}' provided for metric type '{type(specific_metric).__name__}'. Expected field: '{expected_field}'."
@@ -656,6 +695,9 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         # Extract nested vehicle and fuel data if present
         vehicle_records_data = validated_data.pop('vehicle_records', None)
         fuel_records_data = validated_data.pop('fuel_records', None)  # Extract fuel records data
+        
+        # Extract checklist responses if present
+        checklist_responses_data = validated_data.pop('checklist_responses', None)
         
         # Set the submitted_by field from the request
         request = self.context.get('request')
@@ -723,10 +765,14 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         if fuel_records_data is not None:
             self._save_fuel_records(submission, fuel_records_data)
         
+        # Handle checklist responses if provided
+        if checklist_responses_data:
+            self._save_checklist_responses(submission, checklist_responses_data)
+        
         return submission
         
     def update(self, instance, validated_data):
-        """Update submission with related nested data."""
+        """Update existing submission with related nested data."""
         # Extract nested data
         basic_data = validated_data.pop('basic_data', None)
         tabular_rows = validated_data.pop('tabular_rows', None)
@@ -738,6 +784,9 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         # Extract nested vehicle and fuel data if present
         vehicle_records_data = validated_data.pop('vehicle_records', None)
         fuel_records_data = validated_data.pop('fuel_records', None)  # Extract fuel records data
+        
+        # Extract checklist responses if present
+        checklist_responses_data = validated_data.pop('checklist_responses', None)
         
         # Update the base fields
         for attr, value in validated_data.items():
@@ -812,6 +861,10 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         # Handle fuel_records nested update
         if fuel_records_data is not None:
             self._save_fuel_records(instance, fuel_records_data, update=True)
+        
+        # Handle checklist responses if provided (update mode)
+        if checklist_responses_data is not None:
+            self._save_checklist_responses(instance, checklist_responses_data, update=True)
         
         return instance
 
@@ -965,6 +1018,39 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             sources_to_delete = FuelRecord.objects.filter(submission=submission_instance).exclude(id__in=keep_source_ids)
             logger.info(f"[DEBUG] Deleting FuelRecord ids={[v.id for v in sources_to_delete]} for submission {submission_instance.id}")
             sources_to_delete.delete()
+
+    def _save_checklist_responses(self, submission_instance, checklist_responses_data, update=False):
+        """Create or update checklist responses for a submission."""
+        from ..models.submission_data import ChecklistResponse
+        
+        # For update, keep track of IDs to retain
+        keep_response_ids = []
+        
+        for response_data in checklist_responses_data:
+            response_id = response_data.get('id', None)
+            
+            if update and response_id:
+                # Try to update existing response
+                try:
+                    response_obj = ChecklistResponse.objects.get(id=response_id, submission=submission_instance)
+                    for attr, value in response_data.items():
+                        setattr(response_obj, attr, value)
+                    response_obj.save()
+                except ChecklistResponse.DoesNotExist:
+                    # Create new if ID doesn't exist
+                    response_obj = ChecklistResponse.objects.create(submission=submission_instance, **response_data)
+            else:
+                # Create new response
+                response_obj = ChecklistResponse.objects.create(submission=submission_instance, **response_data)
+                
+            keep_response_ids.append(response_obj.id)
+            
+        # Clean up responses that weren't in the update
+        if update:
+            deleted_responses = ChecklistResponse.objects.filter(
+                submission=submission_instance).exclude(id__in=keep_response_ids)
+            if deleted_responses.exists():
+                deleted_responses.delete()
 
 # --- Serializer for Batch Submissions ---
 
