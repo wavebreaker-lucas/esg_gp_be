@@ -1028,8 +1028,8 @@ class ChecklistMetric(BaseESGMetric):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Ensure aggregates_inputs is set to True for ChecklistMetric
-        self.aggregates_inputs = True
+        # Changed from True to False to prevent ReportedMetricValue creation
+        self.aggregates_inputs = False
         logger.info(f"ChecklistMetric.__init__ called for ID {getattr(self, 'id', 'new')} - Set aggregates_inputs={self.aggregates_inputs}")
         
     def calculate_aggregate(self, relevant_submission_pks: QuerySet[int], target_start_date: datetime.date, target_end_date: datetime.date, level: str) -> dict | None:
