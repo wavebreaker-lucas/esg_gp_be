@@ -1023,25 +1023,55 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         """Create or update checklist responses for a submission."""
         from ..models.submission_data import ChecklistResponse
         
+        logger.info(f"_save_checklist_responses called for submission {submission_instance.id}, update={update}")
+        
         # For update, keep track of IDs to retain
         keep_response_ids = []
         
         for response_data in checklist_responses_data:
             response_id = response_data.get('id', None)
+            category_id = response_data.get('category_id')
+            item_id = response_data.get('item_id')
             
+            logger.info(f"Processing response: category_id={category_id}, item_id={item_id}, has_id={response_id is not None}")
+            
+            # First try to find an existing response
+            response_obj = None
+            
+            # Try to find by ID if provided
             if update and response_id:
-                # Try to update existing response
                 try:
                     response_obj = ChecklistResponse.objects.get(id=response_id, submission=submission_instance)
-                    for attr, value in response_data.items():
-                        setattr(response_obj, attr, value)
-                    response_obj.save()
+                    logger.info(f"Found existing response by ID: {response_id}")
                 except ChecklistResponse.DoesNotExist:
-                    # Create new if ID doesn't exist
-                    response_obj = ChecklistResponse.objects.create(submission=submission_instance, **response_data)
+                    logger.info(f"Response with ID {response_id} not found")
+                    response_obj = None
+            
+            # If not found by ID or ID not provided, try to find by natural key
+            if response_obj is None and category_id and item_id:
+                try:
+                    response_obj = ChecklistResponse.objects.get(
+                        submission=submission_instance,
+                        category_id=category_id,
+                        item_id=item_id
+                    )
+                    logger.info(f"Found existing response by natural key: category_id={category_id}, item_id={item_id}")
+                except ChecklistResponse.DoesNotExist:
+                    logger.info(f"No existing response found for category_id={category_id}, item_id={item_id}")
+                    response_obj = None
+            
+            # Update existing response or create new one
+            if response_obj:
+                # Update existing response
+                for attr, value in response_data.items():
+                    if attr != 'id':  # Skip updating the ID field
+                        setattr(response_obj, attr, value)
+                response_obj.save()
+                logger.info(f"Updated existing response (ID: {response_obj.id})")
             else:
                 # Create new response
                 response_obj = ChecklistResponse.objects.create(submission=submission_instance, **response_data)
+                logger.info(f"Created new response (ID: {response_obj.id})")
                 
             keep_response_ids.append(response_obj.id)
             
@@ -1050,6 +1080,9 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
             deleted_responses = ChecklistResponse.objects.filter(
                 submission=submission_instance).exclude(id__in=keep_response_ids)
             if deleted_responses.exists():
+                count = deleted_responses.count()
+                ids = list(deleted_responses.values_list('id', flat=True))
+                logger.info(f"Deleting {count} orphaned ChecklistResponse records: {ids}")
                 deleted_responses.delete()
 
 # --- Serializer for Batch Submissions ---
