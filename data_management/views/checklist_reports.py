@@ -419,10 +419,11 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
         combined_prompt = (
             "Generate a comprehensive integrated ESG report that analyzes data from Environmental, "
             "Social, and Governance checklists together. Return the report as a structured JSON object with the following sections:\n\n"
-            "1. executive_summary: Start with a brief company overview using the provided company metadata "
+            "1. overview: Start with a brief company overview using the provided company metadata "
             "(industry, size, revenue, number of sites, target customers), followed by a concise overview of the "
             "overall ESG compliance status, with separate sections highlighting Environmental, Social, and Governance performance. "
-            "Include the overall compliance percentage and comparison between E, S, and G areas. The overall ESG rating will be calculated separately based on the compliance score.\n\n"
+            "Include the overall compliance percentage and comparison between E, S, and G areas. The overall ESG rating will be calculated separately based on the compliance score. "
+            "Also identify patterns across all three pillars, noting any correlations or systemic issues that span multiple ESG areas.\n\n"
             "2. esg_pillars: Include three subsections named 'environmental', 'social', and 'governance', each analyzing its respective pillar "
             "with clear sections for strengths (list up to 3 key strengths as bullet points) and weaknesses (list up to 3 key weaknesses as bullet points). Format as follows:\n\n"
             "   ENVIRONMENTAL (xx/28, xx%)\n"
@@ -436,9 +437,7 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
             "   • [Third weakness bullet (if any)]\n\n"
             "   IMPORTANT: If no significant weaknesses are identified for a pillar (e.g., 100% compliance), state 'No significant weaknesses were identified in this area.' under the Weaknesses heading instead of providing bullet points.\n\n"
             "   Follow the same format for SOCIAL and GOVERNANCE sections.\n\n"
-            "3. key_findings: Identify patterns across all three pillars, noting any correlations or "
-            "systemic issues that span multiple ESG areas.\n\n"
-            "4. improvement_plan: Provide specific, actionable recommendations organized by pillar:\n"
+            "3. key_rec: Provide specific, actionable recommendations organized by pillar:\n"
             "   Environmental Improvements:\n"
             "   • [First recommendation]\n"
             "   • [Second recommendation]\n"
@@ -451,18 +450,17 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
             "   • [First recommendation]\n"
             "   • [Second recommendation]\n"
             "   • [Third recommendation]\n\n"
-            "5. conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
+            "4. conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
             "recommendations for integrated ESG improvement. Do not include an ESG rating in your response, as this will be calculated separately based on the compliance percentages.\n\n"
             "Return your response in this exact JSON structure:\n"
             "{\n"
-            "  \"executive_summary\": \"text here\",\n"
+            "  \"overview\": \"text here\",\n"
             "  \"esg_pillars\": {\n"
             "    \"environmental\": \"text here\",\n"
             "    \"social\": \"text here\",\n"
             "    \"governance\": \"text here\"\n"
             "  },\n"
-            "  \"key_findings\": \"text here\",\n"
-            "  \"improvement_plan\": \"text here\",\n"
+            "  \"key_rec\": \"text here\",\n"
             "  \"conclusion\": \"text here\"\n"
             "}\n\n"
             "Tailor your recommendations to be appropriate for the company's size, industry, and business model."
@@ -481,14 +479,13 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                              f"This is a placeholder for the combined ESG report."
                 
                 report_content = {
-                    "executive_summary": mock_summary,
+                    "overview": mock_summary,
                     "esg_pillars": {
                         "environmental": "Mock environmental pillar content",
                         "social": "Mock social pillar content",
                         "governance": "Mock governance pillar content"
                     },
-                    "key_findings": "Mock key findings",
-                    "improvement_plan": "Mock improvement plan",
+                    "key_rec": "Mock improvement plan",
                     "conclusion": "Mock conclusion"
                 }
             else:
@@ -530,7 +527,7 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                     report_json = json.loads(response_text)
                     
                     # Validate the JSON structure has all required fields
-                    required_fields = ["executive_summary", "esg_pillars", "key_findings", "improvement_plan", "conclusion"]
+                    required_fields = ["overview", "esg_pillars", "key_rec", "conclusion"]
                     missing_fields = [field for field in required_fields if field not in report_json]
                     
                     if missing_fields:
