@@ -139,9 +139,18 @@ def prepare_checklist_data_for_ai(submission):
     responses = ChecklistResponse.objects.filter(submission=submission)
     
     # Prepare metadata
+    # Try to get company name from multiple possible sources
+    company_name = "Unknown"
+    if hasattr(submission, 'layer') and submission.layer and hasattr(submission.layer, 'company_name'):
+        company_name = submission.layer.company_name
+    elif hasattr(submission.assignment, 'entity') and submission.assignment.entity and hasattr(submission.assignment.entity, 'name'):
+        company_name = submission.assignment.entity.name
+    elif hasattr(submission.assignment, 'layer') and submission.assignment.layer and hasattr(submission.assignment.layer, 'company_name'):
+        company_name = submission.assignment.layer.company_name
+    
     metadata = {
         "submission_id": submission.id,
-        "company_name": submission.assignment.entity.name if hasattr(submission.assignment, 'entity') else "Unknown",
+        "company_name": company_name,
         "reporting_period": submission.reporting_period.strftime("%Y-%m-%d") if submission.reporting_period else "Unknown",
         "submitted_at": submission.submitted_at.strftime("%Y-%m-%d %H:%M:%S") if submission.submitted_at else "Unknown",
         "submitted_by": str(submission.submitted_by) if submission.submitted_by else "Unknown",
