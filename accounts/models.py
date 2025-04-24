@@ -170,6 +170,26 @@ class LayerProfile(models.Model):
         choices=LayerTypeChoices.choices
     )
     company_location = models.CharField(max_length=100)
+    
+    # New fields for ESG metadata
+    company_size = models.PositiveIntegerField(
+        null=True, blank=True, 
+        help_text="Number of employees"
+    )
+    annual_revenue = models.DecimalField(
+        max_digits=14, decimal_places=2, 
+        null=True, blank=True,
+        help_text="Annual revenue in millions"
+    )
+    number_of_sites = models.PositiveIntegerField(
+        null=True, blank=True, 
+        help_text="Number of sites/entities"
+    )
+    target_customer = models.TextField(
+        blank=True, null=True,
+        help_text="Description of target customers"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     created_by_admin = models.ForeignKey(
         'CustomUser', 

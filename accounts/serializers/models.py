@@ -124,6 +124,10 @@ class LayerProfileSerializer(serializers.ModelSerializer):
             "user_count",
             "layer_type",
             "company_location",
+            "company_size",
+            "annual_revenue",
+            "number_of_sites",
+            "target_customer",
             "created_at",
             "created_by",
             "parent_id"

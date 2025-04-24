@@ -57,10 +57,21 @@ class CustomUserAdmin(UserAdmin):
 @admin.register(GroupLayer)
 class GroupLayerAdmin(admin.ModelAdmin):
     list_display = ('company_name', 'company_location', 'company_industry', 
-                   'shareholding_ratio', 'get_subsidiaries_count', 'get_total_users')
+                   'shareholding_ratio', 'company_size', 'get_subsidiaries_count', 'get_total_users')
     search_fields = ('company_name', 'company_location')
     list_filter = ('company_industry', 'created_at')
     readonly_fields = ('created_at',)
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('company_name', 'company_location', 'company_industry', 'shareholding_ratio', 'layer_type')
+        }),
+        ('ESG Profile Data', {
+            'fields': ('company_size', 'annual_revenue', 'number_of_sites', 'target_customer')
+        }),
+        ('System Information', {
+            'fields': ('created_at', 'created_by_admin')
+        }),
+    )
 
     def get_subsidiaries_count(self, obj):
         return obj.subsidiarylayer_set.count()
@@ -73,11 +84,25 @@ class GroupLayerAdmin(admin.ModelAdmin):
 @admin.register(SubsidiaryLayer)
 class SubsidiaryLayerAdmin(admin.ModelAdmin):
     list_display = ('company_name', 'company_industry', 'shareholding_ratio', 
-                   'group_layer', 'get_branches_count', 'get_total_users')
+                   'group_layer', 'company_size', 'get_branches_count', 'get_total_users')
     search_fields = ('company_name', 'group_layer__company_name')
     list_filter = ('company_industry', 'created_at', 'group_layer')
     raw_id_fields = ('group_layer',)
     readonly_fields = ('created_at',)
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('company_name', 'company_location', 'company_industry', 'shareholding_ratio', 'layer_type')
+        }),
+        ('Hierarchy', {
+            'fields': ('group_layer',)
+        }),
+        ('ESG Profile Data', {
+            'fields': ('company_size', 'annual_revenue', 'number_of_sites', 'target_customer')
+        }),
+        ('System Information', {
+            'fields': ('created_at', 'created_by_admin')
+        }),
+    )
 
     def get_branches_count(self, obj):
         return obj.branchlayer_set.count()
@@ -90,11 +115,25 @@ class SubsidiaryLayerAdmin(admin.ModelAdmin):
 @admin.register(BranchLayer)
 class BranchLayerAdmin(admin.ModelAdmin):
     list_display = ('company_name', 'company_industry', 'shareholding_ratio', 
-                   'subsidiary_layer', 'get_total_users')
+                   'subsidiary_layer', 'company_size', 'get_total_users')
     search_fields = ('company_name', 'subsidiary_layer__company_name')
     list_filter = ('company_industry', 'created_at', 'subsidiary_layer')
     raw_id_fields = ('subsidiary_layer',)
     readonly_fields = ('created_at',)
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('company_name', 'company_location', 'company_industry', 'shareholding_ratio', 'layer_type')
+        }),
+        ('Hierarchy', {
+            'fields': ('subsidiary_layer',)
+        }),
+        ('ESG Profile Data', {
+            'fields': ('company_size', 'annual_revenue', 'number_of_sites', 'target_customer')
+        }),
+        ('System Information', {
+            'fields': ('created_at', 'created_by_admin')
+        }),
+    )
 
     def get_total_users(self, obj):
         return obj.app_users.count()
