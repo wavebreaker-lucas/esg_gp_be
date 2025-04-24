@@ -460,7 +460,11 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
             "    \"social\": \"text here\",\n"
             "    \"governance\": \"text here\"\n"
             "  },\n"
-            "  \"key_rec\": \"text here\",\n"
+            "  \"key_rec\": {\n"
+            "    \"environmental\": \"text here\",\n"
+            "    \"social\": \"text here\",\n"
+            "    \"governance\": \"text here\"\n"
+            "  },\n"
             "  \"conclusion\": \"text here\"\n"
             "}\n\n"
             "Tailor your recommendations to be appropriate for the company's size, industry, and business model."
@@ -485,7 +489,11 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                         "social": "Mock social pillar content",
                         "governance": "Mock governance pillar content"
                     },
-                    "key_rec": "Mock improvement plan",
+                    "key_rec": {
+                        "environmental": "Mock environmental improvement plan",
+                        "social": "Mock social improvement plan",
+                        "governance": "Mock governance improvement plan"
+                    },
                     "conclusion": "Mock conclusion"
                 }
             else:
@@ -535,6 +543,15 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                         # Use a fallback approach for incomplete responses
                         report_text = response_text  # Just use the raw text as fallback
                     else:
+                        # Check nested structure for esg_pillars and key_rec
+                        required_pillars = ["environmental", "social", "governance"]
+                        missing_pillars = [pillar for pillar in required_pillars if pillar not in report_json.get("esg_pillars", {})]
+                        missing_recs = [pillar for pillar in required_pillars if pillar not in report_json.get("key_rec", {})]
+                        
+                        if missing_pillars or missing_recs:
+                            logger.warning(f"AI response missing nested fields: pillars={missing_pillars}, recs={missing_recs}")
+                            # Just use the structured report anyway, client can handle missing nested fields
+                            
                         # Store the structured report directly
                         report_content = report_json
                 except json.JSONDecodeError as e:
