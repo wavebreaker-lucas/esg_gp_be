@@ -65,6 +65,20 @@ class ChecklistReport(models.Model):
         help_text="Governance compliance percentage (for combined reports)"
     )
     
+    # ESG Rating
+    esg_rating = models.CharField(
+        max_length=1,
+        null=True,
+        blank=True,
+        help_text="Overall ESG rating (A-F)"
+    )
+    rating_description = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Description of the ESG rating"
+    )
+    
     # Report content
     content = models.TextField(
         help_text="The full text or JSON content of the AI-generated report"
@@ -186,6 +200,8 @@ class ChecklistReport(models.Model):
             environmental_compliance=report_data.get('environmental_compliance'),
             social_compliance=report_data.get('social_compliance'),
             governance_compliance=report_data.get('governance_compliance'),
+            esg_rating=report_data.get('esg_rating'),
+            rating_description=report_data.get('rating_description'),
             content=content_str,
             is_structured=is_structured,
             word_count=word_count
@@ -234,6 +250,8 @@ class ChecklistReport(models.Model):
                 "environmental_compliance": self.environmental_compliance,
                 "social_compliance": self.social_compliance,
                 "governance_compliance": self.governance_compliance,
+                "esg_rating": self.esg_rating,
+                "rating_description": self.rating_description
             })
             
         return result 

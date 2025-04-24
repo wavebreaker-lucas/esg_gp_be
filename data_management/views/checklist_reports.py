@@ -15,8 +15,10 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from rest_framework.request import Request
 from django.contrib.contenttypes.models import ContentType
+from datetime import datetime, timedelta
+import re
 
-from accounts.models import LayerProfile
+from accounts.models import LayerProfile, CustomUser
 from accounts.services import has_layer_access
 
 from ..models.templates import ESGMetricSubmission
@@ -420,7 +422,7 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
             "1. executive_summary: Start with a brief company overview using the provided company metadata "
             "(industry, size, revenue, number of sites, target customers), followed by a concise overview of the "
             "overall ESG compliance status, with separate sections highlighting Environmental, Social, and Governance performance. "
-            "Include the overall compliance percentage and comparison between E, S, and G areas.\n\n"
+            "Include the overall compliance percentage and comparison between E, S, and G areas. The overall ESG rating will be calculated separately based on the compliance score.\n\n"
             "2. esg_pillars: Include three subsections named 'environmental', 'social', and 'governance', each analyzing its respective pillar "
             "with clear sections for strengths (exactly 3 bullet points) and weaknesses (exactly 3 bullet points). Format as follows:\n\n"
             "   ENVIRONMENTAL (xx/28, xx%)\n"
@@ -449,7 +451,7 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
             "   • [Second recommendation]\n"
             "   • [Third recommendation]\n\n"
             "5. conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
-            "recommendations for integrated ESG improvement. Include an overall ESG rating (A, B, C, D, or F) with a brief explanation.\n\n"
+            "recommendations for integrated ESG improvement. Do not include an ESG rating in your response, as this will be calculated separately based on the compliance percentages.\n\n"
             "Return your response in this exact JSON structure:\n"
             "{\n"
             "  \"executive_summary\": \"text here\",\n"
@@ -557,7 +559,10 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                 "environmental_compliance": combined_data['summary']['environmental_compliance'],
                 "social_compliance": combined_data['summary']['social_compliance'],
                 "governance_compliance": combined_data['summary']['governance_compliance'],
-                "content": report_content  # Now this contains the structured JSON instead of plain text
+                "content": report_content,  # Now this contains the structured JSON instead of plain text
+                # Add calculated ESG rating
+                "esg_rating": calculate_esg_rating(combined_data['summary']['overall_compliance_percentage'])[0],
+                "rating_description": calculate_esg_rating(combined_data['summary']['overall_compliance_percentage'])[1]
             }
             
             # Store the report if it's not a mock report
@@ -1025,4 +1030,26 @@ def generate_combined_report_for_layer(request):
         logger.error(f"Error generating combined report for layer: {str(e)}")
         return Response({
             "error": f"Error generating combined report: {str(e)}"
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Calculate ESG rating based on compliance percentage
+def calculate_esg_rating(overall_compliance):
+    """
+    Calculate ESG rating based on compliance percentage.
+    
+    Args:
+        overall_compliance: Overall compliance percentage (0-100)
+        
+    Returns:
+        tuple: (rating letter, rating description)
+    """
+    if overall_compliance >= 80:
+        return "A", "Excellent ESG performance with industry-leading practices"
+    elif overall_compliance >= 60:
+        return "B", "Above-average ESG performance with room for strategic improvements"
+    elif overall_compliance >= 40:
+        return "C", "Average ESG performance with significant improvement opportunities"
+    elif overall_compliance >= 20:
+        return "D", "Below-average ESG performance requiring substantial improvements"
+    else:
+        return "F", "Poor ESG performance requiring immediate and comprehensive action" 
