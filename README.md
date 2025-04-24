@@ -983,6 +983,10 @@ These endpoints manage the company hierarchy structure:
 - `user_count`: Total number of users in this layer
 - `layer_type`: Type of layer (GROUP, SUBSIDIARY, BRANCH)
 - `company_location`: Physical location of the company
+- `company_size`: Number of employees (optional)
+- `annual_revenue`: Annual revenue in millions (optional)
+- `number_of_sites`: Number of sites/entities (optional)
+- `target_customer`: Description of target customers (optional)
 - `created_at`: Creation timestamp in HKT format (YYYY-MM-DD HH:MM)
 - `created_by`: Email address of the user who created this layer
 - `parent_id`: ID of parent layer (null for GROUP, group_id for SUBSIDIARY, subsidiary_id for BRANCH)
@@ -1013,6 +1017,10 @@ These endpoints manage the company hierarchy structure:
     "user_count": 1,
     "layer_type": "GROUP",
     "company_location": "Hong Kong",
+    "company_size": 500,
+    "annual_revenue": 120.50,
+    "number_of_sites": 5,
+    "target_customer": "Enterprise clients in APAC",
     "created_at": "2024-03-15 10:30",
     "created_by": "john.doe@bakertilly.com",
     "parent_id": null
@@ -1059,6 +1067,10 @@ These endpoints manage the company hierarchy structure:
 - `company_industry`: Industry sector (optional)
 - `company_location`: Physical location of the company (optional)
 - `shareholding_ratio`: Ownership percentage (0-100) (optional)
+- `company_size`: Number of employees (optional)
+- `annual_revenue`: Annual revenue in millions (optional)
+- `number_of_sites`: Number of sites/entities (optional)
+- `target_customer`: Description of target customers (optional)
 
 **Response:**
   ```json
@@ -1069,6 +1081,10 @@ These endpoints manage the company hierarchy structure:
     "shareholding_ratio": "100.00",
     "layer_type": "SUBSIDIARY",
     "company_location": "New Location",
+    "company_size": 600,
+    "annual_revenue": 150.75,
+    "number_of_sites": 6,
+    "target_customer": "SMEs and Enterprise clients in APAC",
     "created_at": "2024-03-15 10:30",
     "created_by": "john.doe@bakertilly.com",
     "parent_id": "456"
