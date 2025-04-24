@@ -139,12 +139,19 @@ def prepare_checklist_data_for_ai(submission):
     responses = ChecklistResponse.objects.filter(submission=submission)
     
     # Prepare metadata
-    # Get company name from submission's layer
-    company_name = submission.layer.company_name if submission.layer else "Unknown"
+    # Get company details from submission's layer
+    layer = submission.layer
+    company_name = layer.company_name if layer else "Unknown"
     
     metadata = {
         "submission_id": submission.id,
         "company_name": company_name,
+        "company_industry": layer.company_industry if layer else "Unknown",
+        "company_location": layer.company_location if layer else "Unknown",
+        "company_size": layer.company_size if layer and hasattr(layer, 'company_size') else None,
+        "annual_revenue": float(layer.annual_revenue) if layer and hasattr(layer, 'annual_revenue') and layer.annual_revenue is not None else None,
+        "number_of_sites": layer.number_of_sites if layer and hasattr(layer, 'number_of_sites') else None,
+        "target_customer": layer.target_customer if layer and hasattr(layer, 'target_customer') else None,
         "reporting_period": submission.reporting_period.strftime("%Y-%m-%d") if submission.reporting_period else "Unknown",
         "submitted_at": submission.submitted_at.strftime("%Y-%m-%d %H:%M:%S") if submission.submitted_at else "Unknown",
         "submitted_by": str(submission.submitted_by) if submission.submitted_by else "Unknown",
@@ -259,6 +266,12 @@ def prepare_combined_checklist_data(submissions):
     
     # Determine company and reporting period from first submission
     company_name = "Unknown"
+    company_industry = "Unknown"
+    company_location = "Unknown"
+    company_size = None
+    annual_revenue = None
+    number_of_sites = None
+    target_customer = None
     reporting_period = "Unknown"
     submission_ids = []
     
@@ -282,6 +295,25 @@ def prepare_combined_checklist_data(submissions):
         if company_name == "Unknown" and "company_name" in submission_data["metadata"]:
             company_name = submission_data["metadata"]["company_name"]
             
+        if company_industry == "Unknown" and "company_industry" in submission_data["metadata"]:
+            company_industry = submission_data["metadata"]["company_industry"]
+            
+        if company_location == "Unknown" and "company_location" in submission_data["metadata"]:
+            company_location = submission_data["metadata"]["company_location"]
+            
+        # Get company details
+        if company_size is None and "company_size" in submission_data["metadata"]:
+            company_size = submission_data["metadata"]["company_size"]
+            
+        if annual_revenue is None and "annual_revenue" in submission_data["metadata"]:
+            annual_revenue = submission_data["metadata"]["annual_revenue"]
+            
+        if number_of_sites is None and "number_of_sites" in submission_data["metadata"]:
+            number_of_sites = submission_data["metadata"]["number_of_sites"]
+            
+        if target_customer is None and "target_customer" in submission_data["metadata"]:
+            target_customer = submission_data["metadata"]["target_customer"]
+            
         if reporting_period == "Unknown" and "reporting_period" in submission_data["metadata"]:
             reporting_period = submission_data["metadata"]["reporting_period"]
             
@@ -295,6 +327,12 @@ def prepare_combined_checklist_data(submissions):
         "metadata": {
             "submission_ids": submission_ids,
             "company_name": company_name,
+            "company_industry": company_industry,
+            "company_location": company_location,
+            "company_size": company_size,
+            "annual_revenue": annual_revenue,
+            "number_of_sites": number_of_sites,
+            "target_customer": target_customer,
             "reporting_period": reporting_period,
             "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S")
         },
@@ -379,19 +417,22 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
         combined_prompt = (
             "Generate a comprehensive integrated ESG report that analyzes data from Environmental, "
             "Social, and Governance checklists together. The report should include:\n\n"
-            "1. Executive Summary: Provide a concise overview of the overall ESG compliance status, "
-            "with separate sections highlighting Environmental, Social, and Governance performance. "
+            "1. Executive Summary: Start with a brief company overview using the provided company metadata "
+            "(industry, size, revenue, number of sites, target customers), followed by a concise overview of the "
+            "overall ESG compliance status, with separate sections highlighting Environmental, Social, and Governance performance. "
             "Include the overall compliance percentage and comparison between E, S, and G areas.\n\n"
             "2. Performance by ESG Pillar: Analyze each pillar (Environmental, Social, Governance) "
             "separately, highlighting key strengths and weaknesses in each area.\n\n"
             "3. Key Findings: Identify patterns across all three pillars, noting any correlations or "
             "systemic issues that span multiple ESG areas.\n\n"
             "4. Strategic Improvement Plan: Prioritize the most critical gaps across all three areas, "
-            "providing specific, actionable recommendations with implementation guidance.\n\n"
+            "providing specific, actionable recommendations with implementation guidance that is appropriate "
+            "for the company's industry, size, and target customers.\n\n"
             "5. Conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
             "recommendations for integrated ESG improvement.\n\n"
             "The report should be well-structured, professional, and provide actionable insights "
-            "while considering the interconnections between Environmental, Social, and Governance factors."
+            "while considering the interconnections between Environmental, Social, and Governance factors. "
+            "Tailor your recommendations to be appropriate for the company's size, industry, and business model."
         )
         
         # Prepare data for OpenAI
@@ -434,6 +475,12 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
             report_data = {
                 "title": "Integrated ESG Compliance Report",
                 "company": combined_data['metadata']['company_name'],
+                "company_industry": combined_data['metadata']['company_industry'],
+                "company_location": combined_data['metadata']['company_location'],
+                "company_size": combined_data['metadata']['company_size'],
+                "annual_revenue": combined_data['metadata']['annual_revenue'],
+                "number_of_sites": combined_data['metadata']['number_of_sites'],
+                "target_customer": combined_data['metadata']['target_customer'],
                 "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "overall_compliance": combined_data['summary']['overall_compliance_percentage'],
                 "environmental_compliance": combined_data['summary']['environmental_compliance'],
