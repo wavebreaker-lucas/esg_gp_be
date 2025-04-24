@@ -254,4 +254,15 @@ class ChecklistReport(models.Model):
                 "rating_description": self.rating_description
             })
             
+        # Add company details from the linked layer
+        if self.layer:
+            result.update({
+                "company_industry": self.layer.company_industry,
+                "company_location": self.layer.company_location,
+                "company_size": self.layer.company_size,
+                "annual_revenue": self.layer.annual_revenue,
+                "number_of_sites": self.layer.number_of_sites,
+                "target_customer": self.layer.target_customer
+            })
+            
         return result 
