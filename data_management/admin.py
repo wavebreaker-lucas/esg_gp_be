@@ -43,6 +43,7 @@ from .models.submission_data import (
 )
 from .models.factors import GHGEmissionFactor, PollutantFactor, EnergyConversionFactor
 from .models.results import CalculatedEmissionValue
+from .models.reporting import ChecklistReport
 
 # Initialize the logger
 logger = logging.getLogger(__name__)
@@ -1004,3 +1005,21 @@ class ChecklistResponseAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         return qs.select_related('submission', 'submission__metric')
+
+class ChecklistReportAdmin(admin.ModelAdmin):
+    list_display = ['title', 'company', 'report_type', 'generated_at', 'overall_compliance', 'is_structured', 'word_count', 'version']
+    list_filter = ['report_type', 'is_structured', 'generated_at', 'layer']
+    search_fields = ['title', 'company', 'content']
+    date_hierarchy = 'generated_at'
+    readonly_fields = [
+        'report_type', 'title', 'company', 'generated_at', 'layer',
+        'primary_submission', 'overall_compliance', 'environmental_compliance',
+        'social_compliance', 'governance_compliance', 'content',
+        'is_structured', 'word_count', 'version'
+    ]
+    
+    def has_add_permission(self, request, obj=None):
+        # Reports should only be created via the API
+        return False
+
+admin.site.register(ChecklistReport, ChecklistReportAdmin)
