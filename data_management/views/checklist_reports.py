@@ -451,7 +451,7 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
             "   • [Second recommendation]\n"
             "   • [Third recommendation]\n\n"
             "4. conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
-            "recommendations for integrated ESG improvement. Do not include an ESG rating in your response, as this will be calculated separately based on the compliance percentages.\n\n"
+            "recommendations for integrated ESG improvement. Explain the key factors that would influence the company's ESG rating, focusing on the overall compliance percentage and specific strengths or weaknesses across the E, S, and G pillars that significantly impact the rating. Do not include an ESG rating calculation in your response, as this will be calculated separately based on the compliance percentages.\n\n"
             "Return your response in this exact JSON structure:\n"
             "{\n"
             "  \"overview\": \"text here\",\n"
