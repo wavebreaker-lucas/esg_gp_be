@@ -282,7 +282,7 @@ Different scoring methods are available:
 
 ## AI Report Generation
 
-The system provides AI-powered report generation that analyzes checklist responses across all three ESG dimensions (Environmental, Social, and Governance) and provides detailed insights and recommendations in a comprehensive report.
+The system provides AI-powered report generation that analyzes checklist responses across all three ESG dimensions (Environmental, Social, and Governance) and provides detailed insights and recommendations in a comprehensive report. The report content is returned in a structured JSON format, allowing for flexible presentation on the frontend.
 
 > **Note:** The system only supports combined ESG reports that include all three ESG dimensions (Environmental, Social, and Governance). Individual checklist reports are disabled to ensure comprehensive and balanced ESG assessment.
 
@@ -301,24 +301,63 @@ POST /api/checklist-reports/generate-combined/
 ```
 
 This endpoint produces a holistic ESG report that includes:
-- Executive Summary with integrated ESG assessment
-- Comparative analysis of E, S, and G performance
+- Company overview and executive summary of ESG performance
+- Detailed analysis of Environmental, Social, and Governance pillars with strengths and weaknesses
 - Cross-cutting patterns and systemic issues
-- Strategic improvement plan across all ESG areas
+- Actionable, prioritized improvement plan tailored to the company's context
 - Holistic ESG maturity assessment
+
+The report content is returned as a structured JSON object:
+
+```json
+{
+  "content": {
+    "executive_summary": "Text summary including company overview...",
+    "esg_pillars": {
+      "environmental": "Text analysis of Environmental pillar, strengths, weaknesses...",
+      "social": "Text analysis of Social pillar, strengths, weaknesses...",
+      "governance": "Text analysis of Governance pillar, strengths, weaknesses..."
+    },
+    "key_findings": "Text identifying cross-pillar patterns...",
+    "improvement_plan": "Text outlining recommendations for E, S, and G...",
+    "conclusion": "Text assessing overall maturity and strategic recommendations..."
+  },
+  "is_structured": true,
+  // ... other report metadata ...
+}
+```
+
+The API response also includes a programmatically calculated ESG rating (A-F) and a description based on the overall compliance percentage.
 
 Example Response:
 ```json
 {
   "report": {
+    "id": 458,
+    "report_type": "COMBINED",
     "title": "Integrated ESG Compliance Report",
     "company": "Example Corp",
     "generated_at": "2023-12-15T10:30:45Z",
-    "overall_compliance": 81.3,
-    "environmental_compliance": 78.5,
-    "social_compliance": 85.2,
-    "governance_compliance": 76.8,
-    "content": "Integrated ESG Assessment\n\nExample Corp demonstrates an overall ESG compliance rate of 81.3%..."
+    "overall_compliance": 63.5,
+    "environmental_compliance": 55.2,
+    "social_compliance": 71.8,
+    "governance_compliance": 68.0,
+    "esg_rating": "B", // Calculated rating
+    "rating_description": "Above-average ESG performance with room for strategic improvements", // Calculated description
+    "content": {
+      "executive_summary": "Example Corp, a tech company with 500 employees...",
+      "esg_pillars": {
+        "environmental": "ENVIRONMENTAL (15/28, 55.2%)\nStrengths:\n• Well-documented environmental policies...",
+        "social": "SOCIAL (26/37, 71.8%)\nStrengths:\n• Strong labor practices...",
+        "governance": "GOVERNANCE (9/14, 68.0%)\nStrengths:\n• Strong code of ethics..."
+      },
+      "key_findings": "Key patterns observed include...",
+      "improvement_plan": "Environmental Improvements:\n• Implement environmental performance tracking...",
+      "conclusion": "The company shows strong governance and social practices but needs..."
+    },
+    "is_structured": true,
+    "word_count": 2850,
+    "version": 1
   }
 }
 ```
@@ -399,14 +438,14 @@ This endpoint:
 1. Automatically finds the latest ENV, SOC, and GOV checklist submissions for the layer
 2. Validates that all three checklist types are complete
 3. Checks if a report already exists for these submissions (returns it if found)
-4. Generates a new combined report if needed or if regenerate=true is specified
+4. Generates a new combined report if needed or if regenerate=true is specified. The generated report will have structured JSON content and a calculated ESG rating.
 
 Optional parameters:
 - `entity_name`: Filter for a specific entity name within the layer
 - `reporting_period`: Use submissions from a specific reporting period
 - `regenerate`: Force generation of a new report even if one exists
 
-Example response:
+Example response (updated to reflect structured content and rating):
 ```json
 {
   "report": {
@@ -419,7 +458,18 @@ Example response:
     "environmental_compliance": 78.5,
     "social_compliance": 85.2,
     "governance_compliance": 76.8,
-    "content": "Integrated ESG Assessment...",
+    "esg_rating": "A", // Calculated rating
+    "rating_description": "Excellent ESG performance with industry-leading practices", // Calculated description
+    "content": {
+      "executive_summary": "Division A demonstrates strong overall ESG performance...",
+      "esg_pillars": {
+        // ... detailed pillar analysis ...
+      },
+      "key_findings": "...",
+      "improvement_plan": "...",
+      "conclusion": "..."
+    },
+    "is_structured": true,
     "word_count": 3245,
     "version": 1
   },
