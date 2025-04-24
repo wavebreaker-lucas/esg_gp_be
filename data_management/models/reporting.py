@@ -67,7 +67,13 @@ class ChecklistReport(models.Model):
     
     # Report content
     content = models.TextField(
-        help_text="The full text content of the AI-generated report"
+        help_text="The full text or JSON content of the AI-generated report"
+    )
+    
+    # Flag to indicate if content is JSON structured
+    is_structured = models.BooleanField(
+        default=False,
+        help_text="Whether the content field contains structured JSON data"
     )
     
     # Metadata
@@ -136,6 +142,39 @@ class ChecklistReport(models.Model):
         """
         primary_submission = ESGMetricSubmission.objects.get(id=primary_submission_id)
         
+        # Check if content is structured (dictionary) or text
+        content = report_data.get('content', '')
+        is_structured = isinstance(content, dict)
+        
+        # If content is structured JSON, serialize it
+        if is_structured:
+            content_str = json.dumps(content)
+            
+            # Calculate word count from all sections
+            word_count = 0
+            try:
+                word_count += len(content.get('executive_summary', '').split())
+                
+                # Count words in ESG pillars
+                pillars = content.get('esg_pillars', {})
+                for pillar in pillars.values():
+                    word_count += len(pillar.split())
+                    
+                word_count += len(content.get('key_findings', '').split())
+                word_count += len(content.get('improvement_plan', '').split())
+                word_count += len(content.get('conclusion', '').split())
+                
+                # If there's a fallback full_text, count that instead
+                if 'full_text' in content:
+                    word_count = len(content['full_text'].split())
+            except (AttributeError, TypeError):
+                # Fallback if structure is unexpected
+                word_count = len(str(content).split())
+        else:
+            # Plain text content
+            content_str = content
+            word_count = len(content_str.split())
+        
         report = cls.objects.create(
             report_type='COMBINED',
             title=report_data.get('title', 'Integrated ESG Report'),
@@ -147,7 +186,9 @@ class ChecklistReport(models.Model):
             environmental_compliance=report_data.get('environmental_compliance'),
             social_compliance=report_data.get('social_compliance'),
             governance_compliance=report_data.get('governance_compliance'),
-            content=report_data.get('content', ''),
+            content=content_str,
+            is_structured=is_structured,
+            word_count=word_count
         )
         
         # Add related submissions (excluding the primary which is already linked)
@@ -163,6 +204,16 @@ class ChecklistReport(models.Model):
     
     def to_dict(self):
         """Convert report to dictionary for API responses"""
+        # Parse content if it's structured JSON
+        if self.is_structured:
+            try:
+                content = json.loads(self.content)
+            except json.JSONDecodeError:
+                # Fallback if JSON parsing fails
+                content = self.content
+        else:
+            content = self.content
+            
         result = {
             "id": self.id,
             "report_type": self.report_type,
@@ -170,7 +221,8 @@ class ChecklistReport(models.Model):
             "company": self.company,
             "generated_at": self.generated_at.strftime("%Y-%m-%d %H:%M:%S"),
             "overall_compliance": self.overall_compliance,
-            "content": self.content,
+            "content": content,
+            "is_structured": self.is_structured,
             "word_count": self.word_count,
             "version": self.version,
             "primary_submission_id": self.primary_submission_id,

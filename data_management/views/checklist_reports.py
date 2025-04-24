@@ -416,22 +416,32 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
         # Unified prompt for combined ESG report
         combined_prompt = (
             "Generate a comprehensive integrated ESG report that analyzes data from Environmental, "
-            "Social, and Governance checklists together. The report should include:\n\n"
-            "1. Executive Summary: Start with a brief company overview using the provided company metadata "
+            "Social, and Governance checklists together. Return the report as a structured JSON object with the following sections:\n\n"
+            "1. executive_summary: Start with a brief company overview using the provided company metadata "
             "(industry, size, revenue, number of sites, target customers), followed by a concise overview of the "
             "overall ESG compliance status, with separate sections highlighting Environmental, Social, and Governance performance. "
             "Include the overall compliance percentage and comparison between E, S, and G areas.\n\n"
-            "2. Performance by ESG Pillar: Analyze each pillar (Environmental, Social, Governance) "
-            "separately, highlighting key strengths and weaknesses in each area.\n\n"
-            "3. Key Findings: Identify patterns across all three pillars, noting any correlations or "
+            "2. esg_pillars: Include three subsections named 'environmental', 'social', and 'governance', each analyzing its respective pillar "
+            "and highlighting key strengths and weaknesses.\n\n"
+            "3. key_findings: Identify patterns across all three pillars, noting any correlations or "
             "systemic issues that span multiple ESG areas.\n\n"
-            "4. Strategic Improvement Plan: Prioritize the most critical gaps across all three areas, "
+            "4. improvement_plan: Prioritize the most critical gaps across all three areas, "
             "providing specific, actionable recommendations with implementation guidance that is appropriate "
             "for the company's industry, size, and target customers.\n\n"
-            "5. Conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
+            "5. conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
             "recommendations for integrated ESG improvement.\n\n"
-            "The report should be well-structured, professional, and provide actionable insights "
-            "while considering the interconnections between Environmental, Social, and Governance factors. "
+            "Return your response in this exact JSON structure:\n"
+            "{\n"
+            "  \"executive_summary\": \"text here\",\n"
+            "  \"esg_pillars\": {\n"
+            "    \"environmental\": \"text here\",\n"
+            "    \"social\": \"text here\",\n"
+            "    \"governance\": \"text here\"\n"
+            "  },\n"
+            "  \"key_findings\": \"text here\",\n"
+            "  \"improvement_plan\": \"text here\",\n"
+            "  \"conclusion\": \"text here\"\n"
+            "}\n\n"
             "Tailor your recommendations to be appropriate for the company's size, industry, and business model."
         )
         
@@ -439,13 +449,25 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
         try:
             # If no API settings are configured, return mock data for development
             if not hasattr(settings, 'OPENROUTER_API_KEY') or not settings.OPENROUTER_API_KEY:
-                report_text = f"[MOCK REPORT - No OpenRouter API key configured]\n\n" \
+                mock_summary = f"[MOCK REPORT - No OpenRouter API key configured]\n\n" \
                              f"Integrated ESG Report for {combined_data['metadata']['company_name']}\n" \
                              f"Overall Compliance: {combined_data['summary']['overall_compliance_percentage']}%\n" \
                              f"Environmental: {combined_data['summary']['environmental_compliance']}%\n" \
                              f"Social: {combined_data['summary']['social_compliance']}%\n" \
                              f"Governance: {combined_data['summary']['governance_compliance']}%\n\n" \
                              f"This is a placeholder for the combined ESG report."
+                
+                report_content = {
+                    "executive_summary": mock_summary,
+                    "esg_pillars": {
+                        "environmental": "Mock environmental pillar content",
+                        "social": "Mock social pillar content",
+                        "governance": "Mock governance pillar content"
+                    },
+                    "key_findings": "Mock key findings",
+                    "improvement_plan": "Mock improvement plan",
+                    "conclusion": "Mock conclusion"
+                }
             else:
                 # Configure OpenAI client with OpenRouter settings
                 client = OpenAI(
@@ -469,7 +491,36 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                     max_tokens=4000  # Adjust based on report length needs
                 )
                 
-                report_text = completion.choices[0].message.content
+                # Get the response text
+                response_text = completion.choices[0].message.content
+                
+                # Try to parse the JSON response
+                try:
+                    # Sometimes the AI might include markdown code block markers - strip them if present
+                    if response_text.startswith("```json"):
+                        response_text = response_text.split("```json")[1]
+                    if response_text.endswith("```"):
+                        response_text = response_text.split("```")[0]
+                    
+                    # Clean up the response text and parse as JSON
+                    response_text = response_text.strip()
+                    report_json = json.loads(response_text)
+                    
+                    # Validate the JSON structure has all required fields
+                    required_fields = ["executive_summary", "esg_pillars", "key_findings", "improvement_plan", "conclusion"]
+                    missing_fields = [field for field in required_fields if field not in report_json]
+                    
+                    if missing_fields:
+                        logger.warning(f"AI response missing required fields: {missing_fields}")
+                        # Use a fallback approach for incomplete responses
+                        report_text = response_text  # Just use the raw text as fallback
+                    else:
+                        # Store the structured report directly
+                        report_content = report_json
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse AI response as JSON: {e}")
+                    # Use the raw text as fallback
+                    report_content = {"full_text": response_text}
             
             # Create report response structure
             report_data = {
@@ -486,7 +537,7 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                 "environmental_compliance": combined_data['summary']['environmental_compliance'],
                 "social_compliance": combined_data['summary']['social_compliance'],
                 "governance_compliance": combined_data['summary']['governance_compliance'],
-                "content": report_text
+                "content": report_content  # Now this contains the structured JSON instead of plain text
             }
             
             # Store the report if it's not a mock report
