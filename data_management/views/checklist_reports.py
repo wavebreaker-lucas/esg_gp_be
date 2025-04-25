@@ -402,7 +402,7 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
         existing_report = ChecklistReport.objects.filter(
             primary_submission=primary_submission,
             report_type='COMBINED'
-        ).order_by('-version').first()
+        ).first()  # Just get any existing report, no need to order by version
         
         # If a report exists and regenerate flag is not set, return the existing report
         if existing_report and not regenerate:
@@ -582,30 +582,62 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
             
             # Store the report if it's not a mock report
             if hasattr(settings, 'OPENROUTER_API_KEY') and settings.OPENROUTER_API_KEY:
-                # If regenerating, increment version number
-                version = 1
+                # Single-version approach: Update existing report if it exists,
+                # otherwise create a new one
                 if existing_report:
-                    version = existing_report.version + 1
-                
-                # Create new report record
-                stored_report = ChecklistReport.create_from_combined_report(
-                    primary_submission_id,
-                    submission_ids,
-                    report_data
-                )
-                
-                if version > 1:
-                    stored_report.version = version
-                    stored_report.save()
-                
-                # Add report ID to the response
-                report_data["report_id"] = stored_report.id
-                report_data["version"] = stored_report.version
+                    # Update existing report
+                    existing_report.title = report_data["title"]
+                    existing_report.company = report_data["company"]
+                    existing_report.generated_at = timezone.now()
+                    existing_report.overall_compliance = report_data["overall_compliance"]
+                    existing_report.environmental_compliance = report_data["environmental_compliance"]
+                    existing_report.social_compliance = report_data["social_compliance"]
+                    existing_report.governance_compliance = report_data["governance_compliance"]
+                    existing_report.esg_rating = report_data["esg_rating"]
+                    existing_report.rating_description = report_data["rating_description"]
+                    
+                    # Set the content and update structured flag
+                    if isinstance(report_data["content"], dict):
+                        existing_report.content = json.dumps(report_data["content"])
+                        existing_report.is_structured = True
+                    else:
+                        existing_report.content = report_data["content"]
+                        existing_report.is_structured = False
+                    
+                    # Increment version number internally (for tracking purposes only)
+                    existing_report.version += 1
+                    existing_report.save()
+                    
+                    # Update related submissions
+                    existing_report.related_submissions.clear()
+                    for sub_id in submission_ids:
+                        if sub_id != primary_submission_id:
+                            try:
+                                related_sub = ESGMetricSubmission.objects.get(id=sub_id)
+                                existing_report.related_submissions.add(related_sub)
+                            except ESGMetricSubmission.DoesNotExist:
+                                pass
+                    
+                    # Add report ID to the response
+                    report_data["report_id"] = existing_report.id
+                    report_data["version"] = existing_report.version
+                    stored_report = existing_report
+                else:
+                    # Create new report record
+                    stored_report = ChecklistReport.create_from_combined_report(
+                        primary_submission_id,
+                        submission_ids,
+                        report_data
+                    )
+                    
+                    # Add report ID to the response
+                    report_data["report_id"] = stored_report.id
+                    report_data["version"] = stored_report.version
             
             # Return the report
             return (
                 {"report": report_data},
-                "generated_new",
+                "updated_existing" if existing_report else "generated_new",
                 status.HTTP_200_OK
             )
             
@@ -1001,34 +1033,11 @@ def generate_combined_report_for_layer(request):
                 "available_types": list(submissions_by_type.keys())
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # 3. Check if a combined report already exists for these submissions
+        # 3. Get submission IDs for report generation
         submission_ids = [submissions_by_type[t].id for t in required_types]
-        primary_id = submissions_by_type["ENV"].id  # Use ENV as primary
-        
-        # Look for existing report with these submissions
-        existing_report = None
-        if not regenerate:
-            # Find reports where the primary submission matches
-            primary_reports = ChecklistReport.objects.filter(
-                primary_submission_id=primary_id,
-                report_type='COMBINED'
-            )
-            
-            # Check if any of these reports have the other two submissions as related
-            for report in primary_reports:
-                related_ids = report.related_submissions.values_list('id', flat=True)
-                if set(submission_ids).issubset(set([primary_id] + list(related_ids))):
-                    existing_report = report
-                    break
-            
-            if existing_report:
-                return Response({
-                    "status": "existing_report",
-                    "message": "An existing report was found for these submissions",
-                    "report": existing_report.to_dict()
-                })
         
         # 4. Generate the combined report using the helper function
+        # The _generate_combined_report function now handles existing report updates
         response_data, status_msg, status_code = _generate_combined_report(
             submission_ids=submission_ids,
             regenerate=regenerate,
