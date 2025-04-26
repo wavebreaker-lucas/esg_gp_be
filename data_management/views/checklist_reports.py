@@ -1271,12 +1271,6 @@ def get_esg_category_recommendations(categories):
                 "services": category_recommendations[category]["services"]
             }
     
-    # Default: Add Stakeholder Engagement & Materiality Assessment to all categories
-    # if not already included
-    for category in recommendations:
-        if "Stakeholder Engagement & Materiality Assessment" not in recommendations[category]["services"]:
-            recommendations[category]["services"].append("Stakeholder Engagement & Materiality Assessment")
-    
     return recommendations
 
 def enhance_combined_report_prompt(combined_data):
@@ -1330,7 +1324,7 @@ def enhance_combined_report_prompt(combined_data):
         "Include recommendations for all categories, but provide more detailed recommendations for categories with lower compliance scores.\n\n"
         "4. services: For each category, select the most appropriate services from our predefined lists below based on the company's specific needs and ESG performance. "
         "Don't include all services for every category - only include those that would be most beneficial given the company's specific challenges and industry. "
-        "All categories should include 'Stakeholder Engagement & Materiality Assessment' as a default service, but be selective with the other services.\n\n"
+        "Be selective and choose only the most relevant services for each category.\n\n"
         "5. conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
         "recommendations for integrated ESG improvement. Explain the key factors that would influence the company's ESG rating, focusing on the overall compliance percentage and specific strengths or weaknesses across the E, S, and G pillars that significantly impact the rating. Do not include an ESG rating calculation in your response, as this will be calculated separately based on the compliance percentages.\n\n"
         "Return your response in this exact JSON structure:\n"
