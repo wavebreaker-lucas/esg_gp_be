@@ -561,7 +561,7 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
             
             # Create report response structure
             report_data = {
-                "title": "Integrated ESG Compliance Report",
+                "title": "ESG Performance Evaluation Report",
                 "company": combined_data['metadata']['company_name'],
                 "company_industry": combined_data['metadata']['company_industry'],
                 "company_location": combined_data['metadata']['company_location'],
