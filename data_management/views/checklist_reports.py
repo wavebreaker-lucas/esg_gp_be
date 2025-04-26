@@ -1067,13 +1067,13 @@ def calculate_esg_rating(overall_compliance):
     Returns:
         tuple: (rating letter, rating description)
     """
-    if overall_compliance >= 80:
-        return "A", "Excellent ESG performance with industry-leading practices"
-    elif overall_compliance >= 60:
-        return "B", "Above-average ESG performance with room for strategic improvements"
-    elif overall_compliance >= 40:
-        return "C", "Average ESG performance with significant improvement opportunities"
-    elif overall_compliance >= 20:
-        return "D", "Below-average ESG performance requiring substantial improvements"
+    if overall_compliance >= 70:
+        return "A", "Advanced SMEs with excellent ESG performance"
+    elif overall_compliance >= 55:
+        return "B", "Proficient ESG performance with established practices"
+    elif overall_compliance >= 25:
+        return "C", "Intermediate ESG performance with improvement opportunities"
+    elif overall_compliance >= 10:
+        return "D", "Developing ESG performance requiring substantial improvements"
     else:
-        return "F", "Poor ESG performance requiring immediate and comprehensive action" 
+        return "E", "Beginner in ESG requiring fundamental development" 
