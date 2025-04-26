@@ -415,60 +415,8 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
         # Prepare combined checklist data
         combined_data = prepare_combined_checklist_data(submissions)
         
-        # Unified prompt for combined ESG report
-        combined_prompt = (
-            "Generate a comprehensive integrated ESG report that analyzes data from Environmental, "
-            "Social, and Governance checklists together. Return the report as a structured JSON object with the following sections:\n\n"
-            "1. overview: Start with a brief company overview using the provided company metadata "
-            "(industry, size, revenue, number of sites, target customers), followed by a concise overview of the "
-            "overall ESG compliance status, with separate sections highlighting Environmental, Social, and Governance performance. "
-            "Include the overall compliance percentage and comparison between E, S, and G areas. The overall ESG rating will be calculated separately based on the compliance score. "
-            "Also identify patterns across all three pillars, noting any correlations or systemic issues that span multiple ESG areas.\n\n"
-            "2. esg_pillars: Include three subsections named 'environmental', 'social', and 'governance', each analyzing its respective pillar "
-            "with clear sections for strengths (list up to 3 key strengths as bullet points) and weaknesses (list up to 3 key weaknesses as bullet points). Format as follows:\n\n"
-            "   ENVIRONMENTAL (xx/28, xx%)\n"
-            "   Strengths:\n"
-            "   • [First strength bullet (if any)]\n"
-            "   • [Second strength bullet (if any)]\n"
-            "   • [Third strength bullet (if any)]\n\n"
-            "   Weaknesses:\n"
-            "   • [First weakness bullet (if any)]\n"
-            "   • [Second weakness bullet (if any)]\n"
-            "   • [Third weakness bullet (if any)]\n\n"
-            "   IMPORTANT: If no significant weaknesses are identified for a pillar (e.g., 100% compliance), state 'No significant weaknesses were identified in this area.' under the Weaknesses heading instead of providing bullet points.\n\n"
-            "   Follow the same format for SOCIAL and GOVERNANCE sections.\n\n"
-            "3. key_rec: Provide specific, actionable recommendations organized by pillar:\n"
-            "   Environmental Improvements:\n"
-            "   • [First recommendation]\n"
-            "   • [Second recommendation]\n"
-            "   • [Third recommendation]\n\n"
-            "   Social Enhancement:\n"
-            "   • [First recommendation]\n"
-            "   • [Second recommendation]\n"
-            "   • [Third recommendation]\n\n"
-            "   Governance Strengthening:\n"
-            "   • [First recommendation]\n"
-            "   • [Second recommendation]\n"
-            "   • [Third recommendation]\n\n"
-            "4. conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
-            "recommendations for integrated ESG improvement. Explain the key factors that would influence the company's ESG rating, focusing on the overall compliance percentage and specific strengths or weaknesses across the E, S, and G pillars that significantly impact the rating. Do not include an ESG rating calculation in your response, as this will be calculated separately based on the compliance percentages.\n\n"
-            "Return your response in this exact JSON structure:\n"
-            "{\n"
-            "  \"overview\": \"text here\",\n"
-            "  \"esg_pillars\": {\n"
-            "    \"environmental\": \"text here\",\n"
-            "    \"social\": \"text here\",\n"
-            "    \"governance\": \"text here\"\n"
-            "  },\n"
-            "  \"key_rec\": {\n"
-            "    \"environmental\": \"text here\",\n"
-            "    \"social\": \"text here\",\n"
-            "    \"governance\": \"text here\"\n"
-            "  },\n"
-            "  \"conclusion\": \"text here\"\n"
-            "}\n\n"
-            "Tailor your recommendations to be appropriate for the company's size, industry, and business model."
-        )
+        # Generate enhanced prompt using the new categorization functionality
+        combined_prompt = enhance_combined_report_prompt(combined_data)
         
         # Prepare data for OpenAI
         try:
@@ -482,6 +430,7 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                              f"Governance: {combined_data['summary']['governance_compliance']}%\n\n" \
                              f"This is a placeholder for the combined ESG report."
                 
+                # Mock categorized report structure
                 report_content = {
                     "overview": mock_summary,
                     "esg_pillars": {
@@ -490,9 +439,14 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                         "governance": "Mock governance pillar content"
                     },
                     "key_rec": {
-                        "environmental": "Mock environmental improvement plan",
-                        "social": "Mock social improvement plan",
-                        "governance": "Mock governance improvement plan"
+                        "policy_development": "Mock policy development recommendations",
+                        "objectives_target_setting": "Mock objectives setting recommendations",
+                        "action": "Mock action recommendations",
+                        "data_performance_monitoring": "Mock data monitoring recommendations",
+                        "strategic_initiatives": "Mock strategic initiatives recommendations",
+                        "compliance_accountability": "Mock compliance recommendations",
+                        "engagement": "Mock engagement recommendations",
+                        "transparency": "Mock transparency recommendations"
                     },
                     "conclusion": "Mock conclusion"
                 }
@@ -543,10 +497,15 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                         # Use a fallback approach for incomplete responses
                         report_text = response_text  # Just use the raw text as fallback
                     else:
-                        # Check nested structure for esg_pillars and key_rec
+                        # Check nested structure for esg_pillars
                         required_pillars = ["environmental", "social", "governance"]
                         missing_pillars = [pillar for pillar in required_pillars if pillar not in report_json.get("esg_pillars", {})]
-                        missing_recs = [pillar for pillar in required_pillars if pillar not in report_json.get("key_rec", {})]
+                        
+                        # Check nested structure for key_rec with new category-based format
+                        required_recs = ["policy_development", "objectives_target_setting", "action", 
+                                         "data_performance_monitoring", "strategic_initiatives", 
+                                         "compliance_accountability", "engagement", "transparency"]
+                        missing_recs = [rec for rec in required_recs if rec not in report_json.get("key_rec", {})]
                         
                         if missing_pillars or missing_recs:
                             logger.warning(f"AI response missing nested fields: pillars={missing_pillars}, recs={missing_recs}")
@@ -558,6 +517,9 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                     logger.warning(f"Failed to parse AI response as JSON: {e}")
                     # Use the raw text as fallback
                     report_content = {"full_text": response_text}
+            
+            # Get categorized metrics for additional report data 
+            categories = categorize_esg_items(combined_data)
             
             # Create report response structure
             report_data = {
@@ -577,7 +539,12 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                 "content": report_content,  # Now this contains the structured JSON instead of plain text
                 # Add calculated ESG rating
                 "esg_rating": calculate_esg_rating(combined_data['summary']['overall_compliance_percentage'])[0],
-                "rating_description": calculate_esg_rating(combined_data['summary']['overall_compliance_percentage'])[1]
+                "rating_description": calculate_esg_rating(combined_data['summary']['overall_compliance_percentage'])[1],
+                # Add category performance metrics
+                "category_performance": {
+                    name: {"compliance": data["compliance_percentage"], "count": f"{data['yes']}/{data['total']}"}
+                    for name, data in categories.items()
+                }
             }
             
             # Store the report if it's not a mock report
@@ -604,6 +571,11 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                         existing_report.content = report_data["content"]
                         existing_report.is_structured = False
                     
+                    # Store category performance as additional data
+                    existing_report.additional_data = json.dumps({
+                        "category_performance": report_data["category_performance"]
+                    })
+                    
                     # Increment version number internally (for tracking purposes only)
                     existing_report.version += 1
                     existing_report.save()
@@ -623,12 +595,43 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                     report_data["version"] = existing_report.version
                     stored_report = existing_report
                 else:
-                    # Create new report record
-                    stored_report = ChecklistReport.create_from_combined_report(
-                        primary_submission_id,
-                        submission_ids,
-                        report_data
+                    # Create new report record - modify to include additional data
+                    stored_report = ChecklistReport(
+                        primary_submission_id=primary_submission_id,
+                        report_type='COMBINED',
+                        title=report_data["title"],
+                        company=report_data["company"],
+                        layer_id=primary_submission.layer_id,  # Add layer reference
+                        generated_at=timezone.now(),
+                        overall_compliance=report_data["overall_compliance"],
+                        environmental_compliance=report_data["environmental_compliance"],
+                        social_compliance=report_data["social_compliance"],
+                        governance_compliance=report_data["governance_compliance"],
+                        esg_rating=report_data["esg_rating"],
+                        rating_description=report_data["rating_description"],
+                        additional_data=json.dumps({
+                            "category_performance": report_data["category_performance"]
+                        })
                     )
+                    
+                    # Set content based on type
+                    if isinstance(report_data["content"], dict):
+                        stored_report.content = json.dumps(report_data["content"])
+                        stored_report.is_structured = True
+                    else:
+                        stored_report.content = report_data["content"]
+                        stored_report.is_structured = False
+                    
+                    stored_report.save()
+                    
+                    # Add related submissions
+                    for sub_id in submission_ids:
+                        if sub_id != primary_submission_id:
+                            try:
+                                related_sub = ESGMetricSubmission.objects.get(id=sub_id)
+                                stored_report.related_submissions.add(related_sub)
+                            except ESGMetricSubmission.DoesNotExist:
+                                pass
                     
                     # Add report ID to the response
                     report_data["report_id"] = stored_report.id
@@ -1076,4 +1079,244 @@ def calculate_esg_rating(overall_compliance):
     elif overall_compliance >= 10:
         return "D", "Developing ESG performance requiring substantial improvements"
     else:
-        return "E", "Beginner in ESG requiring fundamental development" 
+        return "E", "Beginner in ESG requiring fundamental development"
+
+def categorize_esg_items(combined_data):
+    """
+    Categorize ESG checklist items according to the specified framework categories.
+    
+    Args:
+        combined_data: The combined checklist data from prepare_combined_checklist_data
+        
+    Returns:
+        dict: Categorized metrics with counts and compliance percentages
+    """
+    # Initialize categories with their question counts from the schema
+    categories = {
+        "Policy Development": {"total": 15, "yes": 0, "items": []},
+        "Objectives/Target setting": {"total": 10, "yes": 0, "items": []},
+        "Action": {"total": 16, "yes": 0, "items": []},
+        "Data/Performance Monitoring": {"total": 11, "yes": 0, "items": []},
+        "Strategic initiatives Implementation": {"total": 6, "yes": 0, "items": []},
+        "Compliance and Accountability": {"total": 9, "yes": 0, "items": []},
+        "Engagement": {"total": 8, "yes": 0, "items": []},
+        "Transparency": {"total": 4, "yes": 0, "items": []}
+    }
+    
+    # Item mappings based on checklist category and item ID
+    # Format: {checklist_type: {category_id: {item_id: category_name}}}
+    item_category_map = {
+        "ENV": {
+            "1.1": {"a": "Policy Development", "b": "Objectives/Target setting", 
+                   "c": "Action", "d": "Data/Performance Monitoring"},
+            "1.2": {"a": "Policy Development", "b": "Data/Performance Monitoring", 
+                   "c": "Action", "d": "Strategic initiatives Implementation"},
+            "1.3": {"a": "Policy Development", "b": "Objectives/Target setting", 
+                   "c": "Data/Performance Monitoring", "d": "Objectives/Target setting"},
+            "1.4": {"a": "Policy Development", "b": "Objectives/Target setting", 
+                   "c": "Action", "d": "Data/Performance Monitoring"},
+            "1.5": {"a": "Data/Performance Monitoring", "b": "Action", "c": "Action", 
+                   "d": "Data/Performance Monitoring", "e": "Strategic initiatives Implementation",
+                   "f": "Strategic initiatives Implementation"},
+            "1.6": {"a": "Data/Performance Monitoring", "b": "Data/Performance Monitoring", 
+                   "c": "Action", "d": "Action"},
+            "1.7": {"a": "Strategic initiatives Implementation", "b": "Strategic initiatives Implementation"}
+        },
+        "SOC": {
+            "2.1": {"a": "Policy Development", "b": "Compliance and Accountability", 
+                   "c": "Action", "d": "Data/Performance Monitoring",
+                   "e": "Policy Development", "f": "Engagement"},
+            "2.2": {"a": "Policy Development", "b": "Compliance and Accountability", 
+                   "c": "Action", "f": "Data/Performance Monitoring", "g": "Data/Performance Monitoring"},
+            "2.3": {"a": "Policy Development", "b": "Objectives/Target setting"},
+            "2.4": {"a": "Policy Development", "b": "Objectives/Target setting", 
+                   "c": "Data/Performance Monitoring", "d": "Action",
+                   "e": "Action", "f": "Transparency"},
+            "2.5": {"a": "Policy Development", "b": "Compliance and Accountability", 
+                   "c": "Compliance and Accountability", "d": "Action"},
+            "2.6": {"a": "Action", "b": "Data/Performance Monitoring", 
+                   "c": "Action", "d": "Engagement"},
+            "2.7": {"a": "Policy Development", "b": "Data/Performance Monitoring", 
+                   "c": "Compliance and Accountability", "d": "Compliance and Accountability"},
+            "2.8": {"a": "Data/Performance Monitoring", "b": "Transparency", 
+                   "c": "Compliance and Accountability", "d": "Action",
+                   "e": "Engagement", "f": "Engagement"}
+        },
+        "GOV": {
+            "3.2": {"a": "Policy Development", "b": "Engagement", 
+                   "c": "Compliance and Accountability", "d": "Compliance and Accountability",
+                   "e": "Policy Development", "f": "Action"},
+            "3.4": {"a": "Transparency", "b": "Transparency", 
+                   "c": "Engagement", "d": "Engagement"},
+            "3.5": {"a": "Engagement", "b": "Data/Performance Monitoring", 
+                   "c": "Engagement", "d": "Objectives/Target setting"}
+        }
+    }
+    
+    # Process items from each checklist
+    for checklist_type in ["ENV", "SOC", "GOV"]:
+        checklist_key = {"ENV": "environmental", "SOC": "social", "GOV": "governance"}[checklist_type]
+        checklist_data = combined_data["checklists"].get(checklist_key)
+        
+        if not checklist_data:
+            continue
+            
+        # Process categories and items
+        for category in checklist_data["categories"]:
+            category_id = category["id"]
+            for subcategory in category["subcategories"]:
+                for item in subcategory["items"]:
+                    item_id = item["id"]
+                    
+                    # Find the category for this item
+                    try:
+                        category_name = item_category_map[checklist_type][category_id][item_id]
+                        
+                        # Add to category count
+                        if item.get("response") == "YES":
+                            categories[category_name]["yes"] += 1
+                            
+                        # Store item data
+                        item_data = {
+                            "id": f"{checklist_type}_{category_id}_{item_id}",
+                            "text": item["text"],
+                            "response": item.get("response"),
+                            "category": checklist_key.capitalize()
+                        }
+                        categories[category_name]["items"].append(item_data)
+                        
+                    except KeyError:
+                        # Item not found in mapping - could log this
+                        pass
+    
+    # Calculate compliance percentages for each category
+    for category, data in categories.items():
+        if data["total"] > 0:
+            data["compliance_percentage"] = round((data["yes"] / data["total"]) * 100, 1)
+        else:
+            data["compliance_percentage"] = 0
+            
+    return categories
+
+def get_esg_category_recommendations(categories):
+    """
+    Generate recommendations based on performance in each ESG category.
+    
+    Args:
+        categories: Categorized metrics from categorize_esg_items
+        
+    Returns:
+        dict: Recommendations for each category
+    """
+    recommendations = {}
+    
+    category_recommendations = {
+        "Policy Development": "Develop relevant ESG policies that clearly articulate the company's values, principles, and commitment to ESG. These policies should govern activities and operations related to the corporation's ESG impacts.",
+        
+        "Objectives/Target setting": "Conduct a materiality assessment to identify the most relevant ESG topics for your company. Establish clear, measurable, and achievable goals aligned with international standards like the UN SDGs, SASB, and GRI.",
+        
+        "Action": "Develop structured action plans to achieve ESG targets, specifying resource allocation, responsible parties, and timelines. Implement practices that embed sustainability into daily operations.",
+        
+        "Data/Performance Monitoring": "Establish material ESG themes and measurable KPIs, design systems to collect, review, track, and evaluate ESG performance data with regular updates and monitoring practices.",
+        
+        "Strategic initiatives Implementation": "Define long-term sustainability goals aligned with company values and mission. Implement company-wide sustainability programs like renewable energy adoption, recycling initiatives, or low-carbon technologies.",
+        
+        "Compliance and Accountability": "Develop a compliance framework identifying relevant regulations applicable to operations. Integrate ESG risks and controls and implement codes of conduct and risk management systems.",
+        
+        "Engagement": "Identify and map key stakeholders, establish engagement channels, and make ESG-related policies and goals accessible and clear to boost trust and foster participation in sustainability efforts.",
+        
+        "Transparency": "Implement robust ESG data collection processes and prepare comprehensive reports following recognized standards like GRI, SASB, or TCFD. Share reports with stakeholders to enhance transparency and accountability."
+    }
+    
+    # Generate recommendations for categories with low compliance
+    for category, data in categories.items():
+        if data["compliance_percentage"] < 50:  # Threshold for providing recommendations
+            recommendations[category] = category_recommendations[category]
+    
+    return recommendations
+
+def enhance_combined_report_prompt(combined_data):
+    """
+    Enhance the standard prompt with categorized ESG data.
+    
+    Args:
+        combined_data: The combined checklist data
+        
+    Returns:
+        str: Enhanced prompt for the AI
+    """
+    # First categorize the items
+    categories = categorize_esg_items(combined_data)
+    
+    # Generate recommendations
+    recommendations = get_esg_category_recommendations(categories)
+    
+    # Create summary text for categories
+    category_summary = "ESG Categories Performance:\n"
+    for category, data in categories.items():
+        category_summary += f"- {category}: {data['yes']}/{data['total']} ({data['compliance_percentage']}%)\n"
+    
+    # Create enhanced prompt
+    enhanced_prompt = (
+        "Generate a comprehensive integrated ESG report that analyzes data from Environmental, "
+        "Social, and Governance checklists together. The data has been categorized according to the following framework:\n\n"
+        f"{category_summary}\n\n"
+        "Return the report as a structured JSON object with the following sections:\n\n"
+        "1. overview: Start with a brief company overview using the provided company metadata "
+        "(industry, size, revenue, number of sites, target customers), followed by a concise overview of the "
+        "overall ESG compliance status, with separate sections highlighting Environmental, Social, and Governance performance. "
+        "Include the overall compliance percentage and comparison between E, S, and G areas. The overall ESG rating will be calculated separately based on the compliance score. "
+        "Also identify patterns across all three pillars, noting any correlations or systemic issues that span multiple ESG areas.\n\n"
+        "2. esg_pillars: Include three subsections named 'environmental', 'social', and 'governance', each analyzing its respective pillar "
+        "with clear sections for strengths (list up to 3 key strengths as bullet points) and weaknesses (list up to 3 key weaknesses as bullet points). Format as follows:\n\n"
+        "   ENVIRONMENTAL (xx/28, xx%)\n"
+        "   Strengths:\n"
+        "   • [First strength bullet (if any)]\n"
+        "   • [Second strength bullet (if any)]\n"
+        "   • [Third strength bullet (if any)]\n\n"
+        "   Weaknesses:\n"
+        "   • [First weakness bullet (if any)]\n"
+        "   • [Second weakness bullet (if any)]\n"
+        "   • [Third weakness bullet (if any)]\n\n"
+        "   IMPORTANT: If no significant weaknesses are identified for a pillar (e.g., 100% compliance), state 'No significant weaknesses were identified in this area.' under the Weaknesses heading instead of providing bullet points.\n\n"
+        "   Follow the same format for SOCIAL and GOVERNANCE sections.\n\n"
+        "3. key_rec: Provide specific, actionable recommendations organized by the following categories:\n"
+        "   Policy Development: [recommendations for developing relevant ESG policies]\n"
+        "   Objectives/Target setting: [recommendations for setting measurable ESG goals]\n"
+        "   Action: [recommendations for implementing sustainability practices]\n"
+        "   Data/Performance Monitoring: [recommendations for tracking ESG metrics]\n"
+        "   Strategic initiatives Implementation: [recommendations for long-term sustainability programs]\n"
+        "   Compliance and Accountability: [recommendations for regulatory compliance]\n"
+        "   Engagement: [recommendations for stakeholder engagement]\n"
+        "   Transparency: [recommendations for ESG reporting and disclosure]\n\n"
+        "4. conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
+        "recommendations for integrated ESG improvement. Explain the key factors that would influence the company's ESG rating, focusing on the overall compliance percentage and specific strengths or weaknesses across the E, S, and G pillars that significantly impact the rating. Do not include an ESG rating calculation in your response, as this will be calculated separately based on the compliance percentages.\n\n"
+        "Return your response in this exact JSON structure:\n"
+        "{\n"
+        "  \"overview\": \"text here\",\n"
+        "  \"esg_pillars\": {\n"
+        "    \"environmental\": \"text here\",\n"
+        "    \"social\": \"text here\",\n"
+        "    \"governance\": \"text here\"\n"
+        "  },\n"
+        "  \"key_rec\": {\n"
+        "    \"policy_development\": \"text here\",\n"
+        "    \"objectives_target_setting\": \"text here\",\n"
+        "    \"action\": \"text here\",\n"
+        "    \"data_performance_monitoring\": \"text here\",\n"
+        "    \"strategic_initiatives\": \"text here\",\n"
+        "    \"compliance_accountability\": \"text here\",\n"
+        "    \"engagement\": \"text here\",\n"
+        "    \"transparency\": \"text here\"\n"
+        "  },\n"
+        "  \"conclusion\": \"text here\"\n"
+        "}\n\n"
+        "Tailor your recommendations to be appropriate for the company's size, industry, and business model. "
+        "Focus your recommendations especially on these areas with low performance scores:\n"
+    )
+    
+    # Add specific recommendations for low-scoring areas
+    for category, recommendation in recommendations.items():
+        enhanced_prompt += f"- {category}: {recommendation}\n"
+    
+    return enhanced_prompt 
