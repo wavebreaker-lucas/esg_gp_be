@@ -448,6 +448,16 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                         "engagement": "Mock engagement recommendations",
                         "transparency": "Mock transparency recommendations"
                     },
+                    "services": {
+                        "policy_development": ["Stakeholder Engagement & Materiality Assessment"],
+                        "objectives_target_setting": ["ESG Target Setting", "GHG Quantification/Verification"],
+                        "action": ["ESG Proposition", "ESG Training"],
+                        "data_performance_monitoring": ["Various ESG-related testing services", "ESG Training"],
+                        "strategic_initiatives": ["ESG Solutions"],
+                        "compliance_accountability": ["ESG Due Diligence Survey"],
+                        "engagement": ["ESG Training", "Stakeholder Engagement & Materiality Assessment"],
+                        "transparency": ["Sustainability Reporting", "GHG Quantification/Verification"]
+                    },
                     "conclusion": "Mock conclusion"
                 }
             else:
@@ -1206,32 +1216,66 @@ def get_esg_category_recommendations(categories):
         categories: Categorized metrics from categorize_esg_items
         
     Returns:
-        dict: Recommendations for each category
+        dict: Recommendations for each category with suggested services
     """
     recommendations = {}
     
+    # Category recommendations and suggested services
     category_recommendations = {
-        "Policy Development": "Develop relevant ESG policies that clearly articulate the company's values, principles, and commitment to ESG. These policies should govern activities and operations related to the corporation's ESG impacts.",
+        "Policy Development": {
+            "text": "Develop relevant ESG policies that clearly articulate the company's values, principles, and commitment to ESG. These policies should govern activities and operations related to the corporation's ESG impacts. They must go beyond general pledges, incorporating detailed guidelines and behavioral standards that ultimately align with ESG strategies, creating a comprehensive corporate ESG policy.",
+            "services": ["Stakeholder Engagement & Materiality Assessment"]
+        },
         
-        "Objectives/Target setting": "Conduct a materiality assessment to identify the most relevant ESG topics for your company. Establish clear, measurable, and achievable goals aligned with international standards like the UN SDGs, SASB, and GRI.",
+        "Objectives/Target setting": {
+            "text": "Conduct a materiality assessment to identify the environmental topics that are most relevant to your company. Following this, establish clear, measurable, and achievable goals and targets for your environmental practices, such as resource usage, waste reduction, and greenhouse gas emissions reduction. Ensure these goals resonate with and reference international standards, such as the UN Sustainable Development Goals (UNSDGs), the Sustainability Accounting Standards Board (SASB), and the Global Reporting Initiative (GRI).",
+            "services": ["ESG Target Setting", "GHG Quantification/Verification", "Energy Audit", "Product Carbon Footprint Assessment"]
+        },
         
-        "Action": "Develop structured action plans to achieve ESG targets, specifying resource allocation, responsible parties, and timelines. Implement practices that embed sustainability into daily operations.",
+        "Action": {
+            "text": "Develop action plans to support structured efforts toward clearly defined ESG targets. These actions should outline the pathways to achieving the ultimate ESG goals, specify resource allocation, identify responsible parties (e.g., Facility Management to monitor energy consumption; HR to manage employee engagement initiatives), and set defined timelines. The action plans should also facilitate the implementation of existing or newly developed ESG policies and call for significant modifications in various ESG aspects, including operations, supply chain management, employee and community programs, and investment decisions.",
+            "services": ["ESG Proposition", "ESG Training"]
+        },
         
-        "Data/Performance Monitoring": "Establish material ESG themes and measurable KPIs, design systems to collect, review, track, and evaluate ESG performance data with regular updates and monitoring practices.",
+        "Data/Performance Monitoring": {
+            "text": "Establish your company's material ESG themes, initiatives, and measurable KPIs, work with internal departments, collaborators, and stakeholders to design a system with clear processes, controls and schedules in order to collect, review, track, store and evaluate the ESG-related performance data. In light of developing a regular data-tracking and monitoring practice, upfront research, fact-finding, internal education and capacity building are necessary.",
+            "services": ["Various ESG-related testing services", "ESG Training", "GHG Quantification/Verification", "Product Carbon Footprint Assessment"]
+        },
         
-        "Strategic initiatives Implementation": "Define long-term sustainability goals aligned with company values and mission. Implement company-wide sustainability programs like renewable energy adoption, recycling initiatives, or low-carbon technologies.",
+        "Strategic initiatives Implementation": {
+            "text": "Define high-level, long-term goals that align with your company's values, purpose, mission, and vision. Consider various green initiatives, investments in green technology, or ESG solutions to implement a company-wide sustainability program (e.g., a recycling or upcycling initiative) or to launch a new production line utilizing low-carbon technology (e.g., adopting renewable energy sources).",
+            "services": ["ESG Solutions"]
+        },
         
-        "Compliance and Accountability": "Develop a compliance framework identifying relevant regulations applicable to operations. Integrate ESG risks and controls and implement codes of conduct and risk management systems.",
+        "Compliance and Accountability": {
+            "text": "Develop and enhance the company's compliance framework to identify the relevant regulations and laws applicable to your operations. When determining these laws and regulations, consider the industry, operational locations, products, and services to minimize operational, regulatory, and conduct risks. To strengthen the compliance framework and ensure effective corporate governance, integrate ESG risks and controls to mitigate associated risks.",
+            "services": ["ESG Due Diligence Survey"]
+        },
         
-        "Engagement": "Identify and map key stakeholders, establish engagement channels, and make ESG-related policies and goals accessible and clear to boost trust and foster participation in sustainability efforts.",
+        "Engagement": {
+            "text": "Identify and map the relevant stakeholders for your company (e.g., employees, suppliers, customers, government, community) by categorizing individuals or groups based on their impact and interest in the company's ESG initiatives. This should be followed by establishing various engagement and communication channels, such as surveys, regular focus group discussions, community portals, and annual reports.",
+            "services": ["ESG Training"]
+        },
         
-        "Transparency": "Implement robust ESG data collection processes and prepare comprehensive reports following recognized standards like GRI, SASB, or TCFD. Share reports with stakeholders to enhance transparency and accountability."
+        "Transparency": {
+            "text": "Implement a robust ESG data collection process to gather accurate quantitative and qualitative data for disclosure. Prepare comprehensive reports in accordance with recognized standards such as GRI, SASB, or TCFD. Sharing these reports with stakeholders—including employees, board members, and customers—is essential for enhancing transparency and fostering a culture of accountability.",
+            "services": ["Sustainability Reporting", "GHG Quantification/Verification", "Energy Audit", "Product Carbon Footprint Verification"]
+        }
     }
     
     # Generate recommendations for categories with low compliance
     for category, data in categories.items():
         if data["compliance_percentage"] < 50:  # Threshold for providing recommendations
-            recommendations[category] = category_recommendations[category]
+            recommendations[category] = {
+                "text": category_recommendations[category]["text"],
+                "services": category_recommendations[category]["services"]
+            }
+    
+    # Default: Add Stakeholder Engagement & Materiality Assessment to all categories
+    # if not already included
+    for category in recommendations:
+        if "Stakeholder Engagement & Materiality Assessment" not in recommendations[category]["services"]:
+            recommendations[category]["services"].append("Stakeholder Engagement & Materiality Assessment")
     
     return recommendations
 
@@ -1291,6 +1335,9 @@ def enhance_combined_report_prompt(combined_data):
         "   Transparency: [recommendations for ESG reporting and disclosure]\n\n"
         "4. conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
         "recommendations for integrated ESG improvement. Explain the key factors that would influence the company's ESG rating, focusing on the overall compliance percentage and specific strengths or weaknesses across the E, S, and G pillars that significantly impact the rating. Do not include an ESG rating calculation in your response, as this will be calculated separately based on the compliance percentages.\n\n"
+        "5. services: For each category where improvements are needed, include a list of relevant services that could help address the gaps. For example:\n"
+        "   Policy Development: [Stakeholder Engagement & Materiality Assessment]\n"
+        "   Objectives/Target setting: [ESG Target Setting, GHG Quantification/Verification, etc.]\n\n"
         "Return your response in this exact JSON structure:\n"
         "{\n"
         "  \"overview\": \"text here\",\n"
@@ -1309,6 +1356,11 @@ def enhance_combined_report_prompt(combined_data):
         "    \"engagement\": \"text here\",\n"
         "    \"transparency\": \"text here\"\n"
         "  },\n"
+        "  \"services\": {\n"
+        "    \"policy_development\": [\"service 1\", \"service 2\"],\n"
+        "    \"objectives_target_setting\": [\"service 1\", \"service 2\"],\n"
+        "    ... (include only categories that need improvement)\n"
+        "  },\n"
         "  \"conclusion\": \"text here\"\n"
         "}\n\n"
         "Tailor your recommendations to be appropriate for the company's size, industry, and business model. "
@@ -1317,6 +1369,7 @@ def enhance_combined_report_prompt(combined_data):
     
     # Add specific recommendations for low-scoring areas
     for category, recommendation in recommendations.items():
-        enhanced_prompt += f"- {category}: {recommendation}\n"
+        enhanced_prompt += f"- {category}: {recommendation['text']}\n"
+        enhanced_prompt += f"  Suggested services: {', '.join(recommendation['services'])}\n"
     
     return enhanced_prompt 
