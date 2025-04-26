@@ -74,6 +74,7 @@ MIDDLEWARE = [
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "https://esg-gp-fe.vercel.app",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -233,7 +234,7 @@ SIMPLE_JWT = {
 }
 
 # Frontend URL for password reset
-FRONTEND_URL = 'http://localhost:3000'  # Change this to your frontend URL
+FRONTEND_URL = 'https://esg-gp-fe.vercel.app'  # Updated to deployed frontend URL
 
 # Email settings - Updated to use Azure Communication Email
 EMAIL_BACKEND = 'django_azure_communication_email.EmailBackend'
