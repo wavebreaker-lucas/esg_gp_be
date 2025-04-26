@@ -1324,20 +1324,14 @@ def enhance_combined_report_prompt(combined_data):
         "   • [Third weakness bullet (if any)]\n\n"
         "   IMPORTANT: If no significant weaknesses are identified for a pillar (e.g., 100% compliance), state 'No significant weaknesses were identified in this area.' under the Weaknesses heading instead of providing bullet points.\n\n"
         "   Follow the same format for SOCIAL and GOVERNANCE sections.\n\n"
-        "3. key_rec: Provide specific, actionable recommendations organized by the following categories:\n"
-        "   Policy Development: [recommendations for developing relevant ESG policies]\n"
-        "   Objectives/Target setting: [recommendations for setting measurable ESG goals]\n"
-        "   Action: [recommendations for implementing sustainability practices]\n"
-        "   Data/Performance Monitoring: [recommendations for tracking ESG metrics]\n"
-        "   Strategic initiatives Implementation: [recommendations for long-term sustainability programs]\n"
-        "   Compliance and Accountability: [recommendations for regulatory compliance]\n"
-        "   Engagement: [recommendations for stakeholder engagement]\n"
-        "   Transparency: [recommendations for ESG reporting and disclosure]\n\n"
-        "4. conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
+        "3. key_rec: Select from our predefined recommendations below for each category where improvement is needed (focusing on categories with low compliance scores). "
+        "Customize these recommendations based on the company's industry, size, and specific ESG performance. "
+        "The customization should be light - mainly adapting our predefined content to the company's specific situation, rather than writing entirely new recommendations. "
+        "Include recommendations for all categories, but provide more detailed recommendations for categories with lower compliance scores.\n\n"
+        "4. services: Include our suggested services for each category. These services are professionally curated to help address gaps in each ESG area. "
+        "You should include all the services we've suggested for each category, without modifying the list. All categories should include 'Stakeholder Engagement & Materiality Assessment' as a default service.\n\n"
+        "5. conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
         "recommendations for integrated ESG improvement. Explain the key factors that would influence the company's ESG rating, focusing on the overall compliance percentage and specific strengths or weaknesses across the E, S, and G pillars that significantly impact the rating. Do not include an ESG rating calculation in your response, as this will be calculated separately based on the compliance percentages.\n\n"
-        "5. services: For each category where improvements are needed, include a list of relevant services that could help address the gaps. For example:\n"
-        "   Policy Development: [Stakeholder Engagement & Materiality Assessment]\n"
-        "   Objectives/Target setting: [ESG Target Setting, GHG Quantification/Verification, etc.]\n\n"
         "Return your response in this exact JSON structure:\n"
         "{\n"
         "  \"overview\": \"text here\",\n"
@@ -1364,12 +1358,13 @@ def enhance_combined_report_prompt(combined_data):
         "  \"conclusion\": \"text here\"\n"
         "}\n\n"
         "Tailor your recommendations to be appropriate for the company's size, industry, and business model. "
-        "Focus your recommendations especially on these areas with low performance scores:\n"
+        "Below are our predefined recommendations and services for each category. Select and adapt from these:\n"
     )
     
-    # Add specific recommendations for low-scoring areas
+    # Add specific recommendations for categories with details about services
     for category, recommendation in recommendations.items():
-        enhanced_prompt += f"- {category}: {recommendation['text']}\n"
-        enhanced_prompt += f"  Suggested services: {', '.join(recommendation['services'])}\n"
+        enhanced_prompt += f"CATEGORY: {category}\n"
+        enhanced_prompt += f"RECOMMENDATION: {recommendation['text']}\n"
+        enhanced_prompt += f"SERVICES: {', '.join(recommendation['services'])}\n\n"
     
     return enhanced_prompt 
