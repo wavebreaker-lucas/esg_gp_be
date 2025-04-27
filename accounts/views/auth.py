@@ -1,7 +1,7 @@
 import uuid
 from django.utils import timezone
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMessage
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -116,13 +116,15 @@ class RequestPasswordResetView(APIView, ErrorHandlingMixin):
 
         # Send reset email
         reset_link = f"{settings.FRONTEND_URL}/reset-password/{user.reset_token}/"
-        send_mail(
-            "Password Reset Request",
-            f"Click this link to reset your password: {reset_link}",
+        subject = "Password Reset Request"
+        message = f"Click this link to reset your password: {reset_link}"
+        email_message = EmailMessage(
+            subject,
+            message,
             settings.DEFAULT_FROM_EMAIL,
             [user.email],
-            fail_silently=False,
         )
+        email_message.send(fail_silently=False)
 
         return Response(
             {"message": "Password reset link sent to your email."},
