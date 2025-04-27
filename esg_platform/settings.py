@@ -33,6 +33,8 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = [
     'gpbe-dsftand5hzfnbxbb.eastasia-01.azurewebsites.net',
+    'localhost',
+    '127.0.0.1',
 ]
 
 
