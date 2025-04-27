@@ -22,6 +22,7 @@ azure-mgmt-rdbms>=10.1.0  # For Azure Database management
 django-storages>=1.14.5  # For cloud storage backends
 django-azure-communication-email>=1.3.0  # For Azure Communication Email
 azure-communication-email>=1.0.0  # Azure Communication Services Email API
+whitenoise>=6.0.0  # For static file serving in production
 
 # Date & Time
 python-dateutil>=2.9.0.post0
