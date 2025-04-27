@@ -37,6 +37,9 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
 ]
 
+CSRF_TRUSTED_ORIGINS = [
+    'https://gpbe-dsftand5hzfnbxbb.eastasia-01.azurewebsites.net',
+]
 
 # Application definition
 
