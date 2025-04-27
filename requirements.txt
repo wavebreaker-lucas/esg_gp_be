@@ -15,7 +15,7 @@ drf-yasg>=1.21.7  # For API documentation
 psycopg2-binary>=2.9.9  # PostgreSQL adapter
 
 # Azure
-azure-storage>=0.37.0
+azure-storage-blob>=12.19.0
 azure-identity>=1.15.0  # For Azure AD authentication
 azure-mgmt-rdbms>=10.1.0  # For Azure Database management
 django-storages>=1.14.5  # For cloud storage backends
