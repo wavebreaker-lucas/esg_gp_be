@@ -28,3 +28,6 @@ pytz>=2025.1
 # Utilities
 python-dotenv>=1.1.0
 requests>=2.32.3  # Note: lowercase 'r' in requests
+
+# OpenAI
+openai>=1.0.0
