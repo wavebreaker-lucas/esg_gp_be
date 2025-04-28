@@ -85,8 +85,8 @@ class ESGFormViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def check_completion(self, request, pk=None):
         """
-        Check if a form's required metrics have aggregated values for a specific assignment.
-        Defines completion based on the existence of ReportedMetricValue records.
+        Check if a form is completed for a specific assignment.
+        Uses the FormCompletionStatus model to track completion status.
         """
         form = self.get_object()
         assignment_id = request.query_params.get('assignment_id')
@@ -109,95 +109,7 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         # If we reach here, access is granted (either admin or passed has_layer_access)
         # --- END SIMPLIFIED CHECK --- 
 
-        # Get all required metrics for this form using the correct related_name
-        required_metrics = form.polymorphic_metrics.filter(is_required=True)
-        
-        total_required_points = 0 # Can represent metrics or metric-periods
-        reported_points_count = 0
-        missing_final_values = []
-
-        # --- Period Calculation Logic --- 
-        # TODO: Refine this logic significantly based on actual requirements
-        # This simplified version assumes non-timeseries metrics need one value for the assignment period,
-        # and timeseries need one value per month within the assignment period.
-        assignment_start = assignment.reporting_period_start
-        assignment_end = assignment.reporting_period_end
-        
-        # Helper function (could be moved to a service)
-        def calculate_expected_periods(metric, start_date, end_date):
-            if hasattr(metric, 'frequency'): # Check for TimeSeriesMetric, MultiFieldTimeSeriesMetric
-                freq = metric.frequency
-                if freq == 'monthly':
-                    periods = []
-                    current_date = start_date
-                    while current_date <= end_date:
-                        # Assuming monthly means end-of-month reporting
-                        import calendar
-                        last_day = calendar.monthrange(current_date.year, current_date.month)[1]
-                        periods.append(current_date.replace(day=last_day))
-                        # Move to the first day of the next month
-                        if current_date.month == 12:
-                             current_date = current_date.replace(year=current_date.year + 1, month=1, day=1)
-                        else:
-                             current_date = current_date.replace(month=current_date.month + 1, day=1)
-                    return periods
-                # TODO: Implement weekly, quarterly, daily if needed
-                elif freq == 'annual':
-                     return [end_date]
-                else: # Default for unknown frequencies or other time-based
-                     return [end_date] 
-            else: # Not a time-series metric
-                 return [end_date] # Expect one value for the end period
-
-        # --- Check each required metric --- 
-        for metric in required_metrics.iterator():
-            # Fetch the specific instance to check its type
-            specific_metric = metric.get_real_instance()
-            
-            expected_periods_dates = calculate_expected_periods(specific_metric, assignment_start, assignment_end)
-            expected_periods_count = len(expected_periods_dates)
-            
-            if expected_periods_count == 0:
-                continue # Skip if no periods are expected
-            
-            total_required_points += expected_periods_count
-
-            # Ensure we query using the base metric ID and filter by Annual level
-            found_periods_count = ReportedMetricValue.objects.filter(
-                assignment=assignment,
-                metric_id=metric.id, # Query by base metric ID 
-                layer=assignment.layer, 
-                reporting_period__in=expected_periods_dates,
-                level='A' # Check for ANNUAL aggregated value
-            ).count()
-            
-            reported_points_count += found_periods_count
-
-            if found_periods_count < expected_periods_count:
-                # Find which specific periods are missing the Annual aggregate
-                found_periods = set(ReportedMetricValue.objects.filter(
-                    assignment=assignment,
-                    metric_id=metric.id, 
-                    layer=assignment.layer, 
-                    reporting_period__in=expected_periods_dates,
-                    level='A' # Check ANNUAL level
-                ).values_list('reporting_period', flat=True))
-                
-                missing_periods = [d.isoformat() for d in expected_periods_dates if d not in found_periods]
-                
-                missing_final_values.append({
-                    "metric_id": metric.pk,
-                    "metric_name": metric.name,
-                    "location": metric.location, 
-                    "expected_periods_count": expected_periods_count,
-                    "found_periods_count": found_periods_count,
-                    "missing_periods": missing_periods
-                })
-
-        completion_percentage = (reported_points_count / total_required_points * 100) if total_required_points > 0 else 100
-        is_actually_complete = reported_points_count == total_required_points and total_required_points > 0 # Must have requirements to be complete
-
-        # First find the TemplateFormSelection entry to get the form_selection
+        # Get the form completion status from the database
         try:
             selection = TemplateFormSelection.objects.get(template=assignment.template, form=form)
             
@@ -207,207 +119,29 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                     form_selection=selection,
                     assignment=assignment
                 )
-                is_marked_complete = form_status.is_completed
+                is_completed = form_status.is_completed
                 completed_at = form_status.completed_at
                 completed_by_email = form_status.completed_by.email if form_status.completed_by else None
             except FormCompletionStatus.DoesNotExist:
                 # If no status exists, it implies the form hasn't been marked completed
-                is_marked_complete = False
+                is_completed = False
                 completed_at = None
                 completed_by_email = None
                 
         except TemplateFormSelection.DoesNotExist:
             # If no selection exists, it implies the form isn't part of the template
-            is_marked_complete = False
+            is_completed = False
             completed_at = None
             completed_by_email = None
-            
-        status_inconsistent = is_marked_complete and not is_actually_complete
 
         return Response({
             "form_id": form.pk,
             "form_name": form.name,
             "form_code": form.code,
             "assignment_id": assignment.pk,
-            "is_completed": is_marked_complete, # Status stored in DB
-            "is_actually_complete": is_actually_complete, # Status based on current check
-            "status_inconsistent": status_inconsistent,
+            "is_completed": is_completed,
             "completed_at": completed_at,
             "completed_by": completed_by_email,
-            "completion_percentage": round(completion_percentage, 2),
-            "total_required_points": total_required_points, # Total metrics or metric-periods
-            "reported_points_count": reported_points_count, # Count of metrics/periods with ReportedMetricValue
-            "missing_final_reported_values": missing_final_values,
-            "can_complete": is_actually_complete # Can only press 'complete' if requirements met
-        })
-
-    @action(detail=True, methods=['post'])
-    @transaction.atomic
-    def complete_form(self, request, pk=None):
-        """
-        Mark a form as completed for a specific template assignment, 
-        if all required metrics have aggregated ReportedMetricValue records.
-        Allows revalidation via 'revalidate=true' parameter.
-        """
-        form = self.get_object()
-        assignment_id = request.data.get('assignment_id')
-        revalidate = request.data.get('revalidate') == True # Optional flag
-        
-        if not assignment_id:
-            return Response({"error": "assignment_id is required in the request body."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            assignment = TemplateAssignment.objects.select_related('template', 'layer').get(pk=assignment_id)
-        except TemplateAssignment.DoesNotExist:
-            return Response({"error": "Assignment not found."}, status=status.HTTP_404_NOT_FOUND)
-            
-        # Check user access to the assignment's layer
-        if not has_layer_access(request.user, assignment.layer_id):
-             return Response({"detail": "You do not have permission for this assignment's layer."}, status=status.HTTP_403_FORBIDDEN)
-
-        # --- Replicate check_completion logic --- 
-        # (Alternatively, call it internally if performance allows)
-        required_metrics = form.polymorphic_metrics.filter(is_required=True)
-        total_required_points = 0
-        reported_points_count = 0
-        assignment_start = assignment.reporting_period_start
-        assignment_end = assignment.reporting_period_end
-        all_requirements_met = True
-
-        # Helper function (same as in check_completion - refactor potential)
-        def calculate_expected_periods(metric, start_date, end_date):
-            if hasattr(metric, 'frequency'):
-                freq = metric.frequency
-                if freq == 'monthly':
-                    periods = []
-                    current_date = start_date
-                    while current_date <= end_date:
-                        import calendar
-                        last_day = calendar.monthrange(current_date.year, current_date.month)[1]
-                        periods.append(current_date.replace(day=last_day))
-                        if current_date.month == 12:
-                             current_date = current_date.replace(year=current_date.year + 1, month=1, day=1)
-                        else:
-                             current_date = current_date.replace(month=current_date.month + 1, day=1)
-                    return periods
-                elif freq == 'annual': return [end_date]
-                else: return [end_date] 
-            else: return [end_date]
-
-        if not required_metrics.exists():
-             all_requirements_met = True # Form with no required metrics is complete by default?
-        else:
-            for metric in required_metrics.iterator():
-                specific_metric = metric.get_real_instance()
-                expected_periods_dates = calculate_expected_periods(specific_metric, assignment_start, assignment_end)
-                expected_periods_count = len(expected_periods_dates)
-                
-                if expected_periods_count == 0: continue
-                total_required_points += expected_periods_count
-                
-                found_periods_count = ReportedMetricValue.objects.filter(
-                    assignment=assignment,
-                    metric_id=metric.id,
-                    layer=assignment.layer, 
-                    reporting_period__in=expected_periods_dates,
-                    level='A' # Check ANNUAL level
-                ).count()
-                reported_points_count += found_periods_count
-                
-                if found_periods_count < expected_periods_count:
-                    all_requirements_met = False
-                    # If just completing (not revalidating), we can stop checking early
-                    if not revalidate: 
-                       break 
-        
-        # Determine actual completeness based on checks
-        is_actually_complete = all_requirements_met and total_required_points > 0
-        if total_required_points == 0 and required_metrics.exists():
-            # Edge case: required metrics exist but generate 0 expected periods? Treat as incomplete?
-            is_actually_complete = False 
-        elif total_required_points == 0 and not required_metrics.exists():
-            # No required metrics -> complete by default
-            is_actually_complete = True
-            
-        # Handle completion/revalidation attempt
-        if not is_actually_complete and not revalidate:
-             # Trying to mark as complete, but requirements not met.
-             # Call check_completion to get detailed error response?
-             check_response = self.check_completion(request._request, pk=pk) # Pass internal request object
-             return Response(
-                 {"error": "Cannot complete form. Requirements not met.", "details": check_response.data.get('missing_final_reported_values')},
-                 status=status.HTTP_400_BAD_REQUEST
-             )
-                 
-        # Find or create the TemplateFormSelection entry
-        selection, created = TemplateFormSelection.objects.get_or_create(
-            template=assignment.template,
-            form=form,
-            defaults={'order': form.order} # Set default order if creating
-        )
-        
-        # Find or create the FormCompletionStatus entry
-        form_status, status_created = FormCompletionStatus.objects.get_or_create(
-            form_selection=selection,
-            assignment=assignment,
-            defaults={'is_completed': False}
-        )
-
-        response_message = ""
-        status_changed = False
-
-        if is_actually_complete:
-            if not form_status.is_completed:
-                form_status.is_completed = True
-                form_status.completed_at = timezone.now()
-                form_status.completed_by = request.user
-                form_status.save()
-                status_changed = True
-                response_message = f"Form '{form.name}' successfully marked as completed."
-                if revalidate: response_message = f"Form '{form.name}' successfully revalidated and marked as completed."
-            else:
-                # Already marked complete and requirements met
-                response_message = f"Form '{form.name}' is already marked as complete and meets requirements."
-                if revalidate: response_message = f"Form '{form.name}' revalidated and confirmed complete."
-        else: # Requirements not met (only reachable if revalidate=True)
-            if form_status.is_completed:
-                 # Was marked complete, but no longer meets requirements
-                form_status.is_completed = False
-                form_status.completed_at = None
-                form_status.completed_by = None
-                form_status.save()
-                status_changed = True
-                response_message = f"Form '{form.name}' marked as incomplete because requirements are no longer met."
-            else: # Not actually complete, and not marked complete 
-                 response_message = f"Form '{form.name}' revalidated and confirmed incomplete."
-
-        # --- Check overall assignment completion --- 
-        # Use the helper method to check if all forms are complete for this assignment
-        all_forms_complete = self.check_assignment_completion(assignment)
-        
-        assignment_status_updated = False
-        if all_forms_complete:
-            # Check if all required *metrics* across all forms have ReportedMetricValue
-            # This is a more robust check than just the flags
-            # Requires iterating through all forms/metrics again - potentially heavy
-            # Simplified check: If all flags are true, mark as SUBMITTED
-            if assignment.status != 'SUBMITTED': # Only update if not already submitted/verified etc.
-                 assignment.status = 'SUBMITTED'
-                 assignment.completed_at = timezone.now() # Or use latest form completion time?
-                 assignment.save(update_fields=['status', 'completed_at'])
-                 assignment_status_updated = True
-        elif status_changed and not form_status.is_completed: # If this action made a form incomplete
-             if assignment.status in ['SUBMITTED', 'VERIFIED']: # Revert assignment status if needed
-                 assignment.status = 'IN_PROGRESS'
-                 assignment.completed_at = None
-                 assignment.save(update_fields=['status', 'completed_at'])
-                 assignment_status_updated = True
-
-        return Response({
-            "message": response_message,
-            "form_id": form.pk,
-            "form_is_complete": form_status.is_completed,
-            "assignment_status_updated": assignment_status_updated,
             "assignment_status": assignment.get_status_display()
         })
 

@@ -1091,8 +1091,9 @@ GET /api/reported-metric-values/?assignment=1&metric=5&layer=3&reporting_period=
 - `DELETE /api/esg-forms/{id}/`: Delete ESG form (Baker Tilly Admin only)
 - `GET /api/esg-forms/{id}/metrics/`: Get **polymorphic** metrics for a specific form (uses `ESGMetricPolymorphicSerializer`). **Note:** The detail view (`GET /api/esg-forms/{id}/`) now also includes these metrics.
 - `POST /api/esg-forms/{id}/add_metric/`: Add a **polymorphic** metric to a form (Admin only, requires `metric_subtype` in payload).
-- `GET /api/esg-forms/{id}/check_completion/?assignment_id={id}`: Check completion status (uses `ReportedMetricValue`, level 'A').
-- `POST /api/esg-forms/{id}/complete_form/`: Mark a form as completed (uses `ReportedMetricValue`, level 'A').
+- `GET /api/esg-forms/{id}/check_completion/?assignment_id={id}`: Check completion status for a form using the FormCompletionStatus model.
+- `POST /api/esg-forms/{id}/simple_complete_form/`: Mark a form as complete or incomplete. This is the recommended endpoint for managing form completion.
+- `POST /api/esg-forms/{id}/uncomplete_form/`: Mark a form as incomplete (Admin only).
 
 #### ESG Categories
 - `GET /api/esg-categories/`: List all categories with their active forms
@@ -1435,7 +1436,7 @@ The check_completion endpoint now uses the FormCompletionStatus model to check i
 
 ##### Complete a Form
 ```json
-POST /api/esg-forms/{form_id}/complete_form/
+POST /api/esg-forms/{form_id}/simple_complete_form/
 {
     "assignment_id": 1
 }
@@ -1450,7 +1451,7 @@ POST /api/esg-forms/{form_id}/complete_form/
 }
 ```
 
-The complete_form endpoint creates or updates a FormCompletionStatus record for the specific assignment.
+The simple_complete_form endpoint creates or updates a FormCompletionStatus record for the specific assignment.
 
 ##### Simple Complete Form (Manual Override)
 Allows a user to directly mark a form as complete or incomplete:
@@ -1714,7 +1715,7 @@ This approach consolidates what would otherwise require multiple separate API ca
 2. **View Template Details**: Users get detailed information about a specific template using `/api/user-templates/{assignment_id}/`
 3. **Submit Metric Values**: Users submit values for metrics using `/api/metric-submissions/` or `/api/metric-submissions/batch_submit/`. For multi-value metrics, they provide data in the `multi_values` dictionary.
 4. **Upload Evidence**: Users upload supporting documentation using `/api/metric-evidence/`
-5. **Complete Forms**: Users mark forms as completed using `/api/esg-forms/{form_id}/complete_form/` when all required metrics are filled
+5. **Complete Forms**: Users mark forms as completed using `/api/esg-forms/{form_id}/simple_complete_form/` when all required metrics are filled
 6. **Check Completion Status**: Users check the completion status of the template using `/api/templates/{template_id}/completion_status/`
 7. **Submit Template**: Users submit the completed template using `/api/metric-submissions/submit_template/` when all forms are completed
 8. **Verification**: Baker Tilly admins verify submissions using `/api/metric-submissions/{id}/verify/`
@@ -1865,10 +1866,10 @@ This approach ensures that when requirements change (e.g., new metrics are added
 
 #### Revalidating Completed Forms
 
-If a form needs to be revalidated due to new requirements, you can use the `complete_form` endpoint with the `revalidate` parameter:
+If a form needs to be revalidated due to new requirements, you can use the `simple_complete_form` endpoint with the `revalidate` parameter:
 
 ```
-POST /api/esg-forms/{form_id}/complete_form/
+POST /api/esg-forms/{form_id}/simple_complete_form/
 {
   "assignment_id": 123,
   "revalidate": true
@@ -1942,3 +1943,105 @@ When a form is marked as incomplete:
 ### Permissions
 
 Only Baker Tilly administrators can use this endpoint.
+
+##### Form Completion Management
+
+The system uses a simplified approach for managing form completion status through the `FormCompletionStatus` model, which tracks completion on a per-assignment basis.
+
+###### Check Form Completion Status
+```json
+GET /api/esg-forms/{form_id}/check_completion/?assignment_id=1
+
+// Response (Simplified Example)
+{
+    "form_id": 2,
+    "form_name": "Resource Use",
+    "form_code": "HKEX-A2",
+    "assignment_id": 1,
+    "is_completed": false,
+    "completed_at": null,
+    "completed_by": null,
+    "assignment_status": "IN_PROGRESS"
+}
+```
+
+The check_completion endpoint uses the FormCompletionStatus model to check if a form is completed for a specific assignment, ensuring proper data isolation between different companies and reporting periods.
+
+###### Manage Form Completion Status (Recommended Approach)
+The primary endpoint for managing form completion status is `simple_complete_form`, which provides a straightforward way to mark forms as complete or incomplete:
+
+```json
+POST /api/esg-forms/{form_id}/simple_complete_form/
+{
+    "assignment_id": 1,
+    "is_complete": true // Set to `true` to mark as complete, `false` to mark as incomplete
+}
+
+// Response (Example - Marked Complete)
+{
+    "message": "Form 'Resource Use' successfully marked as completed.",
+    "form_id": 2,
+    "form_name": "Resource Use",
+    "form_is_complete": true,
+    "assignment_status_updated": true,
+    "assignment_status": "SUBMITTED"
+}
+
+// Response (Example - Marked Incomplete)
+{
+    "message": "Form 'Resource Use' successfully marked as incomplete.",
+    "form_id": 2,
+    "form_name": "Resource Use",
+    "form_is_complete": false,
+    "assignment_status_updated": true,
+    "assignment_status": "IN_PROGRESS"
+}
+```
+
+This endpoint creates or updates a FormCompletionStatus record for the specific assignment and handles updating the assignment status as needed. It provides a direct way to toggle completion status without complex validation requirements.
+
+###### Complete a Form (Legacy Approach)
+```json
+POST /api/esg-forms/{form_id}/simple_complete_form/
+{
+    "assignment_id": 1
+}
+
+// Response (Success Example)
+{
+    "message": "Form 'Resource Use' successfully marked as completed.",
+    "form_id": 2,
+    "form_is_complete": true,
+    "assignment_status_updated": false,
+    "assignment_status": "In Progress"
+}
+```
+
+Note: This endpoint includes more complex validation that may not be needed in most use cases. The `simple_complete_form` endpoint is recommended for most scenarios.
+
+## Uncompleting Forms (Admin Only)
+
+When an administrator needs to mark a previously completed form as incomplete:
+
+```
+POST /api/esg-forms/{form_id}/uncomplete_form/
+{
+  "assignment_id": 123
+}
+
+// Response
+{
+    "message": "Form 'Resource Use' successfully marked as incomplete.",
+    "assignment_status": "IN_PROGRESS"
+}
+```
+
+### Effects of Uncompleting a Form
+
+When a form is marked as incomplete:
+
+1. The FormCompletionStatus record's `is_completed` flag is set to `false` 
+2. The `completed_at` and `completed_by` fields are cleared
+3. If the assignment was in "SUBMITTED" status, it will be changed to "IN_PROGRESS"
+
+**Note:** This operation does not affect any existing metric submissions. All submitted data remains intact.
