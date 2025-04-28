@@ -16,7 +16,7 @@ from accounts.services import get_accessible_layers, has_layer_access
 from ...models import (
     ESGForm,
     Template, TemplateFormSelection, TemplateAssignment,
-    ReportedMetricValue
+    ReportedMetricValue, FormCompletionStatus
 )
 from ...models.polymorphic_metrics import BaseESGMetric
 from ...serializers.templates import (
@@ -81,9 +81,6 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         metrics = form.polymorphic_metrics.all().order_by('order')
         serializer = ESGMetricPolymorphicSerializer(metrics, many=True, context={'request': request})
         return Response(serializer.data)
-
-    # Commenting out actions heavily dependent on the old metric structure
-    # These will need to be redesigned in Phase 4/5
 
     @action(detail=True, methods=['get'])
     def check_completion(self, request, pk=None):
@@ -200,14 +197,27 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         completion_percentage = (reported_points_count / total_required_points * 100) if total_required_points > 0 else 100
         is_actually_complete = reported_points_count == total_required_points and total_required_points > 0 # Must have requirements to be complete
 
-        # Check against the stored completion flag from TemplateFormSelection
+        # First find the TemplateFormSelection entry to get the form_selection
         try:
             selection = TemplateFormSelection.objects.get(template=assignment.template, form=form)
-            is_marked_complete = selection.is_completed
-            completed_at = selection.completed_at
-            completed_by_email = selection.completed_by.email if selection.completed_by else None
+            
+            # Now get the FormCompletionStatus for this assignment and form
+            try:
+                form_status = FormCompletionStatus.objects.get(
+                    form_selection=selection,
+                    assignment=assignment
+                )
+                is_marked_complete = form_status.is_completed
+                completed_at = form_status.completed_at
+                completed_by_email = form_status.completed_by.email if form_status.completed_by else None
+            except FormCompletionStatus.DoesNotExist:
+                # If no status exists, it implies the form hasn't been marked completed
+                is_marked_complete = False
+                completed_at = None
+                completed_by_email = None
+                
         except TemplateFormSelection.DoesNotExist:
-            # If no selection exists, it implies the form hasn't been marked completed
+            # If no selection exists, it implies the form isn't part of the template
             is_marked_complete = False
             completed_at = None
             completed_by_email = None
@@ -330,22 +340,28 @@ class ESGFormViewSet(viewsets.ModelViewSet):
              )
                  
         # Find or create the TemplateFormSelection entry
-        # Need to handle potential IntegrityError if created concurrently?
         selection, created = TemplateFormSelection.objects.get_or_create(
             template=assignment.template,
             form=form,
             defaults={'order': form.order} # Set default order if creating
+        )
+        
+        # Find or create the FormCompletionStatus entry
+        form_status, status_created = FormCompletionStatus.objects.get_or_create(
+            form_selection=selection,
+            assignment=assignment,
+            defaults={'is_completed': False}
         )
 
         response_message = ""
         status_changed = False
 
         if is_actually_complete:
-            if not selection.is_completed:
-                selection.is_completed = True
-                selection.completed_at = timezone.now()
-                selection.completed_by = request.user
-                selection.save()
+            if not form_status.is_completed:
+                form_status.is_completed = True
+                form_status.completed_at = timezone.now()
+                form_status.completed_by = request.user
+                form_status.save()
                 status_changed = True
                 response_message = f"Form '{form.name}' successfully marked as completed."
                 if revalidate: response_message = f"Form '{form.name}' successfully revalidated and marked as completed."
@@ -354,29 +370,20 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 response_message = f"Form '{form.name}' is already marked as complete and meets requirements."
                 if revalidate: response_message = f"Form '{form.name}' revalidated and confirmed complete."
         else: # Requirements not met (only reachable if revalidate=True)
-            if selection.is_completed:
+            if form_status.is_completed:
                  # Was marked complete, but no longer meets requirements
-                selection.is_completed = False
-                selection.completed_at = None
-                selection.completed_by = None
-                selection.save()
+                form_status.is_completed = False
+                form_status.completed_at = None
+                form_status.completed_by = None
+                form_status.save()
                 status_changed = True
                 response_message = f"Form '{form.name}' marked as incomplete because requirements are no longer met."
             else: # Not actually complete, and not marked complete 
                  response_message = f"Form '{form.name}' revalidated and confirmed incomplete."
 
         # --- Check overall assignment completion --- 
-        # Check if *all* forms associated with the template *in this assignment context* are complete
-        all_forms_in_template_ids = TemplateFormSelection.objects.filter(template=assignment.template).values_list('form_id', flat=True)
-        
-        # Check completion status based on the updated selection states
-        # We only care about forms actually part of this template
-        all_forms_complete = not TemplateFormSelection.objects.filter(
-            template=assignment.template, 
-            form_id__in=all_forms_in_template_ids, # Ensure we only check forms in this template
-            # form__polymorphic_metrics__is_required=True, # This check might be too complex/slow here
-            is_completed=False
-        ).exists()
+        # Use the helper method to check if all forms are complete for this assignment
+        all_forms_complete = self.check_assignment_completion(assignment)
         
         assignment_status_updated = False
         if all_forms_complete:
@@ -389,7 +396,7 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                  assignment.completed_at = timezone.now() # Or use latest form completion time?
                  assignment.save(update_fields=['status', 'completed_at'])
                  assignment_status_updated = True
-        elif status_changed and not selection.is_completed: # If this action made a form incomplete
+        elif status_changed and not form_status.is_completed: # If this action made a form incomplete
              if assignment.status in ['SUBMITTED', 'VERIFIED']: # Revert assignment status if needed
                  assignment.status = 'IN_PROGRESS'
                  assignment.completed_at = None
@@ -399,7 +406,7 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         return Response({
             "message": response_message,
             "form_id": form.pk,
-            "form_is_complete": selection.is_completed,
+            "form_is_complete": form_status.is_completed,
             "assignment_status_updated": assignment_status_updated,
             "assignment_status": assignment.get_status_display()
         })
@@ -418,17 +425,22 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         try:
             assignment = TemplateAssignment.objects.select_related('template').get(pk=assignment_id)
             selection = TemplateFormSelection.objects.get(template=assignment.template, form=form)
+            # Get the form completion status for this assignment
+            form_status = FormCompletionStatus.objects.get(form_selection=selection, assignment=assignment)
         except TemplateAssignment.DoesNotExist:
             return Response({"error": "Assignment not found."}, status=status.HTTP_404_NOT_FOUND)
         except TemplateFormSelection.DoesNotExist:
-             # If selection doesn't exist, it's already effectively incomplete
-             return Response({"message": "Form was already considered incomplete (no selection record)."})
+            # If selection doesn't exist, it's already effectively incomplete
+            return Response({"message": "Form was already considered incomplete (no selection record)."})
+        except FormCompletionStatus.DoesNotExist:
+            # If completion status doesn't exist, it's already effectively incomplete
+            return Response({"message": "Form was already considered incomplete (no completion status record)."})
 
-        if selection.is_completed:
-            selection.is_completed = False
-            selection.completed_at = None
-            selection.completed_by = None
-            selection.save()
+        if form_status.is_completed:
+            form_status.is_completed = False
+            form_status.completed_at = None
+            form_status.completed_by = None
+            form_status.save()
             
             # Revert assignment status if needed
             if assignment.status in ['SUBMITTED', 'VERIFIED']:
@@ -441,7 +453,7 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 "assignment_status": assignment.get_status_display()
             })
         else:
-            return Response({"message": f"Form '{form.name}' was already incomplete."}) 
+            return Response({"message": f"Form '{form.name}' was already incomplete."})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, BakerTillyAdmin])
     def add_metric(self, request, pk=None):
@@ -479,6 +491,26 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         else:
             print(f"Serializer IS NOT valid. Errors: {serializer.errors}") # Log the actual errors
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def check_assignment_completion(self, assignment):
+        """
+        Helper method to check if all forms in an assignment are complete.
+        Returns True if all forms are complete, False otherwise.
+        """
+        # Get all form selections for this assignment's template
+        all_forms_in_template_ids = TemplateFormSelection.objects.filter(
+            template=assignment.template
+        ).values_list('form_id', flat=True)
+        
+        # Check if any form is incomplete for this assignment
+        incomplete_forms_exist = FormCompletionStatus.objects.filter(
+            assignment=assignment,
+            form_selection__form_id__in=all_forms_in_template_ids,
+            is_completed=False
+        ).exists()
+        
+        # If no incomplete forms exist, all forms are complete
+        return not incomplete_forms_exist
 
     @action(detail=True, methods=['post'])
     @transaction.atomic
@@ -519,27 +551,35 @@ class ESGFormViewSet(viewsets.ModelViewSet):
             )
                 
         # Find or create the TemplateFormSelection entry
+        # This defines which forms are part of the template
         selection, created = TemplateFormSelection.objects.get_or_create(
             template=assignment.template,
             form=form,
             defaults={'order': form.order}  # Set default order if creating
         )
 
+        # Find or create the FormCompletionStatus entry for this assignment
+        form_status, status_created = FormCompletionStatus.objects.get_or_create(
+            form_selection=selection,
+            assignment=assignment,
+            defaults={'is_completed': False}
+        )
+
         status_changed = False
         
         # Update the completion status based on user's choice
-        if is_complete and not selection.is_completed:
-            selection.is_completed = True
-            selection.completed_at = timezone.now()
-            selection.completed_by = request.user
-            selection.save()
+        if is_complete and not form_status.is_completed:
+            form_status.is_completed = True
+            form_status.completed_at = timezone.now()
+            form_status.completed_by = request.user
+            form_status.save()
             status_changed = True
             response_message = f"Form '{form.name}' successfully marked as completed."
-        elif not is_complete and selection.is_completed:
-            selection.is_completed = False
-            selection.completed_at = None
-            selection.completed_by = None
-            selection.save()
+        elif not is_complete and form_status.is_completed:
+            form_status.is_completed = False
+            form_status.completed_at = None
+            form_status.completed_by = None
+            form_status.save()
             status_changed = True
             response_message = f"Form '{form.name}' successfully marked as incomplete."
         elif is_complete:
@@ -552,15 +592,7 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         
         # If the form was marked as complete, check if all forms in the template are now complete
         if is_complete and status_changed:
-            all_forms_in_template_ids = TemplateFormSelection.objects.filter(
-                template=assignment.template
-            ).values_list('form_id', flat=True)
-            
-            all_forms_complete = not TemplateFormSelection.objects.filter(
-                template=assignment.template, 
-                form_id__in=all_forms_in_template_ids,
-                is_completed=False
-            ).exists()
+            all_forms_complete = self.check_assignment_completion(assignment)
             
             # If all forms are complete, mark the assignment as SUBMITTED
             if all_forms_complete and assignment.status != 'SUBMITTED':
@@ -581,7 +613,7 @@ class ESGFormViewSet(viewsets.ModelViewSet):
             "message": response_message,
             "form_id": form.pk,
             "form_name": form.name,
-            "form_is_complete": selection.is_completed,
+            "form_is_complete": form_status.is_completed,
             "assignment_status_updated": assignment_status_updated,
             "assignment_status": assignment.get_status_display()
         })
