@@ -1020,6 +1020,53 @@ For metrics marked with `aggregates_inputs=True`, the `calculate_report_value` s
 - `POST /api/esg-data/{data_id}/verify/`: Verify ESG data entry (Baker Tilly admin only)
 **(Note: These endpoints seem related to an older model `ESGData`. Review if this model and its endpoints are still relevant alongside the Template/Submission/ReportedValue system).**
 
+### Vehicle and Fuel Type Endpoints
+These endpoints provide access to the vehicle and fuel type data needed for specialized metric types:
+
+#### Vehicle-Related Endpoints
+- `GET /api/vehicle-types/`: List all vehicle types with their ID, value, and label (used by VehicleTrackingMetric)
+- `GET /api/fuel-types/`: List all vehicle fuel types with their ID, value, and label (used by VehicleTrackingMetric)
+
+#### Stationary Fuel-Related Endpoints
+- `GET /api/fuel-source-types/`: List all fuel source types with their ID, value, and label (used by FuelConsumptionMetric)
+- `GET /api/stationary-fuel-types/`: List all stationary fuel types with their ID, value, label, and unit (used by FuelConsumptionMetric)
+
+**Example Response from `/api/vehicle-types/`:**
+```json
+[
+  {
+    "id": 1,
+    "value": "private_cars",
+    "label": "Private cars"
+  },
+  {
+    "id": 2,
+    "value": "light_goods_lte_2_5",
+    "label": "Light goods vehicles (<=2.5tonnes)"
+  }
+]
+```
+
+**Example Response from `/api/stationary-fuel-types/`:**
+```json
+[
+  {
+    "id": 1,
+    "value": "diesel_oil",
+    "label": "Diesel oil",
+    "unit": "litre"
+  },
+  {
+    "id": 2,
+    "value": "lpg",
+    "label": "LPG",
+    "unit": "kg"
+  }
+]
+```
+
+These endpoints provide the necessary data for dropdowns and selection fields in the user interface when working with vehicle tracking and fuel consumption metrics.
+
 ### ESG Metric Submission Endpoints (`/api/metric-submissions/`)
 Manages the **raw input headers** (`ESGMetricSubmission` model) and their linked specific data.
 
