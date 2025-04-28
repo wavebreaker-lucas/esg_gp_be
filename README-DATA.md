@@ -541,11 +541,23 @@ Properties:
 - `form`: Link to ESG Form
 - `regions`: List of applicable regions
 - `order`: Display sequence in template
-- `is_completed`: Whether this form has been completed *based on the existence of final ReportedMetricValue records* for its required metrics within the linked assignment.
-- `completed_at`: When the form was marked complete.
-- `completed_by`: User who triggered the completion check that resulted in the form being marked complete.
+- [DEPRECATED] `is_completed`: Whether this form has been completed (now tracked per assignment via FormCompletionStatus model)
+- [DEPRECATED] `completed_at`: When the form was marked complete (now tracked per assignment)
+- [DEPRECATED] `completed_by`: User who triggered completion (now tracked per assignment)
 
-### 3. Template Assignment
+### 3. Form Completion Status
+Tracks the completion status of forms for each template assignment:
+
+Properties:
+- `form_selection`: Link to TemplateFormSelection
+- `assignment`: Link to TemplateAssignment
+- `is_completed`: Whether this form has been completed for this specific assignment
+- `completed_at`: When the form was marked complete for this assignment
+- `completed_by`: User who completed the form for this assignment
+
+This model provides proper data isolation between different companies and different reporting periods for the same company. It ensures that when multiple companies are assigned the same template, or when the same company has assignments for different reporting periods, each company's form completion status is tracked separately.
+
+### 4. Template Assignment
 Assigns templates to companies for reporting:
 
 Properties:
@@ -556,7 +568,7 @@ Properties:
 - `status`: Current status (PENDING, IN_PROGRESS, SUBMITTED, VERIFIED, REJECTED)
 - `reporting_period_start`: Start of reporting period covered by assignment.
 - `reporting_period_end`: End of reporting period covered by assignment.
-- `reporting_year`: (Deprecated, use start/end dates) The specific year for which data is being reported.
+- `reporting_year`: The specific year for which data is being reported.
 - `completed_at`: When the template assignment was marked 'SUBMITTED'.
 
 ### User Template Management
@@ -1403,33 +1415,25 @@ POST /api/metric-submissions/batch_submit/
 ```
 
 ##### Check Form Completion Status
-(Description updated to reflect check against `ReportedMetricValue` level 'A').
 ```json
 GET /api/esg-forms/{form_id}/check_completion/?assignment_id=1
 
-// Response (Example reflecting new logic)
+// Response (Simplified Example)
 {
     "form_id": 2,
     "form_name": "Resource Use",
     "form_code": "HKEX-A2",
     "assignment_id": 1,
     "is_completed": false,
-    "is_actually_complete": false,
-    "status_inconsistent": false,
     "completed_at": null,
     "completed_by": null,
-    "completion_percentage": 75.0,
-    "total_required_points": 4,
-    "reported_points_count": 3,
-    "missing_final_reported_values": [
-        {"metric_id": 10, "metric_name": "Wastewater consumption", "location": "HK", "expected_periods_count": 1, "found_periods_count": 0, "missing_periods": ["2024-12-31"]}
-    ],
-    "can_complete": false
+    "assignment_status": "IN_PROGRESS"
 }
 ```
 
+The check_completion endpoint now uses the FormCompletionStatus model to check if a form is completed for a specific assignment, ensuring proper data isolation between different companies and reporting periods.
+
 ##### Complete a Form
-(Description updated).
 ```json
 POST /api/esg-forms/{form_id}/complete_form/
 {
@@ -1446,8 +1450,10 @@ POST /api/esg-forms/{form_id}/complete_form/
 }
 ```
 
+The complete_form endpoint creates or updates a FormCompletionStatus record for the specific assignment.
+
 ##### Simple Complete Form (Manual Override)
-Allows a user to directly mark a form as complete or incomplete, bypassing the automatic validation based on `ReportedMetricValue` records. This is useful for workflows where user discretion is preferred over strict system validation.
+Allows a user to directly mark a form as complete or incomplete:
 
 ```json
 POST /api/esg-forms/{form_id}/simple_complete_form/
@@ -1460,20 +1466,51 @@ POST /api/esg-forms/{form_id}/simple_complete_form/
 {
     "message": "Form 'Resource Use' successfully marked as completed.",
     "form_id": 2,
+    "form_name": "Resource Use",
     "form_is_complete": true,
-    "assignment_status_updated": true, // True if assignment status changed
-    "assignment_status": "SUBMITTED" // Updated assignment status
+    "assignment_status_updated": true,
+    "assignment_status": "SUBMITTED"
 }
 
 // Response (Example - Marked Incomplete)
 {
     "message": "Form 'Resource Use' successfully marked as incomplete.",
     "form_id": 2,
+    "form_name": "Resource Use",
     "form_is_complete": false,
     "assignment_status_updated": true,
     "assignment_status": "IN_PROGRESS"
 }
 ```
+
+The simple_complete_form endpoint creates or updates a FormCompletionStatus record for the specific assignment, providing a direct way to toggle completion status.
+
+## Uncompleting Forms (Admin Only)
+
+When an administrator uncompletes a form, the FormCompletionStatus record for the specific assignment is updated:
+
+```
+POST /api/esg-forms/{form_id}/uncomplete_form/
+{
+  "assignment_id": 123
+}
+
+// Response
+{
+    "message": "Form 'Resource Use' successfully marked as incomplete.",
+    "assignment_status": "IN_PROGRESS"
+}
+```
+
+### Effects of Uncompleting a Form
+
+When a form is marked as incomplete:
+
+1. The FormCompletionStatus record's `is_completed` flag is set to `false` 
+2. The `completed_at` and `completed_by` fields are cleared
+3. If the assignment was in "SUBMITTED" status, it will be changed to "IN_PROGRESS"
+
+**Note:** This operation does not affect any existing metric submissions. All submitted data remains intact.
 
 ##### Submit a Template
 (Description updated).
