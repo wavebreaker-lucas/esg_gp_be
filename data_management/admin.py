@@ -8,7 +8,7 @@ from .models.templates import (
     ESGFormCategory, ESGForm,
     Template, TemplateFormSelection, TemplateAssignment,
     ESGMetricSubmission, ESGMetricEvidence,
-    ReportedMetricValue
+    ReportedMetricValue, FormCompletionStatus
 )
 from polymorphic.admin import PolymorphicParentModelAdmin, PolymorphicChildModelAdmin, PolymorphicChildModelFilter
 from .models.polymorphic_metrics import (
@@ -103,9 +103,28 @@ class TemplateAdmin(admin.ModelAdmin):
 
 @admin.register(TemplateFormSelection)
 class TemplateFormSelectionAdmin(admin.ModelAdmin):
-    list_display = ['template', 'form', 'order']
+    list_display = ['template', 'form', 'order', 'get_deprecated_notice']
     list_filter = ['template', 'form']
-    ordering = ['template', 'order']
+    search_fields = ['template__name', 'form__name']
+    raw_id_fields = ['template', 'form']
+    readonly_fields = ['is_completed', 'completed_at', 'completed_by']
+    
+    def get_deprecated_notice(self, obj):
+        return "Use FormCompletionStatus" if obj.is_completed else "-"
+    get_deprecated_notice.short_description = "Completion Status (Deprecated)"
+    
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = [
+            ('Form Selection', {
+                'fields': ('template', 'form', 'order', 'regions')
+            }),
+            ('Deprecated Completion Fields', {
+                'fields': ('is_completed', 'completed_at', 'completed_by'),
+                'classes': ('collapse',),
+                'description': 'These fields are deprecated. Use FormCompletionStatus model instead.'
+            })
+        ]
+        return fieldsets
 
 @admin.register(TemplateAssignment)
 class TemplateAssignmentAdmin(admin.ModelAdmin):
@@ -1023,3 +1042,34 @@ class ChecklistReportAdmin(admin.ModelAdmin):
         return False
 
 admin.site.register(ChecklistReport, ChecklistReportAdmin)
+
+@admin.register(FormCompletionStatus)
+class FormCompletionStatusAdmin(admin.ModelAdmin):
+    list_display = ['form_selection', 'get_company', 'get_reporting_year', 'get_form_name', 'get_template_name', 
+                    'is_completed', 'completed_at', 'completed_by']
+    list_filter = ['is_completed', 'assignment__layer', 'assignment__reporting_year', 
+                   'form_selection__template', 'form_selection__form']
+    search_fields = ['assignment__layer__company_name', 'form_selection__form__name', 
+                     'form_selection__template__name']
+    raw_id_fields = ['form_selection', 'assignment', 'completed_by']
+    readonly_fields = ['completed_at']
+    
+    def get_form_name(self, obj):
+        return obj.form_selection.form.name
+    get_form_name.short_description = 'Form'
+    get_form_name.admin_order_field = 'form_selection__form__name'
+    
+    def get_template_name(self, obj):
+        return obj.form_selection.template.name
+    get_template_name.short_description = 'Template'
+    get_template_name.admin_order_field = 'form_selection__template__name'
+    
+    def get_company(self, obj):
+        return obj.assignment.layer.company_name
+    get_company.short_description = 'Company'
+    get_company.admin_order_field = 'assignment__layer__company_name'
+    
+    def get_reporting_year(self, obj):
+        return obj.assignment.reporting_year
+    get_reporting_year.short_description = 'Reporting Year'
+    get_reporting_year.admin_order_field = 'assignment__reporting_year'

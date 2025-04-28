@@ -60,18 +60,28 @@ class Template(models.Model):
         return f"{self.name} v{self.version}"
 
 class TemplateFormSelection(models.Model):
-    """Links templates to selected forms with region configuration"""
+    """
+    Links templates to their included forms. This defines the forms included in a template.
+    Note: This DOES NOT track completion status per company/assignment - that's handled by FormCompletionStatus.
+    """
     template = models.ForeignKey(Template, on_delete=models.CASCADE)
     form = models.ForeignKey(ESGForm, on_delete=models.CASCADE)
     regions = models.JSONField(default=list)  # List of regions this form applies to
     order = models.PositiveIntegerField(default=0)
-    is_completed = models.BooleanField(default=False)  # Track if this form is completed
-    completed_at = models.DateTimeField(null=True, blank=True)  # When the form was completed
-    completed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='completed_forms')  # Who completed the form
+    
+    # These completion fields will be deprecated in favor of FormCompletionStatus
+    # They remain for backward compatibility only and should not be used in new code
+    is_completed = models.BooleanField(default=False, help_text="DEPRECATED - Use FormCompletionStatus instead")
+    completed_at = models.DateTimeField(null=True, blank=True, help_text="DEPRECATED - Use FormCompletionStatus instead")
+    completed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, 
+                                     related_name='completed_forms', help_text="DEPRECATED - Use FormCompletionStatus instead")
 
     class Meta:
         ordering = ['template', 'order']
         unique_together = ['template', 'form']
+        
+    def __str__(self):
+        return f"{self.template.name} - {self.form.name}"
 
 class TemplateAssignment(models.Model):
     """Assignment of templates to layers (groups, subsidiaries, branches)"""
@@ -104,6 +114,33 @@ class TemplateAssignment(models.Model):
 
     def __str__(self):
         return f"{self.template.name} - {self.layer.company_name}"
+
+class FormCompletionStatus(models.Model):
+    """
+    Tracks the completion status of forms for each template assignment.
+    This model provides proper data isolation between different companies
+    and between different reporting periods for the same company.
+    """
+    form_selection = models.ForeignKey(TemplateFormSelection, on_delete=models.CASCADE, related_name='assignment_completion')
+    assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='form_completion_status',
+                                  help_text="The template assignment this completion status belongs to")
+    is_completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='completed_assignment_forms')
+    
+    class Meta:
+        ordering = ['assignment', 'form_selection']
+        unique_together = ['form_selection', 'assignment']
+        indexes = [
+            models.Index(fields=['form_selection', 'assignment']),
+            models.Index(fields=['is_completed']),
+            models.Index(fields=['assignment']),
+        ]
+        verbose_name = "Form Completion Status"
+        verbose_name_plural = "Form Completion Statuses"
+    
+    def __str__(self):
+        return f"{self.form_selection.form.code} - {self.assignment.layer.company_name} - {'Completed' if self.is_completed else 'Incomplete'}"
 
 class ReportedMetricValue(models.Model):
     """Parent record storing aggregation results for a specific input metric context and aggregation level."""
