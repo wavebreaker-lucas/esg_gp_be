@@ -12,6 +12,8 @@ from .views import (
     ReportedMetricValueViewSet,
     VehicleTypeViewSet, FuelTypeViewSet
 )
+# Import fuel data views
+from .views.fuel_data import FuelSourceTypeViewSet, StationaryFuelTypeViewSet
 # Import the metrics view separately (or adjust above import)
 from .views.form_definition import metrics as metric_views
 # Import dashboard API views
@@ -38,6 +40,9 @@ router.register(r'esg-metrics', metric_views.ESGMetricViewSet, basename='esgmetr
 router.register(r'reported-metric-values', ReportedMetricValueViewSet, basename='reported-metric-value')
 router.register(r'vehicle-types', VehicleTypeViewSet, basename='vehicle-type')
 router.register(r'fuel-types', FuelTypeViewSet, basename='fuel-type')
+# Register fuel data viewsets
+router.register(r'fuel-source-types', FuelSourceTypeViewSet, basename='fuel-source-type')
+router.register(r'stationary-fuel-types', StationaryFuelTypeViewSet, basename='stationary-fuel-type')
 
 # Export the router's URLs
 # Assuming this urls.py is included under /api/ in your main urls.py
