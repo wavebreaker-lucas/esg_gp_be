@@ -1967,8 +1967,8 @@ GET /api/esg-forms/{form_id}/check_completion/?assignment_id=1
 
 The check_completion endpoint uses the FormCompletionStatus model to check if a form is completed for a specific assignment, ensuring proper data isolation between different companies and reporting periods.
 
-###### Manage Form Completion Status (Recommended Approach)
-The primary endpoint for managing form completion status is `simple_complete_form`, which provides a straightforward way to mark forms as complete or incomplete:
+###### Mark a Form as Complete or Incomplete
+The `simple_complete_form` endpoint provides a straightforward way to mark forms as complete or incomplete:
 
 ```json
 POST /api/esg-forms/{form_id}/simple_complete_form/
@@ -1998,31 +1998,9 @@ POST /api/esg-forms/{form_id}/simple_complete_form/
 }
 ```
 
-This endpoint creates or updates a FormCompletionStatus record for the specific assignment and handles updating the assignment status as needed. It provides a direct way to toggle completion status without complex validation requirements.
+This endpoint creates or updates a FormCompletionStatus record for the specific assignment and handles updating the assignment status as needed. If the `is_complete` parameter is not specified, it defaults to `true` (marking as complete).
 
-###### Complete a Form (Legacy Approach)
-```json
-POST /api/esg-forms/{form_id}/simple_complete_form/
-{
-    "assignment_id": 1
-}
-
-// Response (Success Example)
-{
-    "message": "Form 'Resource Use' successfully marked as completed.",
-    "form_id": 2,
-    "form_is_complete": true,
-    "assignment_status_updated": false,
-    "assignment_status": "In Progress"
-}
-```
-
-Note: This endpoint includes more complex validation that may not be needed in most use cases. The `simple_complete_form` endpoint is recommended for most scenarios.
-
-## Uncompleting Forms (Admin Only)
-
-When an administrator needs to mark a previously completed form as incomplete:
-
+###### Uncomplete a Form (Admin Only)
 ```
 POST /api/esg-forms/{form_id}/uncomplete_form/
 {
