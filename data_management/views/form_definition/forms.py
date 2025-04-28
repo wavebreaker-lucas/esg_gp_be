@@ -229,22 +229,29 @@ class ESGFormViewSet(viewsets.ModelViewSet):
     def check_assignment_completion(self, assignment):
         """
         Helper method to check if all forms in an assignment are complete.
-        Returns True if all forms are complete, False otherwise.
+        Returns True if all forms have a FormCompletionStatus record with is_completed=True.
+        Forms without a FormCompletionStatus record are considered incomplete.
         """
         # Get all form selections for this assignment's template
-        all_forms_in_template_ids = TemplateFormSelection.objects.filter(
+        template_form_selections = TemplateFormSelection.objects.filter(
             template=assignment.template
-        ).values_list('form_id', flat=True)
+        )
         
-        # Check if any form is incomplete for this assignment
-        incomplete_forms_exist = FormCompletionStatus.objects.filter(
+        # Get count of all forms in the template
+        total_forms_count = template_form_selections.count()
+        
+        if total_forms_count == 0:
+            return False  # If no forms in template, it can't be complete
+            
+        # Count how many forms have been marked as completed
+        completed_forms_count = FormCompletionStatus.objects.filter(
             assignment=assignment,
-            form_selection__form_id__in=all_forms_in_template_ids,
-            is_completed=False
-        ).exists()
+            form_selection__in=template_form_selections,
+            is_completed=True
+        ).count()
         
-        # If no incomplete forms exist, all forms are complete
-        return not incomplete_forms_exist
+        # Assignment is complete only if ALL forms have been marked as completed
+        return completed_forms_count == total_forms_count
 
     @action(detail=True, methods=['post'])
     @transaction.atomic
