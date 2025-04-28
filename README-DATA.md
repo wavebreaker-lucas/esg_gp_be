@@ -1446,6 +1446,35 @@ POST /api/esg-forms/{form_id}/complete_form/
 }
 ```
 
+##### Simple Complete Form (Manual Override)
+Allows a user to directly mark a form as complete or incomplete, bypassing the automatic validation based on `ReportedMetricValue` records. This is useful for workflows where user discretion is preferred over strict system validation.
+
+```json
+POST /api/esg-forms/{form_id}/simple_complete_form/
+{
+    "assignment_id": 1,
+    "is_complete": true // Set to `true` to mark as complete, `false` to mark as incomplete
+}
+
+// Response (Example - Marked Complete)
+{
+    "message": "Form 'Resource Use' successfully marked as completed.",
+    "form_id": 2,
+    "form_is_complete": true,
+    "assignment_status_updated": true, // True if assignment status changed
+    "assignment_status": "SUBMITTED" // Updated assignment status
+}
+
+// Response (Example - Marked Incomplete)
+{
+    "message": "Form 'Resource Use' successfully marked as incomplete.",
+    "form_id": 2,
+    "form_is_complete": false,
+    "assignment_status_updated": true,
+    "assignment_status": "IN_PROGRESS"
+}
+```
+
 ##### Submit a Template
 (Description updated).
 ```json

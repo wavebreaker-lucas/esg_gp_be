@@ -479,3 +479,109 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         else:
             print(f"Serializer IS NOT valid. Errors: {serializer.errors}") # Log the actual errors
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def simple_complete_form(self, request, pk=None):
+        """
+        A simplified form completion endpoint that allows users to directly mark 
+        a form as complete or incomplete without validation checks.
+        
+        Required parameters:
+        - assignment_id: ID of the template assignment
+        - is_complete: Boolean indicating whether the form should be marked as complete or incomplete
+        """
+        form = self.get_object()
+        assignment_id = request.data.get('assignment_id')
+        is_complete = request.data.get('is_complete', True)  # Default to marking complete if not specified
+        
+        # Validate the assignment_id parameter
+        if not assignment_id:
+            return Response(
+                {"error": "assignment_id is required in the request body."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Get the assignment
+            assignment = TemplateAssignment.objects.select_related('template', 'layer').get(pk=assignment_id)
+        except TemplateAssignment.DoesNotExist:
+            return Response(
+                {"error": "Assignment not found."}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+            
+        # Check user access to the assignment's layer
+        if not has_layer_access(request.user, assignment.layer_id):
+            return Response(
+                {"detail": "You do not have permission for this assignment's layer."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+                
+        # Find or create the TemplateFormSelection entry
+        selection, created = TemplateFormSelection.objects.get_or_create(
+            template=assignment.template,
+            form=form,
+            defaults={'order': form.order}  # Set default order if creating
+        )
+
+        status_changed = False
+        
+        # Update the completion status based on user's choice
+        if is_complete and not selection.is_completed:
+            selection.is_completed = True
+            selection.completed_at = timezone.now()
+            selection.completed_by = request.user
+            selection.save()
+            status_changed = True
+            response_message = f"Form '{form.name}' successfully marked as completed."
+        elif not is_complete and selection.is_completed:
+            selection.is_completed = False
+            selection.completed_at = None
+            selection.completed_by = None
+            selection.save()
+            status_changed = True
+            response_message = f"Form '{form.name}' successfully marked as incomplete."
+        elif is_complete:
+            response_message = f"Form '{form.name}' was already complete."
+        else:
+            response_message = f"Form '{form.name}' was already incomplete."
+
+        # Update assignment status
+        assignment_status_updated = False
+        
+        # If the form was marked as complete, check if all forms in the template are now complete
+        if is_complete and status_changed:
+            all_forms_in_template_ids = TemplateFormSelection.objects.filter(
+                template=assignment.template
+            ).values_list('form_id', flat=True)
+            
+            all_forms_complete = not TemplateFormSelection.objects.filter(
+                template=assignment.template, 
+                form_id__in=all_forms_in_template_ids,
+                is_completed=False
+            ).exists()
+            
+            # If all forms are complete, mark the assignment as SUBMITTED
+            if all_forms_complete and assignment.status != 'SUBMITTED':
+                assignment.status = 'SUBMITTED'
+                assignment.completed_at = timezone.now()
+                assignment.save(update_fields=['status', 'completed_at'])
+                assignment_status_updated = True
+        
+        # If the form was marked as incomplete, update the assignment status if needed
+        elif not is_complete and status_changed:
+            if assignment.status in ['SUBMITTED', 'VERIFIED']:
+                assignment.status = 'IN_PROGRESS'
+                assignment.completed_at = None
+                assignment.save(update_fields=['status', 'completed_at'])
+                assignment_status_updated = True
+
+        return Response({
+            "message": response_message,
+            "form_id": form.pk,
+            "form_name": form.name,
+            "form_is_complete": selection.is_completed,
+            "assignment_status_updated": assignment_status_updated,
+            "assignment_status": assignment.get_status_display()
+        })
