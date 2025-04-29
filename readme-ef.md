@@ -34,11 +34,7 @@ When calculating emissions, it's critical to use the correct category and subcat
 |------|-------------|-------------------:|---------------|--------|-------|
 | Electricity - HK Electric - 2025 | `hk_hke` | 0.7100 | kWh | ALL | 2 |
 | Electricity - CLP Power - 2025 | `hk_clp` | 0.3900 | kWh | ALL | 2 |
-| Electricity - Northern China - 2025 | `prc_northern` | 0.5703 | kWh | ALL | 2 |
-| Electricity - Northeast China - 2025 | `prc_northeast` | 0.5703 | kWh | ALL | 2 |
 | Electricity - Eastern China - 2025 | `prc_eastern` | 0.5703 | kWh | ALL | 2 |
-| Electricity - Malaysia - 2025 | `my_peninsula` | 0.5600 | kWh | ALL | 2 |
-| Electricity - Singapore - 2025 | `sg_main` | 0.4085 | kWh | ALL | 2 |
 
 ### Towngas (`category="towngas"`)
 
