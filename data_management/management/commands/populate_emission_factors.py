@@ -79,34 +79,6 @@ class Command(BaseCommand):
             source_url="https://www.clpgroup.com/content/dam/clp-group/channels/sustainability/document/sustainability-report/2023/CLP_Sustainability_Report_2023_en.pdf.coredownload.pdf"
         )
         
-        # Northern China
-        self.create_factor(
-            name="Electricity - Northern China - 2025",
-            category="electricity",
-            sub_category="prc_northern",
-            activity_unit="kWh",
-            value=0.5703,
-            factor_unit="kgCO2e/kWh",
-            year=2025,
-            region="ALL",
-            scope="2",
-            source="China Ministry of Environment 2023-2025 Greenhouse Gas Emission Report",
-            source_url="https://www.mee.gov.cn/xxgk2018/xxgk/xxgk06/202310/t20231018_1043427.html"
-        )
-        
-        # Northeast China
-        self.create_factor(
-            name="Electricity - Northeast China - 2025",
-            category="electricity",
-            sub_category="prc_northeast",
-            activity_unit="kWh",
-            value=0.5703,
-            factor_unit="kgCO2e/kWh",
-            year=2025,
-            region="ALL",
-            scope="2"
-        )
-        
         # Eastern China
         self.create_factor(
             name="Electricity - Eastern China - 2025",
@@ -118,36 +90,6 @@ class Command(BaseCommand):
             year=2025,
             region="ALL",
             scope="2"
-        )
-        
-        # Malaysia
-        self.create_factor(
-            name="Electricity - Malaysia - 2025",
-            category="electricity",
-            sub_category="my_peninsula",
-            activity_unit="kWh",
-            value=0.5600,
-            factor_unit="kgCO2e/kWh",
-            year=2025,
-            region="ALL",
-            scope="2",
-            source="TNB Sustainability Report 2019",
-            source_url="https://www.tnb.com.my/assets/annual_report/TNB_Sustainability_Report_2019.pdf"
-        )
-        
-        # Singapore
-        self.create_factor(
-            name="Electricity - Singapore - 2025",
-            category="electricity",
-            sub_category="sg_main",
-            activity_unit="kWh",
-            value=0.4085,
-            factor_unit="kgCO2e/kWh",
-            year=2025,
-            region="ALL",
-            scope="2",
-            source="Table of Contents for SES 2020",
-            source_url="https://www.ema.gov.sg/singapore-energy-statistics/Ch02/index2"
         )
 
     def populate_towngas_factors(self):
