@@ -22,69 +22,148 @@ Each emission factor has the following attributes:
 - **source**: Source of the emission factor data
 - **source_url**: URL to the source document
 
+## Emission Factor Matching
+
+When calculating emissions, it's critical to use the correct category and subcategory to match with the appropriate emission factor. The following sections provide detailed information for each emission factor, including the exact category and subcategory values used in the code.
+
 ## Categories of Emission Factors
 
-### Electricity
+### Electricity (`category="electricity"`)
 
-Emission factors for electricity consumption from different providers:
+| Name | Subcategory | Value (kgCO2e/kWh) | Activity Unit | Scope |
+|------|-------------|-------------------:|---------------|-------|
+| Electricity - HK Electric - 2025 | `hk_hke` | 0.7100 | kWh | 2 |
+| Electricity - CLP Power - 2025 | `hk_clp` | 0.3900 | kWh | 2 |
+| Electricity - Northern China - 2025 | `prc_northern` | 0.5703 | kWh | 2 |
+| Electricity - Northeast China - 2025 | `prc_northeast` | 0.5703 | kWh | 2 |
+| Electricity - Eastern China - 2025 | `prc_eastern` | 0.5703 | kWh | 2 |
+| Electricity - Malaysia - 2025 | `my_peninsula` | 0.5600 | kWh | 2 |
+| Electricity - Singapore - 2025 | `sg_main` | 0.4085 | kWh | 2 |
 
-- HK Electric (0.7100 kgCO2e/kWh)
-- CLP Power (0.3900 kgCO2e/kWh)
-- Northern China (0.5703 kgCO2e/kWh)
-- Northeast China (0.5703 kgCO2e/kWh)
-- Eastern China (0.5703 kgCO2e/kWh)
-- Malaysia (0.5600 kgCO2e/kWh)
-- Singapore (0.4085 kgCO2e/kWh)
+### Towngas (`category="towngas"`)
 
-### Towngas
+| Name | Subcategory | Value (kgCO2e/Unit) | Activity Unit | Scope |
+|------|-------------|--------------------:|---------------|-------|
+| Towngas - Hong Kong - 2025 | `hk_indirect` | 0.5880 | Unit | 2 |
 
-Emission factor for towngas consumption:
-
-- Hong Kong Towngas (0.5880 kgCO2e/Unit)
-
-### Transport
-
-Emission factors for different vehicle types and fuels:
+### Transport (`category="transport"`)
 
 #### Diesel Vehicles
-- Passenger Car (2.6460 kgCO2e/liter)
-- Private Van (2.7541 kgCO2e/liter)
-- Public Light Bus (2.7722 kgCO2e/liter)
-- Light Goods Vehicle (2.7541 kgCO2e/liter)
-- Light Commercial Vehicle (2.7541 kgCO2e/liter)
-- Medium Goods Vehicle (2.6377 kgCO2e/liter)
-- Heavy Goods Vehicle (2.6377 kgCO2e/liter)
-- Other Mobile Machinery (2.6166 kgCO2e/liter)
+
+| Name | Subcategory | Value (kgCO2e/liter) | Activity Unit | Scope |
+|------|-------------|---------------------:|---------------|-------|
+| Diesel - Passenger Car | `transport_cars_diesel` | 2.6460 | liters | 1 |
+| Diesel - Private Van | `transport_vans_diesel` | 2.7541 | liters | 1 |
+| Diesel - Public Light Bus | `transport_bus_diesel` | 2.7722 | liters | 1 |
+| Diesel - Light Goods Vehicle | `transport_light_goods_diesel` | 2.7541 | liters | 1 |
+| Diesel - Light Commercial Vehicle | `transport_light_commercial_diesel` | 2.7541 | liters | 1 |
+| Diesel - Medium Goods Vehicle | `transport_medium_goods_diesel` | 2.6377 | liters | 1 |
+| Diesel - Heavy Goods Vehicle | `transport_heavy_goods_diesel` | 2.6377 | liters | 1 |
+| Diesel - Other Mobile Machinery | `transport_mobile_machinery_diesel` | 2.6166 | liters | 1 |
+| Diesel - General Mobile | `transport_general_diesel` | 2.6166 | liters | 1 |
 
 #### Petrol/Unleaded Vehicles
-- Motorcycle (2.4122 kgCO2e/liter)
-- Passenger Car (2.6687 kgCO2e/liter)
-- Private Van (2.6769 kgCO2e/liter)
-- Light Goods Vehicle (2.6673 kgCO2e/liter)
+
+| Name | Subcategory | Value (kgCO2e/liter) | Activity Unit | Scope |
+|------|-------------|---------------------:|---------------|-------|
+| Petrol - Motorcycle | `transport_motorcycle_petrol` | 2.4122 | liters | 1 |
+| Petrol/Unleaded - Passenger Car | `transport_cars_petrol` | 2.6687 | liters | 1 |
+| Petrol/Unleaded - Private Van | `transport_vans_petrol` | 2.6769 | liters | 1 |
+| Petrol/Unleaded - Light Goods Vehicle | `transport_light_goods_petrol` | 2.6673 | liters | 1 |
+| Petrol - General Mobile | `transport_general_petrol` | 2.6687 | liters | 1 |
 
 #### LPG Vehicles
-- Private Van (1.6859 kgCO2e/liter)
-- Public Light Bus (1.6859 kgCO2e/liter)
-- Other Mobile Machinery (1.6791 kgCO2e/liter)
-- Passenger Car (1.6859 kgCO2e/liter)
 
-#### Other Transport Factors
-- Gas Oil - Ship (2.9480 kgCO2e/liter)
-- Jet Kerosene - Aviation (2.4309 kgCO2e/liter)
+| Name | Subcategory | Value (kgCO2e/liter) | Activity Unit | Scope |
+|------|-------------|---------------------:|---------------|-------|
+| LPG - Private Van | `transport_vans_lpg` | 1.6859 | liters | 1 |
+| LPG - Public Light Bus | `transport_bus_lpg` | 1.6859 | liters | 1 |
+| LPG - Other Mobile Machinery | `transport_mobile_machinery_lpg` | 1.6791 | liters | 1 |
+| LPG - Passenger Car | `transport_cars_lpg` | 1.6859 | liters | 1 |
+| LPG - General Mobile | `transport_lpg` | 1.6859 | liters | 1 |
 
-### Stationary Combustion
+#### Detailed Vehicle Classifications
 
-Emission factors for stationary fuel combustion:
+##### Light Goods Vehicles (≤2.5 tonnes)
 
-- Diesel - Generators (2.6167 kgCO2e/liter)
-- LPG - Stationary Source (3.0171 kgCO2e/kg)
-- Kerosene - Stationary Source (2.4317 kgCO2e/liter)
-- Charcoal - Stationary Source (3.1318 kgCO2e/kg)
-- Towngas - Direct Consumption (2.5529 kgCO2e/Unit)
-- Petrol - Stationary Equipment (2.6687 kgCO2e/liter)
-- Natural Gas - Stationary Combustion (2.1622 kgCO2e/m³)
+| Name | Subcategory | Value (kgCO2e/liter) | Activity Unit | Scope |
+|------|-------------|---------------------:|---------------|-------|
+| Petrol - Light Goods Vehicle (≤2.5tonnes) | `transport_light_goods_lte_2_5_petrol` | 2.6673 | liters | 1 |
+| Unleaded Petrol - Light Goods Vehicle (≤2.5tonnes) | `transport_light_goods_lte_2_5_unleaded_petrol` | 2.6673 | liters | 1 |
+| LPG - Light Goods Vehicle (≤2.5tonnes) | `transport_light_goods_lte_2_5_lpg` | 1.6859 | liters | 1 |
+
+##### Light Goods Vehicles (2.5-3.5 tonnes)
+
+| Name | Subcategory | Value (kgCO2e/liter) | Activity Unit | Scope |
+|------|-------------|---------------------:|---------------|-------|
+| Petrol - Light Goods Vehicle (2.5-3.5tonnes) | `transport_light_goods_2_5_3_5_petrol` | 2.6673 | liters | 1 |
+| Unleaded Petrol - Light Goods Vehicle (2.5-3.5tonnes) | `transport_light_goods_2_5_3_5_unleaded_petrol` | 2.6673 | liters | 1 |
+| LPG - Light Goods Vehicle (2.5-3.5tonnes) | `transport_light_goods_2_5_3_5_lpg` | 1.6859 | liters | 1 |
+
+##### Light Goods Vehicles (3.5-5.5 tonnes)
+
+| Name | Subcategory | Value (kgCO2e/liter) | Activity Unit | Scope |
+|------|-------------|---------------------:|---------------|-------|
+| Petrol - Light Goods Vehicle (3.5-5.5tonnes) | `transport_light_goods_3_5_5_5_petrol` | 2.6673 | liters | 1 |
+| Unleaded Petrol - Light Goods Vehicle (3.5-5.5tonnes) | `transport_light_goods_3_5_5_5_unleaded_petrol` | 2.6673 | liters | 1 |
+| LPG - Light Goods Vehicle (3.5-5.5tonnes) | `transport_light_goods_3_5_5_5_lpg` | 1.6859 | liters | 1 |
+
+##### Medium/Heavy Goods Vehicles (5.5-15 tonnes)
+
+| Name | Subcategory | Value (kgCO2e/liter) | Activity Unit | Scope |
+|------|-------------|---------------------:|---------------|-------|
+| Petrol - Medium/Heavy Goods Vehicle (5.5-15tonnes) | `transport_medium_heavy_goods_5_5_15_petrol` | 2.6673 | liters | 1 |
+| Unleaded Petrol - Medium/Heavy Goods Vehicle (5.5-15tonnes) | `transport_medium_heavy_goods_5_5_15_unleaded_petrol` | 2.6673 | liters | 1 |
+| LPG - Medium/Heavy Goods Vehicle (5.5-15tonnes) | `transport_medium_heavy_goods_5_5_15_lpg` | 1.6859 | liters | 1 |
+
+##### Medium/Heavy Goods Vehicles (≥15 tonnes)
+
+| Name | Subcategory | Value (kgCO2e/liter) | Activity Unit | Scope |
+|------|-------------|---------------------:|---------------|-------|
+| Petrol - Medium/Heavy Goods Vehicle (≥15tonnes) | `transport_medium_heavy_goods_gte_15_petrol` | 2.6673 | liters | 1 |
+| Unleaded Petrol - Medium/Heavy Goods Vehicle (≥15tonnes) | `transport_medium_heavy_goods_gte_15_unleaded_petrol` | 2.6673 | liters | 1 |
+| LPG - Medium/Heavy Goods Vehicle (≥15tonnes) | `transport_medium_heavy_goods_gte_15_lpg` | 1.6859 | liters | 1 |
+
+#### Other Transport 
+
+| Name | Subcategory | Value (kgCO2e/liter) | Activity Unit | Scope |
+|------|-------------|---------------------:|---------------|-------|
+| Gas Oil - Ship | `transport_ship_gas_oil` | 2.9480 | liters | 1 |
+| Jet Kerosene - Aviation | `transport_aviation_kerosene` | 2.4309 | liters | 1 |
+
+### Stationary Combustion (`category="stationary_combustion"`)
+
+| Name | Subcategory | Value | Activity Unit | Factor Unit | Scope |
+|------|-------------|------:|---------------|-------------|-------|
+| Diesel - Stationary Combustion (Generators) | `stationary_diesel` | 2.6167 | liters | kgCO2e/liter | 1 |
+| LPG - Stationary Source | `stationary_lpg` | 3.0171 | kg | kgCO2e/kg | 1 |
+| Kerosene - Stationary Source | `stationary_kerosene` | 2.4317 | liters | kgCO2e/liter | 1 |
+| Charcoal - Stationary Source | `stationary_charcoal` | 3.1318 | kg | kgCO2e/kg | 1 |
+| Towngas - Direct Consumption | `stationary_town_gas` | 2.5529 | Unit | kgCO2e/Unit | 1 |
+| Petrol - Stationary Equipment | `stationary_petrol` | 2.6687 | liters | kgCO2e/liter | 1 |
+| Natural Gas - Stationary Combustion | `stationary_natural_gas` | 2.1622 | cubic meter | kgCO2e/m³ | 1 |
 
 ## Usage
+
+### Matching by Category and Subcategory
+
+When calculating emissions, use the category and subcategory to fetch the appropriate emission factor:
+
+```python
+# Example code for matching emission factors
+emission_factor = GHGEmissionFactor.objects.get(
+    category="transport",
+    sub_category="transport_cars_diesel",
+    year=2025,
+    region="ALL"
+)
+
+# Calculate emissions
+activity_amount = 100  # liters of diesel
+emissions = activity_amount * emission_factor.value  # Result in kgCO2e
+```
+
+### Calculation Examples
 
 The emission factors are used to calculate GHG emissions by multiplying the factor value by the activity amount:
 
@@ -92,7 +171,7 @@ The emission factors are used to calculate GHG emissions by multiplying the fact
 GHG Emissions = Activity Amount × Emission Factor
 ```
 
-For example:
+Examples:
 - 100 kWh of electricity from CLP Power: 100 × 0.3900 = 39.00 kgCO2e
 - 50 liters of diesel for a passenger car: 50 × 2.6460 = 132.30 kgCO2e
 
