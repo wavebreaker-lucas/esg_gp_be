@@ -51,14 +51,14 @@ class Command(BaseCommand):
         """Populate electricity emission factors"""
         # Hong Kong Electric
         self.create_factor(
-            name="Electricity - HK Electric - 2023",
+            name="Electricity - HK Electric - 2025",
             category="electricity",
             sub_category="hk_hke",
             activity_unit="kWh",
             value=0.7100,
             factor_unit="kgCO2e/kWh",
-            year=2023,
-            region="HK",
+            year=2025,
+            region="ALL",
             scope="2",
             source="HK Electric Investments Sustainability Report 2023",
             source_url="https://www.hkelectric.com/documents/zh/CorporateSocialResponsibility/CorporateSocialResponsibility_CDD/Documents/SR2023C.pdf"
@@ -66,14 +66,14 @@ class Command(BaseCommand):
         
         # CLP Power
         self.create_factor(
-            name="Electricity - CLP Power - 2023",
+            name="Electricity - CLP Power - 2025",
             category="electricity",
             sub_category="hk_clp",
             activity_unit="kWh",
             value=0.3900,
             factor_unit="kgCO2e/kWh",
-            year=2023,
-            region="HK",
+            year=2025,
+            region="ALL",
             scope="2",
             source="CLP Holdings 2023 Sustainability Report",
             source_url="https://www.clpgroup.com/content/dam/clp-group/channels/sustainability/document/sustainability-report/2023/CLP_Sustainability_Report_2023_en.pdf.coredownload.pdf"
@@ -81,14 +81,14 @@ class Command(BaseCommand):
         
         # Northern China
         self.create_factor(
-            name="Electricity - Northern China - 2023",
+            name="Electricity - Northern China - 2025",
             category="electricity",
             sub_category="prc_northern",
             activity_unit="kWh",
             value=0.5703,
             factor_unit="kgCO2e/kWh",
-            year=2023,
-            region="PRC",
+            year=2025,
+            region="ALL",
             scope="2",
             source="China Ministry of Environment 2023-2025 Greenhouse Gas Emission Report",
             source_url="https://www.mee.gov.cn/xxgk2018/xxgk/xxgk06/202310/t20231018_1043427.html"
@@ -96,40 +96,40 @@ class Command(BaseCommand):
         
         # Northeast China
         self.create_factor(
-            name="Electricity - Northeast China - 2023",
+            name="Electricity - Northeast China - 2025",
             category="electricity",
             sub_category="prc_northeast",
             activity_unit="kWh",
             value=0.5703,
             factor_unit="kgCO2e/kWh",
-            year=2023,
-            region="PRC",
+            year=2025,
+            region="ALL",
             scope="2"
         )
         
         # Eastern China
         self.create_factor(
-            name="Electricity - Eastern China - 2023",
+            name="Electricity - Eastern China - 2025",
             category="electricity",
             sub_category="prc_eastern",
             activity_unit="kWh",
             value=0.5703,
             factor_unit="kgCO2e/kWh",
-            year=2023,
-            region="PRC",
+            year=2025,
+            region="ALL",
             scope="2"
         )
         
         # Malaysia
         self.create_factor(
-            name="Electricity - Malaysia - 2019",
+            name="Electricity - Malaysia - 2025",
             category="electricity",
             sub_category="my_peninsula",
             activity_unit="kWh",
             value=0.5600,
             factor_unit="kgCO2e/kWh",
-            year=2019,
-            region="MY",
+            year=2025,
+            region="ALL",
             scope="2",
             source="TNB Sustainability Report 2019",
             source_url="https://www.tnb.com.my/assets/annual_report/TNB_Sustainability_Report_2019.pdf"
@@ -137,14 +137,14 @@ class Command(BaseCommand):
         
         # Singapore
         self.create_factor(
-            name="Electricity - Singapore - 2020",
+            name="Electricity - Singapore - 2025",
             category="electricity",
             sub_category="sg_main",
             activity_unit="kWh",
             value=0.4085,
             factor_unit="kgCO2e/kWh",
-            year=2020,
-            region="SG",
+            year=2025,
+            region="ALL",
             scope="2",
             source="Table of Contents for SES 2020",
             source_url="https://www.ema.gov.sg/singapore-energy-statistics/Ch02/index2"
@@ -153,14 +153,14 @@ class Command(BaseCommand):
     def populate_towngas_factors(self):
         """Populate towngas emission factors"""
         self.create_factor(
-            name="Towngas - Hong Kong - 2021",
+            name="Towngas - Hong Kong - 2025",
             category="towngas",
             sub_category="hk_indirect",
             activity_unit="Unit",
             value=0.5880,
             factor_unit="kgCO2e/Unit",
-            year=2021,
-            region="HK",
+            year=2025,
+            region="ALL",
             scope="2",
             source="Towngas Sustainability Report 2021",
             source_url="https://www.towngas.com/getmedia/4b9ef6b8-5a59-4f07-b045-f0f6a7b08c98/TG-AR2021_eng_full.pdf.aspx?ext=.pdf"
@@ -176,25 +176,10 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6460,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
-            scope="1",
-            source="HKEX Reporting Guidance",
-            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
-        )
-        
-        # ADDED: Factor for 2025 ALL region
-        self.create_factor(
-            name="Diesel - Passenger Car - 2025 - ALL",
-            category="transport",
-            sub_category="transport_cars_diesel",
-            activity_unit="liters",
-            value=2.6460, # Using 2023 value as placeholder
-            factor_unit="kgCO2e/liter",
             year=2025,
             region="ALL",
             scope="1",
-            source="Derived from HKEX 2023 Guidance",
+            source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         )
         
@@ -205,8 +190,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.7541,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -219,8 +204,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.7722,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -233,8 +218,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.7541,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -248,8 +233,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.7541,  # Same as light goods diesel
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -262,8 +247,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6377,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -276,8 +261,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6377,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -290,8 +275,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6166,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -305,8 +290,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.4122,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -319,25 +304,10 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6687,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
-            scope="1",
-            source="HKEX Reporting Guidance",
-            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
-        )
-        
-        # ADDED: Factor for 2025 ALL region (Petrol Cars)
-        self.create_factor(
-            name="Petrol/Unleaded - Passenger Car - 2025 - ALL",
-            category="transport",
-            sub_category="transport_cars_petrol",
-            activity_unit="liters",
-            value=2.6687, # Using 2023 value as placeholder
-            factor_unit="kgCO2e/liter",
             year=2025,
             region="ALL",
             scope="1",
-            source="Derived from HKEX 2023 Guidance",
+            source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         )
         
@@ -348,8 +318,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6769,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -362,8 +332,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6673,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -377,8 +347,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=1.6859,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -391,8 +361,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=1.6859,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -405,8 +375,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=1.6791,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -419,8 +389,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=1.6859,  # Using the same value as LPG vans/buses
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -434,8 +404,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6166,  # Using mobile machinery as default
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -448,8 +418,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6687,  # Using passenger car as default
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -462,8 +432,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=1.6859,  # Using van/bus as default
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -477,8 +447,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.9480,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -492,8 +462,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.4309,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -516,8 +486,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6673,  # Using standard Light Goods Vehicle petrol value
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -531,8 +501,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6673,  # Using standard Light Goods Vehicle petrol value
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -546,8 +516,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=1.6859,  # Using LPG van/bus value
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -561,8 +531,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6673,  # Using standard Light Goods Vehicle petrol value
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -576,8 +546,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6673,  # Using standard Light Goods Vehicle petrol value
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -591,8 +561,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=1.6859,  # Using LPG van/bus value
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -606,8 +576,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6673,  # Using standard Light Goods Vehicle petrol value
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -621,8 +591,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6673,  # Using standard Light Goods Vehicle petrol value
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -636,8 +606,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=1.6859,  # Using LPG van/bus value
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -651,8 +621,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6673,  # Using Light Goods Vehicle petrol value as approximation
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -666,8 +636,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6673,  # Using Light Goods Vehicle petrol value as approximation
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -681,8 +651,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=1.6859,  # Using LPG van/bus value
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -696,8 +666,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6673,  # Using Light Goods Vehicle petrol value as approximation
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -711,8 +681,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6673,  # Using Light Goods Vehicle petrol value as approximation
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -726,8 +696,8 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=1.6859,  # Using LPG van/bus value
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
+            year=2025,
+            region="ALL",
             scope="1",
             source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -743,25 +713,10 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6167,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
-            scope="1",
-            source="HKEX Reporting Guidance",
-            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
-        )
-        
-        # Duplicate with ALL region for 2025
-        self.create_factor(
-            name="Diesel - Stationary Combustion (Generators) - 2025 - ALL",
-            category="stationary_combustion",
-            sub_category="stationary_diesel",
-            activity_unit="liters",
-            value=2.6167,  # Using 2023 value as placeholder
-            factor_unit="kgCO2e/liter",
             year=2025,
             region="ALL",
             scope="1",
-            source="Derived from HKEX 2023 Guidance",
+            source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         )
         
@@ -773,25 +728,10 @@ class Command(BaseCommand):
             activity_unit="kg",
             value=3.0171,
             factor_unit="kgCO2e/kg",
-            year=2023,
-            region="HK / PRC",
-            scope="1",
-            source="HKEX Reporting Guidance",
-            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
-        )
-        
-        # Duplicate with ALL region for 2025
-        self.create_factor(
-            name="LPG - Stationary Source - 2025 - ALL",
-            category="stationary_combustion",
-            sub_category="stationary_lpg",
-            activity_unit="kg",
-            value=3.0171,  # Using 2023 value as placeholder
-            factor_unit="kgCO2e/kg",
             year=2025,
             region="ALL",
             scope="1",
-            source="Derived from HKEX 2023 Guidance",
+            source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         )
         
@@ -803,25 +743,10 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.4317,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
-            scope="1",
-            source="HKEX Reporting Guidance",
-            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
-        )
-        
-        # Duplicate with ALL region for 2025
-        self.create_factor(
-            name="Kerosene - Stationary Source - 2025 - ALL",
-            category="stationary_combustion",
-            sub_category="stationary_kerosene",
-            activity_unit="liters",
-            value=2.4317,  # Using 2023 value as placeholder
-            factor_unit="kgCO2e/liter",
             year=2025,
             region="ALL",
             scope="1",
-            source="Derived from HKEX 2023 Guidance",
+            source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         )
         
@@ -833,25 +758,10 @@ class Command(BaseCommand):
             activity_unit="kg",
             value=3.1318,
             factor_unit="kgCO2e/kg",
-            year=2023,
-            region="HK / PRC",
-            scope="1",
-            source="HKEX Reporting Guidance",
-            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
-        )
-        
-        # Duplicate with ALL region for 2025
-        self.create_factor(
-            name="Charcoal - Stationary Source - 2025 - ALL",
-            category="stationary_combustion",
-            sub_category="stationary_charcoal",
-            activity_unit="kg",
-            value=3.1318,  # Using 2023 value as placeholder
-            factor_unit="kgCO2e/kg",
             year=2025,
             region="ALL",
             scope="1",
-            source="Derived from HKEX 2023 Guidance",
+            source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         )
         
@@ -863,25 +773,10 @@ class Command(BaseCommand):
             activity_unit="Unit",
             value=2.5529,
             factor_unit="kgCO2e/Unit",
-            year=2023,
-            region="HK",
-            scope="1",
-            source="HKEX Reporting Guidance",
-            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
-        )
-        
-        # Duplicate with ALL region for 2025
-        self.create_factor(
-            name="Towngas - Direct Consumption - 2025 - ALL",
-            category="stationary_combustion",
-            sub_category="stationary_town_gas",
-            activity_unit="Unit",
-            value=2.5529,  # Using 2023 value as placeholder
-            factor_unit="kgCO2e/Unit",
             year=2025,
             region="ALL",
             scope="1",
-            source="Derived from HKEX 2023 Guidance",
+            source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         )
         
@@ -893,25 +788,10 @@ class Command(BaseCommand):
             activity_unit="liters",
             value=2.6687,
             factor_unit="kgCO2e/liter",
-            year=2023,
-            region="HK / PRC",
-            scope="1",
-            source="HKEX Reporting Guidance - Derived",
-            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
-        )
-        
-        # Duplicate with ALL region for 2025
-        self.create_factor(
-            name="Petrol - Stationary Equipment - 2025 - ALL",
-            category="stationary_combustion",
-            sub_category="stationary_petrol",
-            activity_unit="liters",
-            value=2.6687,  # Using 2023 value as placeholder
-            factor_unit="kgCO2e/liter",
             year=2025,
             region="ALL",
             scope="1",
-            source="Derived from HKEX 2023 Guidance",
+            source="HKEX Reporting Guidance - Derived",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         )
         
@@ -923,24 +803,9 @@ class Command(BaseCommand):
             activity_unit="cubic meter",
             value=2.1622,  # This is an approximation, update with actual value if available
             factor_unit="kgCO2e/m3",
-            year=2023,
-            region="HK / PRC",
-            scope="1",
-            source="HKEX Reporting Guidance - Estimated",
-            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
-        )
-        
-        # Duplicate with ALL region for 2025
-        self.create_factor(
-            name="Natural Gas - Stationary Combustion - 2025 - ALL",
-            category="stationary_combustion",
-            sub_category="stationary_natural_gas",
-            activity_unit="cubic meter",
-            value=2.1622,  # Using 2023 value as placeholder
-            factor_unit="kgCO2e/m3",
             year=2025,
             region="ALL",
             scope="1",
-            source="Derived from HKEX 2023 Guidance - Estimated",
+            source="HKEX Reporting Guidance - Estimated",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
         ) 
