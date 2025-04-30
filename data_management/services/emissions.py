@@ -70,14 +70,6 @@ def find_matching_emission_factor(
         if factor:
             # logger.debug(f"Found exact region match for {category}/{sub_category} in {region}")
             return factor
-        
-        # Try region fallback: "HK / PRC" for either "HK" or "PRC"
-        if region in ['HK', 'PRC']:
-            combined_region_query = activity_unit_query & Q(region='HK / PRC')
-            factor = GHGEmissionFactor.objects.filter(combined_region_query).first()
-            if factor:
-                # logger.debug(f"Found combined region match 'HK / PRC' for {category}/{sub_category}")
-                return factor
     
     # Try universal region ("ALL") 
     universal_region_query = activity_unit_query & (Q(region='ALL') | Q(region='') | Q(region__isnull=True))
