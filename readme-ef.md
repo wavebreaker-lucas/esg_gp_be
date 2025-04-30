@@ -168,6 +168,25 @@ If a specific vehicle type + fuel type combination is not in the mapping above, 
 | Unleaded petrol | `transport_general_petrol` |
 | LPG | `transport_lpg` |
 
+## Stationary Fuel Consumption Mapping
+
+For stationary sources of emissions (as opposed to mobile/transport sources), the following mapping is used to determine which emission factor will be applied:
+
+### Fuel Consumption Metric Mapping
+
+| Fuel Type | Used Emission Factor Subcategory |
+|-----------|----------------------------------|
+| Diesel oil | `stationary_diesel` |
+| LPG | `stationary_lpg` |
+| Kerosene | `stationary_kerosene` |
+| Natural gas | `stationary_natural_gas` |
+| Charcoal | `stationary_charcoal` |
+| Town gas | `stationary_town_gas` |
+| Petrol | `stationary_petrol` |
+| Unleaded petrol | `stationary_petrol` |
+
+The FuelConsumptionMetric only looks at stationary fuel consumption, regardless of the source type (generators, boilers, cooking stoves, etc.). The emission factor is determined solely by the fuel type, as these factors are specific to stationary combustion rather than mobile sources.
+
 ## Usage
 
 ### Matching by Category and Subcategory
