@@ -139,6 +139,35 @@ When calculating emissions, it's critical to use the correct category and subcat
 | Petrol - Stationary Equipment | `stationary_petrol` | 2.6687 | liters | kgCO2e/liter | ALL | 1 |
 | Natural Gas - Stationary Combustion | `stationary_natural_gas` | 2.1622 | cubic meter | kgCO2e/m³ | ALL | 1 |
 
+## Vehicle Type and Fuel Type Mapping
+
+When users select specific vehicle types and fuel types in the system, the following mapping is used to determine which emission factor will be applied:
+
+### Vehicle Tracking Metric Mapping
+
+| Vehicle Type | Fuel Type | Used Emission Factor Subcategory |
+|--------------|-----------|----------------------------------|
+| Private cars | Diesel oil | `transport_cars_diesel` |
+| Private cars | Petrol | `transport_cars_petrol` |
+| Private cars | Unleaded petrol | `transport_cars_petrol` |
+| Private cars | LPG | `transport_cars_lpg` |
+| Light goods vehicles (≤2.5tonnes) | Diesel oil | `transport_light_commercial_diesel` |
+| Light goods vehicles (2.5-3.5tonnes) | Diesel oil | `transport_light_commercial_diesel` |
+| Light goods vehicles (3.5-5.5tonnes) | Diesel oil | `transport_light_commercial_diesel` |
+| Medium & Heavy goods vehicles (5.5-15tonnes) | Diesel oil | `transport_heavy_goods_diesel` |
+| Medium & Heavy goods vehicles (≥15tonnes) | Diesel oil | `transport_heavy_goods_diesel` |
+
+### Fallback Mappings
+
+If a specific vehicle type + fuel type combination is not in the mapping above, the system falls back to using a general emission factor based on fuel type only:
+
+| Fuel Type | Fallback Emission Factor Subcategory |
+|-----------|--------------------------------------|
+| Diesel oil | `transport_general_diesel` |
+| Petrol | `transport_general_petrol` |
+| Unleaded petrol | `transport_general_petrol` |
+| LPG | `transport_lpg` |
+
 ## Usage
 
 ### Matching by Category and Subcategory
