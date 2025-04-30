@@ -116,8 +116,16 @@ class RequestPasswordResetView(APIView, ErrorHandlingMixin):
 
         # Send reset email
         reset_link = f"{settings.FRONTEND_URL}/reset-password/{user.reset_token}/"
-        subject = "Password Reset Request"
-        message = f"Click this link to reset your password: {reset_link}"
+        subject = "Password Reset Request for Your ESG Platform Account"
+        message = (
+            f"Dear User,\n\n"
+            f"We received a request to reset the password for your account associated with the email address {user.email}.\n\n"
+            f"To proceed with resetting your password, please click the link below:\n"
+            f"{reset_link}\n\n"
+            f"For security reasons, this link will expire in one hour. If you did not initiate this request, please disregard this email or contact our support team immediately at support@greenpoint.com.hk if you have concerns.\n\n"
+            f"Sincerely,\n"
+            f"The ESG Platform Team"
+        )
         email_message = EmailMessage(
             subject,
             message,

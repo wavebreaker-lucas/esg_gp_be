@@ -78,16 +78,17 @@ def send_email_to_user(email, password):
     Returns:
         bool: True if the email is sent successfully, False otherwise.
     """
-    subject = "Welcome to Our Platform"
+    subject = "Your Account Has Been Created on ESG Platform"
     message = (
         f"Dear User,\n\n"
-        f"Your account has been created successfully.\n"
-        f"Here are your login details:\n\n"
+        f"An account has been successfully created for you on ESG platform.\n\n"
+        f"Please use the following temporary credentials to log in:\n\n"
         f"Email: {email}\n"
-        f"Password: {password}\n\n"
-        f"Please log in and change your password as soon as possible.\n\n"
-        f"Best regards,\n"
-        f"The Team"
+        f"Temporary Password: {password}\n\n"
+        f"For security purposes, you will be required to change this temporary password upon your first login.\n\n"
+        f"If you did not request this account or believe this email was sent in error, please contact our support team immediately at support@greenpoint.com.hk.\n\n"
+        f"Sincerely,\n"
+        f"The ESG Platform Team"  # Consider replacing "The Platform Team" with the actual platform or company name
     )
 
     try:
