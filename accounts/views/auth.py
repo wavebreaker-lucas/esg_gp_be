@@ -16,7 +16,7 @@ from ..serializers.auth import (
     ResetPasswordSerializer,
     ChangePasswordSerializer
 )
-from ..services import generate_otp_code, send_otp_via_email
+from ..services import generate_otp_code, send_otp_via_email, send_password_reset_email
 from .mixins import ErrorHandlingMixin
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -109,43 +109,15 @@ class RequestPasswordResetView(APIView, ErrorHandlingMixin):
         except CustomUser.DoesNotExist:
             return self.handle_not_found_error("User not found.")
 
-        # Generate reset token
-        user.reset_token = uuid.uuid4()
-        user.reset_token_created_at = timezone.now()
-        user.save()
-
-        # Send reset email
-        reset_link = f"{settings.FRONTEND_URL}/reset-password/{user.reset_token}/"
-        subject = "Password Reset Request for Your ESG Platform Account / 您的ESG平台账户密码重置请求"
-        message = (
-            f"Dear User,\\n\\n"
-            f"We received a request to reset the password for your account associated with the email address {user.email}.\\n\\n"
-            f"To proceed with resetting your password, please click the link below:\\n"
-            f"{reset_link}\\n\\n"
-            f"For security reasons, this link will expire in one hour. If you did not initiate this request, please disregard this email or contact our support team immediately at support@greenpoint.com.hk if you have concerns.\\n\\n"
-            f"Sincerely,\\n"
-            f"The ESG Platform Team\\n\\n"
-            f"--------------------------------------------------\\n\\n"
-            f"尊敬的用户，\\n\\n"
-            f"我们收到了重置与电子邮件地址 {user.email} 相关联的账户密码的请求。\\n\\n"
-            f"要继续重置您的密码，请点击下面的链接：\\n"
-            f"{reset_link}\\n\\n"
-            f"出于安全考虑，此链接将在一小时内失效。如果您没有发起此请求，请忽略此电子邮件，或者如果您有任何疑虑，请立即通过 support@greenpoint.com.hk 联系我们的支持团队。\\n\\n"
-            f"此致，\\n"
-            f"ESG平台团队"
-        )
-        email_message = EmailMessage(
-            subject,
-            message,
-            settings.DEFAULT_FROM_EMAIL,
-            [user.email],
-        )
-        email_message.send(fail_silently=False)
-
-        return Response(
-            {"message": "Password reset link sent to your email."},
-            status=status.HTTP_200_OK
-        )
+        # Send reset email using the service function
+        if send_password_reset_email(user):
+            return Response(
+                {"message": "Password reset link sent to your email."},
+                status=status.HTTP_200_OK
+            )
+        else:
+            # Handle potential email sending failure
+            return self.handle_unknown_error("Failed to send password reset email.")
 
 class ResetPasswordView(APIView, ErrorHandlingMixin):
     permission_classes = [AllowAny]
