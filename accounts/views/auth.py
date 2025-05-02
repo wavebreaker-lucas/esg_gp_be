@@ -116,15 +116,23 @@ class RequestPasswordResetView(APIView, ErrorHandlingMixin):
 
         # Send reset email
         reset_link = f"{settings.FRONTEND_URL}/reset-password/{user.reset_token}/"
-        subject = "Password Reset Request for Your ESG Platform Account"
+        subject = "Password Reset Request for Your ESG Platform Account / 您的ESG平台账户密码重置请求"
         message = (
-            f"Dear User,\n\n"
-            f"We received a request to reset the password for your account associated with the email address {user.email}.\n\n"
-            f"To proceed with resetting your password, please click the link below:\n"
-            f"{reset_link}\n\n"
-            f"For security reasons, this link will expire in one hour. If you did not initiate this request, please disregard this email or contact our support team immediately at support@greenpoint.com.hk if you have concerns.\n\n"
-            f"Sincerely,\n"
-            f"The ESG Platform Team"
+            f"Dear User,\\n\\n"
+            f"We received a request to reset the password for your account associated with the email address {user.email}.\\n\\n"
+            f"To proceed with resetting your password, please click the link below:\\n"
+            f"{reset_link}\\n\\n"
+            f"For security reasons, this link will expire in one hour. If you did not initiate this request, please disregard this email or contact our support team immediately at support@greenpoint.com.hk if you have concerns.\\n\\n"
+            f"Sincerely,\\n"
+            f"The ESG Platform Team\\n\\n"
+            f"--------------------------------------------------\\n\\n"
+            f"尊敬的用户，\\n\\n"
+            f"我们收到了重置与电子邮件地址 {user.email} 相关联的账户密码的请求。\\n\\n"
+            f"要继续重置您的密码，请点击下面的链接：\\n"
+            f"{reset_link}\\n\\n"
+            f"出于安全考虑，此链接将在一小时内失效。如果您没有发起此请求，请忽略此电子邮件，或者如果您有任何疑虑，请立即通过 support@greenpoint.com.hk 联系我们的支持团队。\\n\\n"
+            f"此致，\\n"
+            f"ESG平台团队"
         )
         email_message = EmailMessage(
             subject,

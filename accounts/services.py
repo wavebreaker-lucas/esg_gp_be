@@ -78,17 +78,27 @@ def send_email_to_user(email, password):
     Returns:
         bool: True if the email is sent successfully, False otherwise.
     """
-    subject = "Your Account Has Been Created on ESG Platform"
+    subject = "Your Account Has Been Created on ESG Platform / 您在ESG平台的账户已成功创建"
     message = (
-        f"Dear User,\n\n"
-        f"An account has been successfully created for you on ESG platform.\n\n"
-        f"Please use the following temporary credentials to log in:\n\n"
-        f"Email: {email}\n"
-        f"Temporary Password: {password}\n\n"
-        f"For security purposes, you will be required to change this temporary password upon your first login.\n\n"
-        f"If you did not request this account or believe this email was sent in error, please contact our support team immediately at support@greenpoint.com.hk.\n\n"
-        f"Sincerely,\n"
-        f"The ESG Platform Team"  # Consider replacing "The Platform Team" with the actual platform or company name
+        f"Dear User,\\n\\n"
+        f"An account has been successfully created for you on ESG platform.\\n\\n"
+        f"Please use the following temporary credentials to log in:\\n\\n"
+        f"Email: {email}\\n"
+        f"Temporary Password: {password}\\n\\n"
+        f"For security purposes, you will be required to change this temporary password upon your first login.\\n\\n"
+        f"If you did not request this account or believe this email was sent in error, please contact our support team immediately at support@greenpoint.com.hk.\\n\\n"
+        f"Sincerely,\\n"
+        f"The ESG Platform Team\\n\\n"
+        f"--------------------------------------------------\\n\\n"
+        f"尊敬的用户，\\n\\n"
+        f"您的ESG平台账户已成功创建。\\n\\n"
+        f"请使用以下临时凭证登录：\\n\\n"
+        f"电子邮件：{email}\\n"
+        f"临时密码：{password}\\n\\n"
+        f"出于安全考虑，您将需要在首次登录时更改此临时密码。\\n\\n"
+        f"如果您没有申请此账户或认为此邮件是错误发送的，请立即通过 support@greenpoint.com.hk 联系我们的支持团队。\\n\\n"
+        f"此致，\\n"
+        f"ESG平台团队"
     )
 
     try:
