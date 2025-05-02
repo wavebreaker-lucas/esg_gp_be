@@ -1,5 +1,5 @@
 import re
-from django.core.mail import EmailMessage, send_mail
+from django.core.mail import EmailMessage, send_mail, EmailMultiAlternatives
 from rest_framework import serializers
 from django.conf import settings
 from django.contrib.auth.models import Permission
@@ -81,26 +81,53 @@ def send_email_to_user(email, password):
         bool: True if the email is sent successfully, False otherwise.
     """
     subject = "Your Account Has Been Created on ESG Platform / 您在ESG平台的账户已成功创建"
-    message = (
-        f"Dear User,\\n\\n"
-        f"An account has been successfully created for you on ESG platform.\\n\\n"
-        f"Please use the following temporary credentials to log in:\\n\\n"
-        f"Email: {email}\\n"
-        f"Temporary Password: {password}\\n\\n"
-        f"For security purposes, you will be required to change this temporary password upon your first login.\\n\\n"
-        f"If you did not request this account or believe this email was sent in error, please contact our support team immediately at support@greenpoint.com.hk.\\n\\n"
-        f"Sincerely,\\n"
-        f"The ESG Platform Team\\n\\n"
-        f"--------------------------------------------------\\n\\n"
-        f"尊敬的用户，\\n\\n"
-        f"您的ESG平台账户已成功创建。\\n\\n"
-        f"请使用以下临时凭证登录：\\n\\n"
-        f"电子邮件：{email}\\n"
-        f"临时密码：{password}\\n\\n"
-        f"出于安全考虑，您将需要在首次登录时更改此临时密码。\\n\\n"
-        f"如果您没有申请此账户或认为此邮件是错误发送的，请立即通过 support@greenpoint.com.hk 联系我们的支持团队。\\n\\n"
-        f"此致，\\n"
+    
+    # Plain text version
+    text_message = (
+        f"Dear User,\n\n"
+        f"An account has been successfully created for you on ESG platform.\n\n"
+        f"Please use the following temporary credentials to log in:\n\n"
+        f"Email: {email}\n"
+        f"Temporary Password: {password}\n\n"
+        f"For security purposes, you will be required to change this temporary password upon your first login.\n\n"
+        f"If you did not request this account or believe this email was sent in error, please contact our support team immediately at support@greenpoint.com.hk.\n\n"
+        f"Sincerely,\n"
+        f"The ESG Platform Team\n\n"
+        f"--------------------------------------------------\n\n"
+        f"尊敬的用户，\n\n"
+        f"您的ESG平台账户已成功创建。\n\n"
+        f"请使用以下临时凭证登录：\n\n"
+        f"电子邮件：{email}\n"
+        f"临时密码：{password}\n\n"
+        f"出于安全考虑，您将需要在首次登录时更改此临时密码。\n\n"
+        f"如果您没有申请此账户或认为此邮件是错误发送的，请立即通过 support@greenpoint.com.hk 联系我们的支持团队。\n\n"
+        f"此致，\n"
         f"ESG平台团队"
+    )
+    
+    # HTML version
+    html_message = (
+        f"<p>Dear User,</p>"
+        f"<p>An account has been successfully created for you on ESG platform.</p>"
+        f"<p>Please use the following temporary credentials to log in:</p>"
+        f"<ul>"
+        f"<li><strong>Email:</strong> {email}</li>"
+        f"<li><strong>Temporary Password:</strong> {password}</li>"
+        f"</ul>"
+        f"<p>For security purposes, you will be required to change this temporary password upon your first login.</p>"
+        f"<p>If you did not request this account or believe this email was sent in error, please contact our support team immediately at <a href='mailto:support@greenpoint.com.hk'>support@greenpoint.com.hk</a>.</p>"
+        f"<p>Sincerely,<br>The ESG Platform Team</p>"
+        f"<hr>"
+        f"<p>尊敬的用户，</p>"
+        f"<p>您的ESG平台账户已成功创建。</p>"
+        f"<p>请使用以下临时凭证登录：</p>"
+        f"<ul>"
+        f"<li><strong>电子邮件：</strong> {email}</li>"
+        f"<li><strong>临时密码：</strong> {password}</li>"
+        f"</ul>"
+        f"<p>出于安全考虑，您将需要在首次登录时更改此临时密码。</p>"
+        f"<p>如果您没有申请此账户或认为此邮件是错误发送的，请立即通过 <a href='mailto:support@greenpoint.com.hk'>support@greenpoint.com.hk</a> 联系我们的支持团队。</p>"
+        f"<p>此致，<br>ESG平台团队</p>"
     )
 
     try:
@@ -108,12 +135,14 @@ def send_email_to_user(email, password):
         print(f"Using sender: {settings.DEFAULT_FROM_EMAIL}")
         print(f"Backend: {settings.EMAIL_BACKEND}")
         
-        email_message = EmailMessage(
+        # Use EmailMultiAlternatives
+        email_message = EmailMultiAlternatives(
             subject,
-            message,
+            text_message,  # Plain text body
             settings.DEFAULT_FROM_EMAIL,
             [email],
         )
+        email_message.attach_alternative(html_message, "text/html") # Attach HTML version
         result = email_message.send(fail_silently=False)
         print(f"Email send result: {result}")
         return True
@@ -310,34 +339,56 @@ def send_password_reset_email(user):
     # Send reset email
     reset_link = f"{settings.FRONTEND_URL}/reset-password/{user.reset_token}/"
     subject = "Password Reset Request for Your ESG Platform Account / 您的ESG平台账户密码重置请求"
-    message = (
-        f"Dear User,\\n\\n"
-        f"We received a request to reset the password for your account associated with the email address {user.email}.\\n\\n"
-        f"To proceed with resetting your password, please click the link below:\\n"
-        f"{reset_link}\\n\\n"
-        f"For security reasons, this link will expire in one hour. If you did not initiate this request, please disregard this email or contact our support team immediately at support@greenpoint.com.hk if you have concerns.\\n\\n"
-        f"Sincerely,\\n"
-        f"The ESG Platform Team\\n\\n"
-        f"--------------------------------------------------\\n\\n"
-        f"尊敬的用户，\\n\\n"
-        f"我们收到了重置与电子邮件地址 {user.email} 相关联的账户密码的请求。\\n\\n"
-        f"要继续重置您的密码，请点击下面的链接：\\n"
-        f"{reset_link}\\n\\n"
-        f"出于安全考虑，此链接将在一小时内失效。如果您没有发起此请求，请忽略此电子邮件，或者如果您有任何疑虑，请立即通过 support@greenpoint.com.hk 联系我们的支持团队。\\n\\n"
-        f"此致，\\n"
+    
+    # Plain text version
+    text_message = (
+        f"Dear User,\n\n"
+        f"We received a request to reset the password for your account associated with the email address {user.email}.\n\n"
+        f"To proceed with resetting your password, please click the link below:\n"
+        f"{reset_link}\n\n"
+        f"For security reasons, this link will expire in one hour. If you did not initiate this request, please disregard this email or contact our support team immediately at support@greenpoint.com.hk if you have concerns.\n\n"
+        f"Sincerely,\n"
+        f"The ESG Platform Team\n\n"
+        f"--------------------------------------------------\n\n"
+        f"尊敬的用户，\n\n"
+        f"我们收到了重置与电子邮件地址 {user.email} 相关联的账户密码的请求。\n\n"
+        f"要继续重置您的密码，请点击下面的链接：\n"
+        f"{reset_link}\n\n"
+        f"出于安全考虑，此链接将在一小时内失效。如果您没有发起此请求，请忽略此电子邮件，或者如果您有任何疑虑，请立即通过 support@greenpoint.com.hk 联系我们的支持团队。\n\n"
+        f"此致，\n"
         f"ESG平台团队"
     )
+    
+    # HTML version
+    html_message = (
+        f"<p>Dear User,</p>"
+        f"<p>We received a request to reset the password for your account associated with the email address {user.email}.</p>"
+        f"<p>To proceed with resetting your password, please click the link below:</p>"
+        f"<p><a href='{reset_link}'>{reset_link}</a></p>"
+        f"<p>For security reasons, this link will expire in one hour. If you did not initiate this request, please disregard this email or contact our support team immediately at <a href='mailto:support@greenpoint.com.hk'>support@greenpoint.com.hk</a> if you have concerns.</p>"
+        f"<p>Sincerely,<br>The ESG Platform Team</p>"
+        f"<hr>"
+        f"<p>尊敬的用户，</p>"
+        f"<p>我们收到了重置与电子邮件地址 {user.email} 相关联的账户密码的请求。</p>"
+        f"<p>要继续重置您的密码，请点击下面的链接：</p>"
+        f"<p><a href='{reset_link}'>{reset_link}</a></p>"
+        f"<p>出于安全考虑，此链接将在一小时内失效。如果您没有发起此请求，请忽略此电子邮件，或者如果您有任何疑虑，请立即通过 <a href='mailto:support@greenpoint.com.hk'>support@greenpoint.com.hk</a> 联系我们的支持团队。</p>"
+        f"<p>此致，<br>ESG平台团队</p>"
+    )
+    
     try:
         print(f"Attempting to send password reset email to {user.email}")
         print(f"Using sender: {settings.DEFAULT_FROM_EMAIL}")
         print(f"Backend: {settings.EMAIL_BACKEND}")
 
-        email_message = EmailMessage(
+        # Use EmailMultiAlternatives
+        email_message = EmailMultiAlternatives(
             subject,
-            message,
+            text_message, # Plain text body
             settings.DEFAULT_FROM_EMAIL,
             [user.email],
         )
+        email_message.attach_alternative(html_message, "text/html") # Attach HTML version
         result = email_message.send(fail_silently=False)
         print(f"Password reset email send result: {result}")
         return True
