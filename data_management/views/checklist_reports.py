@@ -618,10 +618,7 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                         social_compliance=report_data["social_compliance"],
                         governance_compliance=report_data["governance_compliance"],
                         esg_rating=report_data["esg_rating"],
-                        rating_description=report_data["rating_description"],
-                        additional_data=json.dumps({
-                            "category_performance": report_data["category_performance"]
-                        })
+                        rating_description=report_data["rating_description"]
                     )
                     
                     # Set content based on type
