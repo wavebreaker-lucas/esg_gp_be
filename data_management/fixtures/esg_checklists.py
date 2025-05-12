@@ -772,7 +772,7 @@ def create_esg_checklists(env_form_id=None, soc_form_id=None, gov_form_id=None):
                 checklist_type="ENV",
                 form=env_form,
                 checklist_structure=ENVIRONMENTAL_CHECKLIST,
-                require_remarks_for_no=True,
+                require_remarks_for_no=False,
                 enable_scoring=True,
                 scoring_method="SIMPLE"
             )
@@ -784,7 +784,7 @@ def create_esg_checklists(env_form_id=None, soc_form_id=None, gov_form_id=None):
                 checklist_type="SOC",
                 form=soc_form,
                 checklist_structure=SOCIAL_CHECKLIST,
-                require_remarks_for_no=True,
+                require_remarks_for_no=False,
                 enable_scoring=True,
                 scoring_method="SIMPLE"
             )
@@ -796,7 +796,7 @@ def create_esg_checklists(env_form_id=None, soc_form_id=None, gov_form_id=None):
                 checklist_type="GOV",
                 form=gov_form,
                 checklist_structure=GOVERNANCE_CHECKLIST,
-                require_remarks_for_no=True,
+                require_remarks_for_no=False,
                 enable_scoring=True,
                 scoring_method="SIMPLE"
             )
