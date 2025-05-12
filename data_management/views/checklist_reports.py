@@ -476,7 +476,7 @@ def _generate_combined_report(submission_ids, regenerate=False, user=None):
                     # Choose an appropriate model - using a default if not specified
                     model=getattr(settings, 'OPENROUTER_MODEL', "google/gemini-pro"),
                     messages=[
-                        {"role": "system", "content": "You are an ESG reporting specialist who analyzes environmental, social, and governance compliance data to generate comprehensive, integrated ESG reports."},
+                        {"role": "system", "content": "你是一名ESG报告专家，专门分析环境、社会和治理合规数据，生成全面、综合的ESG报告。请用中文输出所有内容。"},
                         {"role": "user", "content": f"{combined_prompt}\n\nCOMBINED ESG DATA:\n{json.dumps(combined_data, indent=2)}"}
                     ],
                     temperature=0.2,  # Low temperature for more consistent reporting
@@ -1078,15 +1078,15 @@ def calculate_esg_rating(overall_compliance):
         tuple: (rating letter, rating description)
     """
     if overall_compliance >= 70:
-        return "A", "Advanced SMEs with excellent ESG performance"
+        return "A", "具有卓越ESG表现的先进中小企业"
     elif overall_compliance >= 55:
-        return "B", "Proficient ESG performance with established practices"
+        return "B", "具有成熟实践的良好ESG表现"
     elif overall_compliance >= 25:
-        return "C", "Intermediate ESG performance with improvement opportunities"
+        return "C", "具有改进机会的中等ESG表现"
     elif overall_compliance >= 10:
-        return "D", "Developing ESG performance requiring substantial improvements"
+        return "D", "需要大幅改进的发展中ESG表现"
     else:
-        return "E", "Beginner in ESG requiring fundamental development"
+        return "E", "需要基础发展的ESG初学者"
 
 def categorize_esg_items(combined_data):
     """
@@ -1220,43 +1220,43 @@ def get_esg_category_recommendations(categories):
     # Category recommendations and suggested services
     category_recommendations = {
         "Policy Development": {
-            "text": "Develop relevant ESG policies that clearly articulate the company's values, principles, and commitment to ESG. These policies should govern activities and operations related to the corporation's ESG impacts. They must go beyond general pledges, incorporating detailed guidelines and behavioral standards that ultimately align with ESG strategies, creating a comprehensive corporate ESG policy.",
-            "services": ["Stakeholder Engagement & Materiality Assessment"]
+            "text": "制定相关的ESG政策，明确表达公司的价值观、原则和对ESG的承诺。这些政策应规范与公司ESG影响相关的活动和运营。政策应超越一般性承诺，纳入详细的指导方针和行为标准，最终与ESG战略保持一致，形成全面的企业ESG政策。",
+            "services": ["利益相关方参与和重要性评估"]
         },
         
         "Objectives/Target setting": {
-            "text": "Conduct a materiality assessment to identify the environmental topics that are most relevant to your company. Following this, establish clear, measurable, and achievable goals and targets for your environmental practices, such as resource usage, waste reduction, and greenhouse gas emissions reduction. Ensure these goals resonate with and reference international standards, such as the UN Sustainable Development Goals (UNSDGs), the Sustainability Accounting Standards Board (SASB), and the Global Reporting Initiative (GRI).",
-            "services": ["ESG Target Setting", "GHG Quantification/Verification", "Energy Audit", "Product Carbon Footprint Assessment"]
+            "text": "进行重要性评估，确定与公司最相关的环境主题。随后，为环境实践（如资源使用、废物减少和温室气体减排）制定明确、可衡量和可实现的目标。确保这些目标与国际标准（如联合国可持续发展目标、可持续发展会计准则委员会和全球报告倡议）相呼应并参考。",
+            "services": ["ESG目标设定", "温室气体量化/验证", "能源审计", "产品碳足迹评估"]
         },
         
         "Action": {
-            "text": "Develop action plans to support structured efforts toward clearly defined ESG targets. These actions should outline the pathways to achieving the ultimate ESG goals, specify resource allocation, identify responsible parties (e.g., Facility Management to monitor energy consumption; HR to manage employee engagement initiatives), and set defined timelines. The action plans should also facilitate the implementation of existing or newly developed ESG policies and call for significant modifications in various ESG aspects, including operations, supply chain management, employee and community programs, and investment decisions.",
-            "services": ["ESG Proposition", "ESG Training"]
+            "text": "制定行动计划，支持朝着明确定义的ESG目标的结构化努力。这些行动应概述实现最终ESG目标的途径，明确资源分配，确定责任方（如设施管理监控能源消耗；人力资源管理员工参与计划），并设定明确的时间表。行动计划还应促进现有或新开发的ESG政策的实施，并要求在各种ESG方面进行重大调整，包括运营、供应链管理、员工和社区计划以及投资决策。",
+            "services": ["ESG方案", "ESG培训"]
         },
         
         "Data/Performance Monitoring": {
-            "text": "Establish your company's material ESG themes, initiatives, and measurable KPIs, work with internal departments, collaborators, and stakeholders to design a system with clear processes, controls and schedules in order to collect, review, track, store and evaluate the ESG-related performance data. In light of developing a regular data-tracking and monitoring practice, upfront research, fact-finding, internal education and capacity building are necessary.",
-            "services": ["Various ESG-related testing services", "ESG Training", "GHG Quantification/Verification", "Product Carbon Footprint Assessment"]
+            "text": "确定公司的重要ESG主题、倡议和可衡量的KPI，与内部部门、合作者和利益相关方合作，设计一个具有明确流程、控制和时间表的系统，用于收集、审查、跟踪、存储和评估ESG相关绩效数据。为了发展定期的数据跟踪和监控实践，前期研究、事实调查、内部教育和能力建设是必要的。",
+            "services": ["各种ESG相关测试服务", "ESG培训", "温室气体量化/验证", "产品碳足迹评估"]
         },
         
         "Strategic initiatives Implementation": {
-            "text": "Define high-level, long-term goals that align with your company's values, purpose, mission, and vision. Consider various green initiatives, investments in green technology, or ESG solutions to implement a company-wide sustainability program (e.g., a recycling or upcycling initiative) or to launch a new production line utilizing low-carbon technology (e.g., adopting renewable energy sources).",
-            "services": ["ESG Solutions"]
+            "text": "定义与公司价值观、目的、使命和愿景相符的高层次、长期目标。考虑各种绿色倡议、绿色技术投资或ESG解决方案，以实施公司范围内的可持续发展计划（如回收或升级再利用计划）或启动使用低碳技术的新生产线（如采用可再生能源）。",
+            "services": ["ESG解决方案"]
         },
         
         "Compliance and Accountability": {
-            "text": "Develop and enhance the company's compliance framework to identify the relevant regulations and laws applicable to your operations. When determining these laws and regulations, consider the industry, operational locations, products, and services to minimize operational, regulatory, and conduct risks. To strengthen the compliance framework and ensure effective corporate governance, integrate ESG risks and controls to mitigate associated risks.",
-            "services": ["ESG Due Diligence Survey"]
+            "text": "开发和加强公司的合规框架，识别适用于您运营的相关法规和法律。在确定这些法律和法规时，考虑行业、运营地点、产品和服务，以最大限度地减少运营、监管和行为风险。为加强合规框架并确保有效的公司治理，整合ESG风险和控制措施以降低相关风险。",
+            "services": ["ESG尽职调查"]
         },
         
         "Engagement": {
-            "text": "Identify and map the relevant stakeholders for your company (e.g., employees, suppliers, customers, government, community) by categorizing individuals or groups based on their impact and interest in the company's ESG initiatives. This should be followed by establishing various engagement and communication channels, such as surveys, regular focus group discussions, community portals, and annual reports.",
-            "services": ["ESG Training"]
+            "text": "通过根据利益相关方对公司ESG倡议的影响和兴趣对个人或群体进行分类，识别和映射公司的相关利益相关方（如员工、供应商、客户、政府、社区）。接下来应建立各种参与和沟通渠道，如调查、定期焦点小组讨论、社区门户和年度报告。",
+            "services": ["ESG培训"]
         },
         
         "Transparency": {
-            "text": "Implement a robust ESG data collection process to gather accurate quantitative and qualitative data for disclosure. Prepare comprehensive reports in accordance with recognized standards such as GRI, SASB, or TCFD. Sharing these reports with stakeholders—including employees, board members, and customers—is essential for enhancing transparency and fostering a culture of accountability.",
-            "services": ["Sustainability Reporting", "GHG Quantification/Verification", "Energy Audit", "Product Carbon Footprint Verification"]
+            "text": "实施一个健全的ESG数据收集流程，以收集准确的定量和定性数据用于披露。根据公认的标准如GRI、SASB或TCFD准备综合报告。与包括员工、董事会成员和客户在内的利益相关方分享这些报告，对于增强透明度和培养问责文化至关重要。",
+            "services": ["可持续发展报告", "温室气体量化/验证", "能源审计", "产品碳足迹验证"]
         }
     }
     
@@ -1287,76 +1287,75 @@ def enhance_combined_report_prompt(combined_data):
     recommendations = get_esg_category_recommendations(categories)
     
     # Create summary text for categories
-    category_summary = "ESG Categories Performance:\n"
+    category_summary = "ESG类别表现:\n"
     for category, data in categories.items():
         category_summary += f"- {category}: {data['yes']}/{data['total']} ({data['compliance_percentage']}%)\n"
     
     # Create enhanced prompt
     enhanced_prompt = (
-        "Generate a comprehensive integrated ESG report that analyzes data from Environmental, "
-        "Social, and Governance checklists together. The data has been categorized according to the following framework:\n\n"
+        "生成一份全面的综合ESG报告，分析环境、社会和治理清单的数据。数据已根据以下框架进行分类：\n\n"
         f"{category_summary}\n\n"
-        "Return the report as a structured JSON object with the following sections:\n\n"
-        "1. overview: Provide a concise, consolidated overview of the company's overall ESG compliance status. "
-        "Include the overall compliance percentage and a brief analysis of strengths and areas for improvement. "
-        "Identify any patterns or correlations across the ESG categories that would impact the rating. "
-        "Focus on high-level insights rather than detailed breakdowns, as those will be covered in other sections.\n\n"
-        "2. esg_pillars: Include three subsections named 'environmental', 'social', and 'governance', each analyzing its respective pillar "
-        "with clear sections for strengths (list up to 3 key strengths as bullet points) and weaknesses (list up to 3 key weaknesses as bullet points). Format as follows:\n\n"
-        "   ENVIRONMENTAL (xx/28, xx%)\n"
-        "   Strengths:\n"
-        "   • [First strength bullet (if any)]\n"
-        "   • [Second strength bullet (if any)]\n"
-        "   • [Third strength bullet (if any)]\n\n"
-        "   Weaknesses:\n"
-        "   • [First weakness bullet (if any)]\n"
-        "   • [Second weakness bullet (if any)]\n"
-        "   • [Third weakness bullet (if any)]\n\n"
-        "   IMPORTANT: If no significant weaknesses are identified for a pillar (e.g., 100% compliance), state 'No significant weaknesses were identified in this area.' under the Weaknesses heading instead of providing bullet points.\n\n"
-        "   Follow the same format for SOCIAL and GOVERNANCE sections.\n\n"
-        "3. key_rec: Select from our predefined recommendations below for each category where improvement is needed (focusing on categories with low compliance scores). "
-        "Customize these recommendations based on the company's industry, size, and specific ESG performance. "
-        "The customization should be light - mainly adapting our predefined content to the company's specific situation, rather than writing entirely new recommendations. "
-        "Include recommendations for all categories, but provide more detailed recommendations for categories with lower compliance scores.\n\n"
-        "4. services: For each category, select the most appropriate services from our predefined lists below based on the company's specific needs and ESG performance. "
-        "Importantly, ensure that the services you select for each category directly support and align with the key recommendations you provided for that same category. "
-        "For example, if your recommendation for 'Policy Development' focuses on creating comprehensive ESG policies, the services should include policy development assistance. "
-        "Don't include all services for every category - only include those that would directly help implement your specific recommendations.\n\n"
-        "5. conclusion: Provide a holistic assessment of the company's ESG maturity and strategic "
-        "recommendations for integrated ESG improvement. Explain the key factors that would influence the company's ESG rating, focusing on the overall compliance percentage and specific strengths or weaknesses across the E, S, and G pillars that significantly impact the rating. Do not include an ESG rating calculation in your response, as this will be calculated separately based on the compliance percentages.\n\n"
-        "Return your response in this exact JSON structure:\n"
+        "请将报告以JSON格式返回，包含以下部分：\n\n"
+        "1. overview: 提供对公司整体ESG合规状况的简明综合概述。"
+        "包括整体合规百分比和对优势和需要改进方面的简要分析。"
+        "识别可能影响评级的ESG类别中的任何模式或相关性。"
+        "重点关注高层次的见解，而不是详细的细分，因为这些将在其他部分中介绍。\n\n"
+        "2. esg_pillars: 包含三个子部分，分别命名为'environmental'（环境）、'social'（社会）和'governance'（治理），每个部分分析其各自的支柱，"
+        "并明确列出优势（最多列出3个要点）和弱点（最多列出3个要点）。格式如下：\n\n"
+        "   环境 (xx/28, xx%)\n"
+        "   优势：\n"
+        "   • [第一个优势要点（如有）]\n"
+        "   • [第二个优势要点（如有）]\n"
+        "   • [第三个优势要点（如有）]\n\n"
+        "   弱点：\n"
+        "   • [第一个弱点要点（如有）]\n"
+        "   • [第二个弱点要点（如有）]\n"
+        "   • [第三个弱点要点（如有）]\n\n"
+        "   重要：如果某个支柱没有发现明显的弱点（例如，100%合规），在弱点标题下写上'在此领域未发现明显弱点。'，而不是提供要点。\n\n"
+        "   社会和治理部分也使用相同的格式。\n\n"
+        "3. key_rec: 针对需要改进的每个类别（特别关注合规分数低的类别），从我们预定义的建议中选择。"
+        "根据公司的行业、规模和特定的ESG表现定制这些建议。"
+        "定制应该是轻微的 - 主要是将预定义内容适应公司的具体情况，而不是编写全新的建议。"
+        "包括所有类别的建议，但为合规分数较低的类别提供更详细的建议。\n\n"
+        "4. services: 针对每个类别，根据公司的具体需求和ESG表现，从我们下面预定义的列表中选择最合适的服务。"
+        "重要的是，确保您为每个类别选择的服务直接支持并与您为该类别提供的关键建议保持一致。"
+        "例如，如果您对'政策制定'的建议侧重于创建全面的ESG政策，那么服务应该包括政策制定的协助。"
+        "不要为每个类别包含所有服务 - 只包括那些能够直接帮助实施您的具体建议的服务。\n\n"
+        "5. conclusion: 提供对公司ESG成熟度的整体评估和综合ESG改进的战略建议。"
+        "解释影响公司ESG评级的关键因素，重点关注整体合规百分比和跨环境、社会和治理支柱的特定优势或弱点，这些因素对评级有重大影响。不要在回复中包含ESG评级计算，因为这将根据合规百分比单独计算。\n\n"
+        "请按照以下确切的JSON结构返回您的回复：\n"
         "{\n"
-        "  \"overview\": \"text here\",\n"
+        "  \"overview\": \"文本内容\",\n"
         "  \"esg_pillars\": {\n"
-        "    \"environmental\": \"text here\",\n"
-        "    \"social\": \"text here\",\n"
-        "    \"governance\": \"text here\"\n"
+        "    \"environmental\": \"文本内容\",\n"
+        "    \"social\": \"文本内容\",\n"
+        "    \"governance\": \"文本内容\"\n"
         "  },\n"
         "  \"key_rec\": {\n"
-        "    \"policy_development\": \"text here\",\n"
-        "    \"objectives_target_setting\": \"text here\",\n"
-        "    \"action\": \"text here\",\n"
-        "    \"data_performance_monitoring\": \"text here\",\n"
-        "    \"strategic_initiatives\": \"text here\",\n"
-        "    \"compliance_accountability\": \"text here\",\n"
-        "    \"engagement\": \"text here\",\n"
-        "    \"transparency\": \"text here\"\n"
+        "    \"policy_development\": \"文本内容\",\n"
+        "    \"objectives_target_setting\": \"文本内容\",\n"
+        "    \"action\": \"文本内容\",\n"
+        "    \"data_performance_monitoring\": \"文本内容\",\n"
+        "    \"strategic_initiatives\": \"文本内容\",\n"
+        "    \"compliance_accountability\": \"文本内容\",\n"
+        "    \"engagement\": \"文本内容\",\n"
+        "    \"transparency\": \"文本内容\"\n"
         "  },\n"
         "  \"services\": {\n"
-        "    \"policy_development\": [\"service 1\", \"service 2\"],\n"
-        "    \"objectives_target_setting\": [\"service 1\", \"service 2\"],\n"
-        "    ... (include only categories that need improvement)\n"
+        "    \"policy_development\": [\"服务1\", \"服务2\"],\n"
+        "    \"objectives_target_setting\": [\"服务1\", \"服务2\"],\n"
+        "    ... (只包括需要改进的类别)\n"
         "  },\n"
-        "  \"conclusion\": \"text here\"\n"
+        "  \"conclusion\": \"文本内容\"\n"
         "}\n\n"
-        "Tailor your recommendations to be appropriate for the company's size, industry, and business model. "
-        "Below are our predefined recommendations and services for each category. Select and adapt from these:\n"
+        "请根据公司的规模、行业和商业模式，量身定制您的建议。"
+        "以下是我们为每个类别预定义的建议和服务。请从中选择并适当调整：\n"
     )
     
     # Add specific recommendations for categories with details about services
     for category, recommendation in recommendations.items():
-        enhanced_prompt += f"CATEGORY: {category}\n"
-        enhanced_prompt += f"RECOMMENDATION: {recommendation['text']}\n"
-        enhanced_prompt += f"SERVICES: {', '.join(recommendation['services'])}\n\n"
+        enhanced_prompt += f"类别: {category}\n"
+        enhanced_prompt += f"建议: {recommendation['text']}\n"
+        enhanced_prompt += f"服务: {', '.join(recommendation['services'])}\n\n"
     
     return enhanced_prompt 
