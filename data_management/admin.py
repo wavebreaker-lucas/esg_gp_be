@@ -1033,13 +1033,57 @@ class ChecklistReportAdmin(admin.ModelAdmin):
     readonly_fields = [
         'report_type', 'title', 'company', 'generated_at', 'layer',
         'primary_submission', 'overall_compliance', 'environmental_compliance',
-        'social_compliance', 'governance_compliance', 'content',
-        'is_structured', 'word_count', 'version'
+        'social_compliance', 'governance_compliance', 'formatted_content',
+        'is_structured', 'word_count', 'version', 'esg_rating', 'rating_description'
+    ]
+    
+    fieldsets = [
+        ('Report Information', {
+            'fields': ['title', 'company', 'report_type', 'generated_at', 'version']
+        }),
+        ('Organization', {
+            'fields': ['layer', 'primary_submission']
+        }),
+        ('Compliance Scores', {
+            'fields': [
+                'overall_compliance', 'environmental_compliance',
+                'social_compliance', 'governance_compliance',
+                'esg_rating', 'rating_description'
+            ]
+        }),
+        ('Report Content', {
+            'fields': ['formatted_content'],
+            'classes': ('wide',)
+        }),
+        ('Metadata', {
+            'fields': ['is_structured', 'word_count'],
+            'classes': ('collapse',)
+        })
     ]
     
     def has_add_permission(self, request, obj=None):
         # Reports should only be created via the API
         return False
+        
+    def formatted_content(self, obj):
+        """Format the content field for better display in admin, supporting Chinese characters"""
+        from django.utils.safestring import mark_safe
+        
+        if obj.is_structured:
+            try:
+                import json
+                # Parse the JSON content
+                parsed_content = json.loads(obj.content)
+                # Format as pretty JSON with HTML formatting, ensure_ascii=False to properly handle Chinese
+                formatted_json = json.dumps(parsed_content, indent=2, ensure_ascii=False)
+                return mark_safe(f'<pre style="white-space: pre-wrap; font-family: monospace;">{formatted_json}</pre>')
+            except Exception as e:
+                return mark_safe(f'<p>Error parsing JSON: {str(e)}</p><pre>{obj.content}</pre>')
+        
+        # For non-JSON content or if parsing fails
+        return mark_safe(f'<pre style="white-space: pre-wrap;">{obj.content}</pre>')
+    
+    formatted_content.short_description = "Report Content"
 
 admin.site.register(ChecklistReport, ChecklistReportAdmin)
 
