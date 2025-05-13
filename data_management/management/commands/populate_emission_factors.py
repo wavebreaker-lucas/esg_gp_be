@@ -765,7 +765,7 @@ class Command(BaseCommand):
             value=4.8000,
             factor_unit="kgCO2e/kg",
             year=2025,
-            region="HK",
+            region="ALL",
             scope="3",
             source="HKEX Reporting Guidance",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
@@ -780,7 +780,7 @@ class Command(BaseCommand):
             value=1.5000,
             factor_unit="kgCO2e/kg",
             year=2025,
-            region="HK",
+            region="ALL",
             scope="3",
             source="Carbon Audit Toolkit for Small and Medium Enterprises in Hong Kong",
             source_url="http://www.cityu.edu.hk/aerc/sme/images/sme_eng.pdf"
@@ -795,7 +795,7 @@ class Command(BaseCommand):
             value=0.4280,
             factor_unit="kgCO2e/m3",
             year=2025,
-            region="HK",
+            region="ALL",
             scope="3",
             source="WSD Annual Report 2021/22",
             source_url=""
