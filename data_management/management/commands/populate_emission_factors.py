@@ -17,6 +17,7 @@ class Command(BaseCommand):
         self.populate_towngas_factors()
         self.populate_transport_factors()
         self.populate_stationary_combustion_factors()
+        self.populate_scope3_factors()
         
         total_count = GHGEmissionFactor.objects.count()
         self.stdout.write(self.style.SUCCESS(f"Completed! Total factors in database: {total_count}"))
@@ -750,4 +751,52 @@ class Command(BaseCommand):
             scope="1",
             source="HKEX Reporting Guidance - Estimated",
             source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+
+    def populate_scope3_factors(self):
+        """Populate Scope 3 emission factors for various indirect activities"""
+        
+        # Paper consumption
+        self.create_factor(
+            name="Paper Consumption - Hong Kong",
+            category="materials",
+            sub_category="paper",
+            activity_unit="kg",
+            value=4.8000,
+            factor_unit="kgCO2e/kg",
+            year=2025,
+            region="HK",
+            scope="3",
+            source="HKEX Reporting Guidance",
+            source_url="https://www.hkex.com.hk/-/media/hkex-market/listing/rules-and-guidance/environmental-social-and-governance/exchanges-guidance-materials-on-esg/app2_envirokpis"
+        )
+        
+        # General waste disposal
+        self.create_factor(
+            name="General Waste - Hong Kong",
+            category="waste",
+            sub_category="general_waste",
+            activity_unit="kg",
+            value=1.5000,
+            factor_unit="kgCO2e/kg",
+            year=2025,
+            region="HK",
+            scope="3",
+            source="Carbon Audit Toolkit for Small and Medium Enterprises in Hong Kong",
+            source_url="http://www.cityu.edu.hk/aerc/sme/images/sme_eng.pdf"
+        )
+        
+        # Fresh water consumption
+        self.create_factor(
+            name="Fresh Water Consumption - Hong Kong",
+            category="water",
+            sub_category="fresh_water",
+            activity_unit="cubic meter",
+            value=0.4280,
+            factor_unit="kgCO2e/m3",
+            year=2025,
+            region="HK",
+            scope="3",
+            source="WSD Annual Report 2021/22",
+            source_url=""
         ) 
