@@ -187,6 +187,16 @@ For stationary sources of emissions (as opposed to mobile/transport sources), th
 
 The FuelConsumptionMetric only looks at stationary fuel consumption, regardless of the source type (generators, boilers, cooking stoves, etc.). The emission factor is determined solely by the fuel type, as these factors are specific to stationary combustion rather than mobile sources.
 
+### Scope 3 Emission Factors (`category="materials"`, `category="waste"`, `category="water"`)
+
+These emission factors cover indirect emissions from activities across the value chain.
+
+| Name | Category | Subcategory | Value | Activity Unit | Factor Unit | Region | Scope |
+|------|----------|-------------|------:|---------------|-------------|--------|-------|
+| Paper Consumption - Hong Kong | `materials` | `paper` | 4.8000 | kg | kgCO2e/kg | ALL | 3 |
+| General Waste - Hong Kong | `waste` | `general_waste` | 1.5000 | kg | kgCO2e/kg | ALL | 3 |
+| Fresh Water Consumption - Hong Kong | `water` | `fresh_water` | 0.4280 | cubic meter | kgCO2e/m3 | ALL | 3 |
+
 ## Usage
 
 ### Matching by Category and Subcategory
