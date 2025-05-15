@@ -272,7 +272,7 @@ class UtilityBillAnalyzer:
         
         # Try standard field names first
         # Look for consumption values in various formats
-        for consumption_field in ["Consumption", "ElectricityConsumption", "WaterConsumption", "GasConsumption"]:
+        for consumption_field in ["Consumption", "ElectricityConsumption", "WaterConsumption", "GasConsumption", "Amount"]:
             if consumption_field in fields and "valueNumber" in fields[consumption_field]:
                 result['value'] = float(fields[consumption_field]["valueNumber"])
                 break
