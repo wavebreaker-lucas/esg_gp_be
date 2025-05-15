@@ -540,7 +540,7 @@ class VehicleTrackingMetricAdmin(PolymorphicChildModelAdmin):
     # Custom fieldsets for better organization
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'form', 'description', 'order', 'is_required', 'help_text', 'location')
+            'fields': ('name', 'form', 'description', 'order', 'is_required', 'help_text', 'location', 'ocr_analyzer_id')
         }),
         ('Vehicle Configuration', {
             'fields': ('vehicle_types', 'fuel_types', 'emission_factor_mapping', 'reporting_year', 
@@ -570,7 +570,7 @@ class FuelConsumptionMetricAdmin(PolymorphicChildModelAdmin):
     # Custom fieldsets for better organization
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'form', 'description', 'order', 'is_required', 'help_text', 'location')
+            'fields': ('name', 'form', 'description', 'order', 'is_required', 'help_text', 'location', 'ocr_analyzer_id')
         }),
         ('Fuel Configuration', {
             'fields': ('source_types', 'fuel_types', 'emission_factor_mapping', 'reporting_year', 
