@@ -41,6 +41,7 @@ CSRF_TRUSTED_ORIGINS = ['https://' + os.environ['WEBSITE_HOSTNAME']] if 'WEBSITE
     'https://gpbe-dsftand5hzfnbxbb.eastasia-01.azurewebsites.net',
     'http://localhost:3000',
     'https://esg-gp-fe.vercel.app',
+    'https://app.greenpoint.com.hk',
 ]
 
 # Application definition
@@ -85,6 +86,7 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "https://esg-gp-fe.vercel.app",
+    "https://app.greenpoint.com.hk",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -246,7 +248,7 @@ SIMPLE_JWT = {
 }
 
 # Frontend URL for password reset
-FRONTEND_URL = 'https://esg-gp-fe.vercel.app'  # Updated to deployed frontend URL
+FRONTEND_URL = 'https://app.greenpoint.com.hk'  # Production URL for password reset & emails
 
 # Email settings - Updated to use Azure Communication Email
 EMAIL_BACKEND = 'django_azure_communication_email.EmailBackend'
@@ -267,7 +269,7 @@ DEFAULT_LAYER_ID = 1  # Currently using layer 1 for existing data
 # OpenRouter AI settings
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'google/gemini-2.0-flash-001')
-SITE_URL = os.getenv('SITE_URL', 'https://esg-platform.example.com')
+SITE_URL = os.getenv('SITE_URL', 'https://app.greenpoint.com.hk')
 
 LOGGING = {
     'version': 1,
