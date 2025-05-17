@@ -15,7 +15,7 @@ import django_filters
 from django_filters.rest_framework import DjangoFilterBackend 
 
 from accounts.models import CustomUser, AppUser, LayerProfile
-from accounts.services import get_accessible_layers, has_layer_access
+from accounts.services import get_accessible_layers, has_layer_access, get_user_layers_and_parents_ids
 from ...models import (
     ESGForm, 
     Template, TemplateAssignment, TemplateFormSelection,
@@ -160,11 +160,16 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
         submissions_data = batch_serializer.validated_data['submissions']
         logger.info(f"Processing {len(submissions_data)} submissions for assignment {assignment.pk}")
         
-        # Check if user has access to the target assignment's layer
-        if not has_layer_access(request.user, assignment.layer_id):
-            logger.error(f"User {request.user} does not have access to layer {assignment.layer_id}")
-            return Response({"detail": "You do not have permission for this assignment's layer."}, status=status.HTTP_403_FORBIDDEN)
-
+        # UPDATED PERMISSION CHECK:
+        # 1. Check if user can see this assignment at all (via direct access or inheritance)
+        accessible_layer_ids = get_user_layers_and_parents_ids(request.user)
+        
+        if assignment.layer_id not in accessible_layer_ids:
+            logger.error(f"User {request.user} does not have access to assignment {assignment.pk}")
+            return Response({"detail": "You do not have access to this assignment."}, status=status.HTTP_403_FORBIDDEN)
+        
+        # 2. For each submission, we'll check that the user has direct access to the layer they're submitting to
+        
         results = []
         errors = []
 
@@ -206,6 +211,37 @@ class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
             
             if item_serializer.is_valid():
                 try:
+                    # Check if user has direct access to the target layer
+                    layer_id = sub_data.get('layer_id')
+                    
+                    # Get the user's direct layers (not parent/inherited layers)
+                    user_direct_layer_ids = {app_user.layer_id for app_user in AppUser.objects.filter(user=request.user)}
+                    
+                    # If no layer_id is provided, default to user's first direct layer
+                    if not layer_id and user_direct_layer_ids:
+                        # Use the first available layer
+                        layer_id = next(iter(user_direct_layer_ids))
+                        # Update the data with this layer
+                        sub_data['layer_id'] = layer_id
+                        # We need to re-validate with the updated data
+                        item_serializer = ESGMetricSubmissionSerializer(
+                            instance=instance,
+                            data=sub_data, 
+                            context=self.get_serializer_context()
+                        )
+                        if not item_serializer.is_valid():
+                            logger.error(f"Validation failed after setting default layer: {item_serializer.errors}")
+                            errors.append({f"item_{index}": item_serializer.errors})
+                            continue
+                    
+                    # If a layer_id is provided, verify the user has direct access to it
+                    elif layer_id and layer_id not in user_direct_layer_ids:
+                        if not request.user.is_staff and not request.user.is_superuser and not getattr(request.user, 'is_baker_tilly_admin', False):
+                            error_msg = f"You do not have direct access to layer {layer_id}"
+                            logger.error(error_msg)
+                            errors.append({f"item_{index}": error_msg})
+                            continue
+                    
                     # Save will call update() if instance is provided, create() otherwise
                     saved_instance = item_serializer.save()
                     action_type = "updated" if instance else "created"
