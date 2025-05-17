@@ -1085,6 +1085,11 @@ Manages the **raw input headers** (`ESGMetricSubmission` model) and their linked
 - `DELETE /api/metric-submissions/{id}/`: Delete a metric input header and its linked specific data. Triggers aggregation.
 - `GET /api/metric-submissions/by_assignment/?assignment_id={id}`: Get all submission *headers* for an assignment. Supports filtering. Response includes `submission_data`.
 - `POST /api/metric-submissions/batch_submit/`: Submit multiple metric inputs at once. Payload requires `assignment_id` and a `submissions` list, where each item contains `metric` and a specific data field (e.g., `basic_data`). Triggers aggregation.
+  - **Inheritance Support**: This endpoint now properly supports inherited assignments:
+     - For the assignment, users only need access to the assignment (direct or inherited)
+     - For each submission, the user must have direct access to the submitted layer
+     - If no layer_id is provided, defaults to the user's first direct layer
+     - Each submission will use `submission_layer_id` from the serializer context (see TemplateAssignmentSerializer)
 - `POST /api/metric-submissions/submit_template/`: Mark a template assignment as submitted. Checks for the existence of required **annual** (`level='A'`) `ReportedMetricValue` records.
 - `POST /api/metric-submissions/{id}/verify/`: Verify a *specific raw input header* (`ESGMetricSubmission`). (Baker Tilly admin only).
 - `GET /api/submissions/available-layers/`: Get layers accessible to the user.
@@ -2077,3 +2082,40 @@ When a form is marked as incomplete:
 3. If the assignment was in "SUBMITTED" status, it will be changed to "IN_PROGRESS"
 
 **Note:** This operation does not affect any existing metric submissions. All submitted data remains intact.
+
+### TemplateAssignmentSerializer Field: submission_layer_id
+
+The `TemplateAssignmentSerializer` includes a `submission_layer_id` field that provides the correct layer ID to use when submitting data for an assignment. This field is especially important for inherited assignments:
+
+- **Direct assignments**: The `submission_layer_id` will be the same as the assignment's `layer.id`
+- **Inherited assignments**: The `submission_layer_id` will be the user's own layer ID
+
+```json
+// Example response from a serialized TemplateAssignment (inherited)
+{
+  "id": 5,
+  "template": { ... },
+  "layer": {
+    "id": 1,  // Parent company layer (not the user's direct layer)
+    "company_name": "Parent Group Inc."
+  },
+  // ... other fields ...
+  "relationship": "inherited",
+  "submission_layer_id": 12  // User's actual layer ID to use for submissions
+}
+```
+
+This design enables proper data segregation while maintaining the parent-child hierarchy benefits:
+1. Templates can be distributed from parent entities to subsidiaries (inheritance)
+2. When a subsidiary submits data, it's correctly associated with the subsidiary's layer
+3. The `submission_layer_id` field provides a consistent API contract for clients without requiring complex hierarchy logic to be implemented in the frontend
+
+**Implementation Notes:**
+- The frontend should always use `submission_layer_id` rather than `layer.id` when submitting data
+- Backend permission checks validate that users have direct access to their submitted layer
+- For Baker Tilly admins, the `submission_layer_id` will match the assignment's `layer.id`
+
+#### API Endpoints That Use submission_layer_id:
+
+- `POST /api/metric-submissions/batch_submit/`: Uses `submission_layer_id` for the layer of each submission
+- All API endpoints that include the `TemplateAssignmentSerializer` (including `GET /api/user-templates/`)
