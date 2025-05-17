@@ -8,8 +8,6 @@ This document outlines the authentication system for the ESG Platform, including
 |----------|--------|-------------|------------------------|
 | `/api/login/` | POST | User login with email and password | No |
 | `/api/logout/` | POST | User logout | Yes |
-| `/api/verify-otp/` | POST | Verify OTP code for email verification | No |
-| `/api/resend-otp/` | POST | Resend OTP code for email verification | No |
 | `/api/token/refresh/` | POST | Refresh JWT token | No (requires refresh token) |
 | `/api/request-password-reset/` | POST | Request password reset link (forgotten password) | No |
 | `/api/reset-password/<reset_token>/` | POST | Reset password using token (forgotten password) | No |
