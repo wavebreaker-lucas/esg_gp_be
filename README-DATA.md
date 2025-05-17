@@ -655,7 +655,8 @@ Returns all template assignments accessible to the authenticated user, including
     "reporting_period_end": "2024-12-31",
     "reporting_year": 2024,
     "status": "IN_PROGRESS",
-    "relationship": "direct" // Added by view
+    "relationship": "direct", // Added by view
+    "submission_layer_id": 5 // The layer ID to use for submissions (same as layer.id for direct assignments)
   },
   {
     "id": 2, // Second Assignment example
@@ -708,7 +709,8 @@ Returns all template assignments accessible to the authenticated user, including
     "reporting_period_end": "2024-12-31",
     "reporting_year": 2024,
     "status": "SUBMITTED",
-    "relationship": "inherited" // Example inherited assignment
+    "relationship": "inherited", // Example inherited assignment
+    "submission_layer_id": 5 // The user's actual layer ID for inherited assignments (NOT the same as layer.id)
   }
   // ... more assignments in the list ...
 ]
@@ -718,6 +720,10 @@ Returns all template assignments accessible to the authenticated user, including
 - Automatically finds templates assigned to the user's layer and all parent layers
 - No parameters required - uses the authenticated user's context
 - Includes "relationship" field to indicate if the template is directly assigned to the user's layer or inherited from a parent
+- Provides `submission_layer_id` field that indicates which layer ID should be used when submitting data:
+  - For direct assignments, this is the same as the assignment's layer ID
+  - For inherited assignments, this is the user's own layer ID
+  - Frontend should always use this ID when submitting data rather than implementing complex hierarchy logic
 - Provides essential template information including status and due dates
 
 #### GET /api/user-templates/{assignment_id}/
@@ -802,7 +808,8 @@ Returns detailed **metadata** about a specific template assignment, such as stat
   "reporting_period_end": "2024-12-31",
   "reporting_year": 2024, // Or null/deprecated depending on implementation
   "status": "IN_PROGRESS", // e.g., PENDING, IN_PROGRESS, SUBMITTED, VERIFIED, REJECTED
-  "relationship": "direct" // Added by the view ('direct' or 'inherited')
+  "relationship": "direct", // Added by the view ('direct' or 'inherited')
+  "submission_layer_id": 5 // The layer ID to use for submissions (same as layer.id for direct assignments)
 }
 ```
 
