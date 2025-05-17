@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from accounts.models import CustomUser, LayerProfile
+from accounts.models import CustomUser, LayerProfile, AppUser
 from accounts.services import get_accessible_layers
 # Updated imports: Removed deleted models, added BaseESGMetric placeholder
 from ..models.templates import (
@@ -216,6 +216,7 @@ class TemplateAssignmentSerializer(serializers.ModelSerializer):
     layer = LayerBasicSerializer(read_only=True) # Use nested serializer for read operations
     layer_id = serializers.PrimaryKeyRelatedField(queryset=LayerProfile.objects.all(), write_only=True, source='layer') # Add separate write field
     assigned_to = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all(), required=False, allow_null=True)
+    submission_layer_id = serializers.SerializerMethodField(read_only=True, help_text="Layer ID to use for submissions, which may be different from template.layer.id for inherited assignments")
 
     class Meta:
         model = TemplateAssignment
@@ -223,8 +224,41 @@ class TemplateAssignmentSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'template', 'template_id', 'layer', 'layer_id', 'assigned_to', 
             'assigned_at', 'due_date', 'completed_at', 'reporting_period_start', 
-            'reporting_period_end', 'reporting_year', 'status'
-        ] # Explicitly list fields to include new layer_id
+            'reporting_period_end', 'reporting_year', 'status', 'submission_layer_id'
+        ] # Added submission_layer_id to exposed fields
+        
+    def get_submission_layer_id(self, obj):
+        """
+        Return the layer ID that should be used for submissions.
+        For direct assignments, this is the same as obj.layer.id.
+        For inherited assignments, this is the requesting user's layer ID.
+        """
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user'):
+            return obj.layer.id  # Default to the assignment's layer if no user context
+            
+        user = request.user
+        
+        # Baker Tilly admins should submit to the template's assigned layer
+        if user.is_staff or user.is_superuser or getattr(user, 'is_baker_tilly_admin', False):
+            return obj.layer.id
+            
+        # Check if user is directly in the assigned layer
+        if AppUser.objects.filter(user=user, layer=obj.layer).exists():
+            return obj.layer.id  # Direct assignment, use assigned layer
+            
+        # For inherited assignments, find the user's layer
+        # First, get all the user's layers
+        user_layers = [app_user.layer for app_user in user.app_users.all()]
+        
+        if not user_layers:
+            # No layers found, fall back to assignment layer
+            return obj.layer.id
+            
+        # For simplicity, use the first layer found (most users will have only one)
+        # In a more complex implementation, we might want to match the user's layer
+        # with the hierarchy of the assignment layer
+        return user_layers[0].id
         
     def create(self, validated_data):
         # template = validated_data.pop('template_id') # No longer needed due to source='template' on template_id
