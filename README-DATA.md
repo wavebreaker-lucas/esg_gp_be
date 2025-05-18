@@ -2003,15 +2003,28 @@ When a form is marked as incomplete:
 
 Only Baker Tilly administrators can use this endpoint.
 
-##### Form Completion Management
+## Form Completion Management
 
-The system uses a simplified approach for managing form completion status through the `FormCompletionStatus` model, which tracks completion on a per-assignment basis.
+The system uses a layer-specific approach for managing form completion status through the `FormCompletionStatus` model, which tracks completion on a per-assignment and per-layer basis.
 
-###### Check Form Completion Status
+### Layer-Specific Form Completion
+
+Each layer in the organizational hierarchy (Group, Subsidiary, Branch) can now have its own completion status for forms inherited from parent entities:
+
+- Parent entities can assign templates to their entire organization
+- Child entities (subsidiaries, branches) inherit these templates
+- Each layer maintains its own independent completion status
+- Completion status is tracked separately for each {form, assignment, layer} combination
+
+This approach enables each entity to track its own ESG reporting progress while maintaining proper organizational hierarchy.
+
+### Form Completion Endpoints
+
+#### Check Form Completion Status
 ```json
 GET /api/esg-forms/{form_id}/check_completion/?assignment_id=1
 
-// Response (Simplified Example)
+// Response (Example with layer information)
 {
     "form_id": 2,
     "form_name": "Resource Use",
@@ -2020,15 +2033,15 @@ GET /api/esg-forms/{form_id}/check_completion/?assignment_id=1
     "is_completed": false,
     "completed_at": null,
     "completed_by": null,
+    "layer_id": 12,             // User's layer that status applies to
+    "layer_name": "Subsidiary A",
     "assignment_status": "IN_PROGRESS"
 }
 ```
 
-The check_completion endpoint uses the FormCompletionStatus model to check if a form is completed for a specific assignment, ensuring proper data isolation between different companies and reporting periods.
+The check_completion endpoint returns the completion status specific to the requesting user's layer, enabling proper data isolation between different entities in the hierarchy.
 
-###### Mark a Form as Complete or Incomplete
-The `simple_complete_form` endpoint provides a straightforward way to mark forms as complete or incomplete:
-
+#### Mark a Form as Complete or Incomplete
 ```json
 POST /api/esg-forms/{form_id}/simple_complete_form/
 {
@@ -2036,52 +2049,50 @@ POST /api/esg-forms/{form_id}/simple_complete_form/
     "is_complete": true // Set to `true` to mark as complete, `false` to mark as incomplete
 }
 
-// Response (Example - Marked Complete)
+// Response (Example with layer information)
 {
     "message": "Form 'Resource Use' successfully marked as completed.",
     "form_id": 2,
     "form_name": "Resource Use",
     "form_is_complete": true,
+    "layer_id": 12,             // User's layer that was updated
+    "layer_name": "Subsidiary A",
     "assignment_status_updated": true,
     "assignment_status": "SUBMITTED"
 }
-
-// Response (Example - Marked Incomplete)
-{
-    "message": "Form 'Resource Use' successfully marked as incomplete.",
-    "form_id": 2,
-    "form_name": "Resource Use",
-    "form_is_complete": false,
-    "assignment_status_updated": true,
-    "assignment_status": "IN_PROGRESS"
-}
 ```
 
-This endpoint creates or updates a FormCompletionStatus record for the specific assignment and handles updating the assignment status as needed. If the `is_complete` parameter is not specified, it defaults to `true` (marking as complete).
+This endpoint creates or updates a FormCompletionStatus record for the user's specific layer, allowing subsidiaries to track their own completion status independently from parent entities.
 
-###### Uncomplete a Form (Admin Only)
-```
+#### Uncomplete a Form (Admin Only)
+```json
 POST /api/esg-forms/{form_id}/uncomplete_form/
 {
-  "assignment_id": 123
+  "assignment_id": 123,
+  "layer_id": 12              // Optional: Specify which layer's status to reset
 }
 
 // Response
 {
-    "message": "Form 'Resource Use' successfully marked as incomplete.",
+    "message": "Form 'Resource Use' successfully marked as incomplete for layer Subsidiary A.",
+    "layer_id": 12,
+    "layer_name": "Subsidiary A",
     "assignment_status": "IN_PROGRESS"
 }
 ```
 
-### Effects of Uncompleting a Form
+Administrators can now specify which layer's completion status to reset, enabling more granular control over form completion in the organizational hierarchy.
 
-When a form is marked as incomplete:
+### Effects of Layer-Specific Form Completion
 
-1. The FormCompletionStatus record's `is_completed` flag is set to `false` 
-2. The `completed_at` and `completed_by` fields are cleared
-3. If the assignment was in "SUBMITTED" status, it will be changed to "IN_PROGRESS"
+When using layer-specific form completion:
 
-**Note:** This operation does not affect any existing metric submissions. All submitted data remains intact.
+1. Parent entities see form completion status for their own layer
+2. Subsidiary entities see form completion status for their own layer
+3. Completion statuses for the same form can differ between entities
+4. Assignment status updates are primarily applied based on the assignment's primary layer
+
+**Note:** This enhancement allows subsidiaries and branches to track their own ESG reporting progress while maintaining the benefits of template inheritance.
 
 ### TemplateAssignmentSerializer Field: submission_layer_id
 
