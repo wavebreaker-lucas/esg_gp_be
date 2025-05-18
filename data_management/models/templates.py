@@ -124,23 +124,30 @@ class FormCompletionStatus(models.Model):
     form_selection = models.ForeignKey(TemplateFormSelection, on_delete=models.CASCADE, related_name='assignment_completion')
     assignment = models.ForeignKey(TemplateAssignment, on_delete=models.CASCADE, related_name='form_completion_status',
                                   help_text="The template assignment this completion status belongs to")
+    layer = models.ForeignKey(
+        LayerProfile,
+        on_delete=models.CASCADE,
+        related_name='form_completions',
+        help_text="The layer this completion status applies to (could be assignment layer or child layer)"
+    )
     is_completed = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
     completed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='completed_assignment_forms')
     
     class Meta:
         ordering = ['assignment', 'form_selection']
-        unique_together = ['form_selection', 'assignment']
+        unique_together = ['form_selection', 'assignment', 'layer']
         indexes = [
             models.Index(fields=['form_selection', 'assignment']),
             models.Index(fields=['is_completed']),
             models.Index(fields=['assignment']),
+            models.Index(fields=['layer'], name='data_manage_layer_idx'),
         ]
         verbose_name = "Form Completion Status"
         verbose_name_plural = "Form Completion Statuses"
     
     def __str__(self):
-        return f"{self.form_selection.form.code} - {self.assignment.layer.company_name} - {'Completed' if self.is_completed else 'Incomplete'}"
+        return f"{self.form_selection.form.code} - {self.layer.company_name} - {'Completed' if self.is_completed else 'Incomplete'}"
 
 class ReportedMetricValue(models.Model):
     """Parent record storing aggregation results for a specific input metric context and aggregation level."""
