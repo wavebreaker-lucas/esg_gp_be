@@ -172,15 +172,15 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 if group_layer:
                     # Get subsidiaries where this group is the parent
                     subsidiary_layers = SubsidiaryLayer.objects.filter(group_layer=group_layer)
-                    for sub_layer in subsidiary_layers:
-                        subsidiary = sub_layer.layer
+                    for subsidiary in subsidiary_layers:
+                        # The subsidiary layer itself is the LayerProfile
                         sub_status = self._get_layer_completion_status(selection, assignment, subsidiary)
                         results.append(sub_status)
                         
                         # Get branches - a subsidiary has branches
-                        branch_layers = BranchLayer.objects.filter(subsidiary_layer=sub_layer)
-                        for branch_layer in branch_layers:
-                            branch = branch_layer.layer
+                        branch_layers = BranchLayer.objects.filter(subsidiary_layer=subsidiary)
+                        for branch in branch_layers:
+                            # The branch layer itself is the LayerProfile
                             branch_status = self._get_layer_completion_status(selection, assignment, branch)
                             results.append(branch_status)
             
@@ -191,11 +191,11 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 results.append(sub_status)
                 
                 # Get branches - a subsidiary has branches
-                subsidiary_layer = getattr(target_layer, 'subsidiarylayer', None)
-                if subsidiary_layer:
-                    branch_layers = BranchLayer.objects.filter(subsidiary_layer=subsidiary_layer)
-                    for branch_layer in branch_layers:
-                        branch = branch_layer.layer
+                subsidiary = target_layer
+                if subsidiary:
+                    branch_layers = BranchLayer.objects.filter(subsidiary_layer=subsidiary)
+                    for branch in branch_layers:
+                        # The branch layer itself is the LayerProfile
                         branch_status = self._get_layer_completion_status(selection, assignment, branch)
                         results.append(branch_status)
             
