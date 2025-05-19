@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.db.models import Count
 
 from accounts.permissions import BakerTillyAdmin
-from accounts.models import CustomUser, AppUser, LayerProfile
+from accounts.models import CustomUser, AppUser, LayerProfile, SubsidiaryLayer, BranchLayer
 from accounts.services import get_accessible_layers, has_layer_access, get_user_layers_and_parents_ids
 from ...models import (
     ESGForm,
@@ -168,7 +168,6 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 results.append(group_status)
                 
                 # Get subsidiaries - a group layer has subsidiaries
-                from ...models import SubsidiaryLayer
                 group_layer = getattr(target_layer, 'grouplayer', None)
                 if group_layer:
                     # Get subsidiaries where this group is the parent
@@ -179,7 +178,6 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                         results.append(sub_status)
                         
                         # Get branches - a subsidiary has branches
-                        from ...models import BranchLayer
                         branch_layers = BranchLayer.objects.filter(subsidiary_layer=sub_layer)
                         for branch_layer in branch_layers:
                             branch = branch_layer.layer
@@ -193,7 +191,6 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 results.append(sub_status)
                 
                 # Get branches - a subsidiary has branches
-                from ...models import BranchLayer
                 subsidiary_layer = getattr(target_layer, 'subsidiarylayer', None)
                 if subsidiary_layer:
                     branch_layers = BranchLayer.objects.filter(subsidiary_layer=subsidiary_layer)
