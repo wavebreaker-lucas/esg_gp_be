@@ -87,9 +87,17 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         """
         Check if a form is completed for a specific assignment.
         Uses the FormCompletionStatus model to track completion status.
+        
+        Query Parameters:
+        - assignment_id: Required. The template assignment to check.
+        - layer_id: Optional. The specific layer to check status for. If not provided, uses the user's layer.
+        - include_children: Optional (true/false). When true, returns status for the specified layer and all its children.
         """
         form = self.get_object()
         assignment_id = request.query_params.get('assignment_id')
+        layer_id = request.query_params.get('layer_id')
+        include_children = request.query_params.get('include_children', '').lower() == 'true'
+        
         if not assignment_id:
             return Response({"error": "assignment_id query parameter is required."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -102,35 +110,106 @@ class ESGFormViewSet(viewsets.ModelViewSet):
         # --- UPDATED PERMISSION CHECK --- 
         # Check user has access to the assignment's layer OR parent/child layers
         user_accessible_layers = get_user_layers_and_parents_ids(request.user)
-        is_admin = getattr(request.user, 'is_baker_tilly_admin', False)
+        is_admin = getattr(request.user, 'is_baker_tilly_admin', False) or request.user.is_superuser or request.user.is_staff
         
         if not is_admin and assignment.layer_id not in user_accessible_layers:
             return Response({"detail": "You do not have permission for this assignment's layer."}, status=status.HTTP_403_FORBIDDEN)
         # --- END UPDATED CHECK --- 
 
-        # Get the user's layer for layer-specific completion status
-        user_layer = None
-        if not is_admin:
-            app_user = AppUser.objects.filter(user=request.user).first()
-            if app_user:
-                user_layer = app_user.layer
-            else:
-                # Fallback to assignment layer if user has no AppUser record
-                user_layer = assignment.layer
+        # Determine the target layer(s) to check
+        target_layer = None
+        if layer_id:
+            # If layer_id is specified, verify access and use it
+            try:
+                target_layer = LayerProfile.objects.get(pk=layer_id)
+                # Check if user has access to the specified layer
+                if not is_admin and not has_layer_access(request.user, target_layer.id):
+                    return Response({"detail": f"You do not have permission to access layer {target_layer.id}."}, 
+                                  status=status.HTTP_403_FORBIDDEN)
+            except LayerProfile.DoesNotExist:
+                return Response({"error": f"Layer with ID {layer_id} not found."}, 
+                              status=status.HTTP_404_NOT_FOUND)
         else:
-            # For admins, show status for the assignment's layer
-            user_layer = assignment.layer
+            # No layer_id provided, use the user's layer
+            if not is_admin:
+                app_user = AppUser.objects.filter(user=request.user).first()
+                if app_user:
+                    target_layer = app_user.layer
+                else:
+                    # Fallback to assignment layer if user has no AppUser record
+                    target_layer = assignment.layer
+            else:
+                # For admins, show status for the assignment's layer by default
+                target_layer = assignment.layer
 
-        # Get the form completion status from the database
+        # Get the TemplateFormSelection for this form in this template
         try:
             selection = TemplateFormSelection.objects.get(template=assignment.template, form=form)
+        except TemplateFormSelection.DoesNotExist:
+            # If no selection exists, it implies the form isn't part of the template
+            return Response({
+                "form_id": form.pk,
+                "form_name": form.name,
+                "form_code": form.code,
+                "assignment_id": assignment.pk,
+                "error": "This form is not part of the template for this assignment."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Handle include_children parameter
+        if include_children:
+            # Get all child layers if include_children is true
+            # First identify the layer type to know what relationships to follow
+            results = []
             
-            # Now get the FormCompletionStatus for this assignment, form and specific layer
+            # If specified layer is a Group, include all subsidiaries and branches
+            if target_layer.layer_type == 'GROUP':
+                # First add the group itself
+                group_status = self._get_layer_completion_status(selection, assignment, target_layer)
+                results.append(group_status)
+                
+                # Get subsidiaries under this group
+                for subsidiary in target_layer.subsidiaries.all():
+                    sub_status = self._get_layer_completion_status(selection, assignment, subsidiary)
+                    results.append(sub_status)
+                    
+                    # Get branches under this subsidiary
+                    for branch in subsidiary.branches.all():
+                        branch_status = self._get_layer_completion_status(selection, assignment, branch)
+                        results.append(branch_status)
+            
+            # If specified layer is a Subsidiary, include all branches
+            elif target_layer.layer_type == 'SUBSIDIARY':
+                # First add the subsidiary itself
+                sub_status = self._get_layer_completion_status(selection, assignment, target_layer)
+                results.append(sub_status)
+                
+                # Get branches under this subsidiary
+                for branch in target_layer.branches.all():
+                    branch_status = self._get_layer_completion_status(selection, assignment, branch)
+                    results.append(branch_status)
+            
+            # If specified layer is a Branch, just include itself
+            else:
+                branch_status = self._get_layer_completion_status(selection, assignment, target_layer)
+                results.append(branch_status)
+            
+            # Return the full hierarchy results
+            return Response({
+                "form_id": form.pk,
+                "form_name": form.name,
+                "form_code": form.code,
+                "assignment_id": assignment.pk,
+                "assignment_status": assignment.get_status_display(),
+                "layers": results
+            })
+        else:
+            # Handle single layer case (original behavior)
+            # Get the FormCompletionStatus for this assignment, form and specific layer
             try:
                 form_status = FormCompletionStatus.objects.get(
                     form_selection=selection,
                     assignment=assignment,
-                    layer=user_layer  # Use layer-specific status
+                    layer=target_layer
                 )
                 is_completed = form_status.is_completed
                 completed_at = form_status.completed_at
@@ -141,24 +220,44 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 completed_at = None
                 completed_by_email = None
                 
-        except TemplateFormSelection.DoesNotExist:
-            # If no selection exists, it implies the form isn't part of the template
+            return Response({
+                "form_id": form.pk,
+                "form_name": form.name,
+                "form_code": form.code,
+                "assignment_id": assignment.pk,
+                "is_completed": is_completed,
+                "completed_at": completed_at,
+                "completed_by": completed_by_email,
+                "layer_id": target_layer.id,
+                "layer_name": target_layer.company_name,
+                "assignment_status": assignment.get_status_display()
+            })
+
+    def _get_layer_completion_status(self, form_selection, assignment, layer):
+        """Helper method to get completion status for a specific layer."""
+        try:
+            form_status = FormCompletionStatus.objects.get(
+                form_selection=form_selection,
+                assignment=assignment,
+                layer=layer
+            )
+            is_completed = form_status.is_completed
+            completed_at = form_status.completed_at
+            completed_by_email = form_status.completed_by.email if form_status.completed_by else None
+        except FormCompletionStatus.DoesNotExist:
+            # If no status exists, it implies the form hasn't been marked completed
             is_completed = False
             completed_at = None
             completed_by_email = None
-
-        return Response({
-            "form_id": form.pk,
-            "form_name": form.name,
-            "form_code": form.code,
-            "assignment_id": assignment.pk,
+        
+        return {
+            "layer_id": layer.id,
+            "layer_name": layer.company_name,
+            "layer_type": layer.layer_type,
             "is_completed": is_completed,
             "completed_at": completed_at,
-            "completed_by": completed_by_email,
-            "layer_id": user_layer.id,  # Add layer info to response
-            "layer_name": user_layer.company_name,
-            "assignment_status": assignment.get_status_display()
-        })
+            "completed_by": completed_by_email
+        }
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, BakerTillyAdmin])
     @transaction.atomic

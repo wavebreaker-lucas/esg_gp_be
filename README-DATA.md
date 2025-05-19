@@ -1493,6 +1493,53 @@ GET /api/esg-forms/{form_id}/check_completion/?assignment_id=1
 
 The check_completion endpoint now uses the FormCompletionStatus model to check if a form is completed for a specific assignment, ensuring proper data isolation between different companies and reporting periods.
 
+##### Additional Parameters for Form Completion Status
+The check_completion endpoint now supports additional parameters:
+
+```json
+GET /api/esg-forms/{form_id}/check_completion/?assignment_id=1&layer_id=15&include_children=true
+
+// Response with hierarchy information
+{
+    "form_id": 2,
+    "form_name": "Resource Use",
+    "form_code": "HKEX-A2",
+    "assignment_id": 1,
+    "assignment_status": "IN_PROGRESS",
+    "layers": [
+        {
+            "layer_id": 15,
+            "layer_name": "Group A",
+            "layer_type": "GROUP",
+            "is_completed": true,
+            "completed_at": "2023-12-15T10:30:00Z",
+            "completed_by": "admin@example.com"
+        },
+        {
+            "layer_id": 16,
+            "layer_name": "Subsidiary X",
+            "layer_type": "SUBSIDIARY",
+            "is_completed": false,
+            "completed_at": null,
+            "completed_by": null
+        },
+        {
+            "layer_id": 17,
+            "layer_name": "Branch 1",
+            "layer_type": "BRANCH",
+            "is_completed": true,
+            "completed_at": "2023-12-14T14:45:00Z",
+            "completed_by": "user@example.com"
+        }
+    ]
+}
+```
+
+- `layer_id`: Optional. Specify a different layer's completion status to check (instead of the user's layer).
+- `include_children=true`: Optional. When set to true, returns completion status for the specified layer AND all its child layers.
+
+These parameters allow company administrators to check form completion status across their entire organizational hierarchy with a single API call.
+
 ##### Complete a Form
 ```json
 POST /api/esg-forms/{form_id}/simple_complete_form/
@@ -1545,7 +1592,7 @@ POST /api/esg-forms/{form_id}/simple_complete_form/
 
 The simple_complete_form endpoint creates or updates a FormCompletionStatus record for the specific assignment, providing a direct way to toggle completion status.
 
-## Uncompleting Forms (Admin Only)
+##### Uncomplete a Form (Admin Only)
 
 When an administrator uncompletes a form, the FormCompletionStatus record for the specific assignment is updated:
 
@@ -2040,6 +2087,53 @@ GET /api/esg-forms/{form_id}/check_completion/?assignment_id=1
 ```
 
 The check_completion endpoint returns the completion status specific to the requesting user's layer, enabling proper data isolation between different entities in the hierarchy.
+
+##### Additional Parameters for Form Completion Status
+The check_completion endpoint now supports additional parameters:
+
+```json
+GET /api/esg-forms/{form_id}/check_completion/?assignment_id=1&layer_id=15&include_children=true
+
+// Response with hierarchy information
+{
+    "form_id": 2,
+    "form_name": "Resource Use",
+    "form_code": "HKEX-A2",
+    "assignment_id": 1,
+    "assignment_status": "IN_PROGRESS",
+    "layers": [
+        {
+            "layer_id": 15,
+            "layer_name": "Group A",
+            "layer_type": "GROUP",
+            "is_completed": true,
+            "completed_at": "2023-12-15T10:30:00Z",
+            "completed_by": "admin@example.com"
+        },
+        {
+            "layer_id": 16,
+            "layer_name": "Subsidiary X",
+            "layer_type": "SUBSIDIARY",
+            "is_completed": false,
+            "completed_at": null,
+            "completed_by": null
+        },
+        {
+            "layer_id": 17,
+            "layer_name": "Branch 1",
+            "layer_type": "BRANCH",
+            "is_completed": true,
+            "completed_at": "2023-12-14T14:45:00Z",
+            "completed_by": "user@example.com"
+        }
+    ]
+}
+```
+
+- `layer_id`: Optional. Specify a different layer's completion status to check (instead of the user's layer).
+- `include_children=true`: Optional. When set to true, returns completion status for the specified layer AND all its child layers.
+
+These parameters allow company administrators to check form completion status across their entire organizational hierarchy with a single API call.
 
 #### Mark a Form as Complete or Incomplete
 ```json
