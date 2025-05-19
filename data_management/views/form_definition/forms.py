@@ -167,23 +167,24 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 group_status = self._get_layer_completion_status(selection, assignment, target_layer)
                 results.append(group_status)
                 
-                # Get subsidiaries under this group - use the correct reverse relation name
-                subsidiaries = LayerProfile.objects.filter(
-                    layer_type='SUBSIDIARY', 
-                    subsidiarylayer__group_layer__layer=target_layer
-                )
-                for subsidiary in subsidiaries:
-                    sub_status = self._get_layer_completion_status(selection, assignment, subsidiary)
-                    results.append(sub_status)
-                    
-                    # Get branches under this subsidiary - use the correct reverse relation name
-                    branches = LayerProfile.objects.filter(
-                        layer_type='BRANCH',
-                        branchlayer__subsidiary_layer__layer=subsidiary
-                    )
-                    for branch in branches:
-                        branch_status = self._get_layer_completion_status(selection, assignment, branch)
-                        results.append(branch_status)
+                # Get subsidiaries - a group layer has subsidiaries
+                from ...models import SubsidiaryLayer
+                group_layer = getattr(target_layer, 'grouplayer', None)
+                if group_layer:
+                    # Get subsidiaries where this group is the parent
+                    subsidiary_layers = SubsidiaryLayer.objects.filter(group_layer=group_layer)
+                    for sub_layer in subsidiary_layers:
+                        subsidiary = sub_layer.layer
+                        sub_status = self._get_layer_completion_status(selection, assignment, subsidiary)
+                        results.append(sub_status)
+                        
+                        # Get branches - a subsidiary has branches
+                        from ...models import BranchLayer
+                        branch_layers = BranchLayer.objects.filter(subsidiary_layer=sub_layer)
+                        for branch_layer in branch_layers:
+                            branch = branch_layer.layer
+                            branch_status = self._get_layer_completion_status(selection, assignment, branch)
+                            results.append(branch_status)
             
             # If specified layer is a Subsidiary, include all branches
             elif target_layer.layer_type == 'SUBSIDIARY':
@@ -191,14 +192,15 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 sub_status = self._get_layer_completion_status(selection, assignment, target_layer)
                 results.append(sub_status)
                 
-                # Get branches under this subsidiary - use the correct reverse relation name
-                branches = LayerProfile.objects.filter(
-                    layer_type='BRANCH',
-                    branchlayer__subsidiary_layer__layer=target_layer
-                )
-                for branch in branches:
-                    branch_status = self._get_layer_completion_status(selection, assignment, branch)
-                    results.append(branch_status)
+                # Get branches - a subsidiary has branches
+                from ...models import BranchLayer
+                subsidiary_layer = getattr(target_layer, 'subsidiarylayer', None)
+                if subsidiary_layer:
+                    branch_layers = BranchLayer.objects.filter(subsidiary_layer=subsidiary_layer)
+                    for branch_layer in branch_layers:
+                        branch = branch_layer.layer
+                        branch_status = self._get_layer_completion_status(selection, assignment, branch)
+                        results.append(branch_status)
             
             # If specified layer is a Branch, just include itself
             else:
