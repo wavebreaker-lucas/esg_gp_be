@@ -167,13 +167,21 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 group_status = self._get_layer_completion_status(selection, assignment, target_layer)
                 results.append(group_status)
                 
-                # Get subsidiaries under this group
-                for subsidiary in target_layer.subsidiaries.all():
+                # Get subsidiaries under this group - use the correct reverse relation name
+                subsidiaries = LayerProfile.objects.filter(
+                    layer_type='SUBSIDIARY', 
+                    subsidiarylayer__group_layer__layer=target_layer
+                )
+                for subsidiary in subsidiaries:
                     sub_status = self._get_layer_completion_status(selection, assignment, subsidiary)
                     results.append(sub_status)
                     
-                    # Get branches under this subsidiary
-                    for branch in subsidiary.branches.all():
+                    # Get branches under this subsidiary - use the correct reverse relation name
+                    branches = LayerProfile.objects.filter(
+                        layer_type='BRANCH',
+                        branchlayer__subsidiary_layer__layer=subsidiary
+                    )
+                    for branch in branches:
                         branch_status = self._get_layer_completion_status(selection, assignment, branch)
                         results.append(branch_status)
             
@@ -183,8 +191,12 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 sub_status = self._get_layer_completion_status(selection, assignment, target_layer)
                 results.append(sub_status)
                 
-                # Get branches under this subsidiary
-                for branch in target_layer.branches.all():
+                # Get branches under this subsidiary - use the correct reverse relation name
+                branches = LayerProfile.objects.filter(
+                    layer_type='BRANCH',
+                    branchlayer__subsidiary_layer__layer=target_layer
+                )
+                for branch in branches:
                     branch_status = self._get_layer_completion_status(selection, assignment, branch)
                     results.append(branch_status)
             
