@@ -43,11 +43,12 @@ class ESGMetricSubmissionFilter(django_filters.FilterSet):
     metric = django_filters.NumberFilter(field_name='metric', lookup_expr='exact')
     reporting_period = django_filters.DateFilter(field_name='reporting_period', lookup_expr='exact')
     is_verified = django_filters.BooleanFilter(field_name='is_verified')
+    layer_id = django_filters.NumberFilter(field_name='layer_id', lookup_expr='exact')
 
     class Meta:
         model = ESGMetricSubmission
         # UPDATE fields list to use new names
-        fields = ['assignment_id', 'metric', 'form_id', 'reporting_period', 'is_verified']
+        fields = ['assignment_id', 'metric', 'form_id', 'reporting_period', 'is_verified', 'layer_id']
 
 class ESGMetricSubmissionViewSet(viewsets.ModelViewSet):
     """
