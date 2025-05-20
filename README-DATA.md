@@ -1075,15 +1075,16 @@ These endpoints provide access to the vehicle and fuel type data needed for spec
 These endpoints provide the necessary data for dropdowns and selection fields in the user interface when working with vehicle tracking and fuel consumption metrics.
 
 ### ESG Metric Submission Endpoints (`/api/metric-submissions/`)
-Manages the **raw input headers** (`ESGMetricSubmission` model) and their linked specific data.
 
+**Main API Endpoints:**
 - `GET /api/metric-submissions/`: List accessible submission *headers*. Response now includes `submission_data` field containing nested specific data based on metric type.
+  - **Filter Options**: Supports filtering by `assignment_id`, `form_id`, `metric`, `reporting_period`, `is_verified`, and `layer_id` parameters.
 - `POST /api/metric-submissions/`: Submit a single metric input. Payload requires `metric` (BaseESGMetric ID), `assignment`, and a specific data field matching the metric type (e.g., `basic_data`, `tabular_rows`). Triggers aggregation.
 - `GET /api/metric-submissions/{id}/`: Get details of a specific submission *header*. Response includes `submission_data` field.
 - `PUT /api/metric-submissions/{id}/`: Update a metric input header and its associated specific data (full replace for list data like tabular rows). Triggers aggregation.
 - `PATCH /api/metric-submissions/{id}/`: Partially update a metric input header (cannot partially update nested specific data easily with default implementation). Triggers aggregation.
 - `DELETE /api/metric-submissions/{id}/`: Delete a metric input header and its linked specific data. Triggers aggregation.
-- `GET /api/metric-submissions/by_assignment/?assignment_id={id}`: Get all submission *headers* for an assignment. Supports filtering. Response includes `submission_data`.
+- `GET /api/metric-submissions/by_assignment/?assignment_id={id}`: Get all submission *headers* for an assignment. Supports filtering by the same parameters as the main endpoint, including `form_id`, `layer_id`, `is_verified`, etc. Response includes `submission_data`.
 - `POST /api/metric-submissions/batch_submit/`: Submit multiple metric inputs at once. Payload requires `assignment_id` and a `submissions` list, where each item contains `metric` and a specific data field (e.g., `basic_data`). Triggers aggregation.
   - **Inheritance Support**: This endpoint now properly supports inherited assignments:
      - For the assignment, users only need access to the assignment (direct or inherited)
@@ -1094,6 +1095,73 @@ Manages the **raw input headers** (`ESGMetricSubmission` model) and their linked
 - `POST /api/metric-submissions/{id}/verify/`: Verify a *specific raw input header* (`ESGMetricSubmission`). (Baker Tilly admin only).
 - `GET /api/submissions/available-layers/`: Get layers accessible to the user.
 - `GET /api/submissions/sum-by-layer/`: Aggregate *raw inputs* by layer (reads from specific data models).
+
+#### Layer Filtering for Submissions
+
+The `/api/metric-submissions/` endpoint supports filtering by layer, allowing administrators and users to view submissions from specific organizational entities.
+
+**Key Capabilities:**
+- **Direct Layer Filtering**: Use `?layer_id={id}` to filter submissions by a specific layer.
+- **Combined Filtering**: Layer filtering can be combined with other parameters for precise querying:
+  ```
+  GET /api/metric-submissions/?assignment_id=5&form_id=2&layer_id=12
+  ```
+- **Permission-Based Access**: The endpoint respects the user's layer access permissions - users will only see submissions from layers they have access to.
+- **Admin View**: Baker Tilly admins or system administrators can use this filtering to view any layer's submissions.
+
+**Use Cases:**
+- Group admins viewing subsidiary/branch submissions
+- Comparing data across different organizational layers
+- Generating layer-specific reports and analytics
+
+```json
+// Example Response with Layer Information
+{
+  "id": 123,
+  "metric": 45,
+  "assignment": 5,
+  "reporting_period": "2023-12-31",
+  "submitted_by": "user@example.com",
+  "submitted_at": "2023-12-15T09:30:00Z",
+  "layer": {
+    "id": 12,
+    "name": "Hong Kong Office"
+  },
+  "submission_data": {
+    // Type-specific data depending on the metric type
+  }
+}
+```
+
+**Frontend Integration:**
+The `getSubmissionsByAssignment` function can utilize the layer filtering capability:
+
+```typescript
+export async function getSubmissionsByAssignment(
+  assignmentId: number, 
+  options?: {
+    formId?: number;
+    layerId?: number;  // Use this parameter to filter by layer
+    isVerified?: boolean;
+    submittedAfter?: string;
+    submittedBefore?: string;
+    sortBy?: string;
+    sortDirection?: 'asc' | 'desc';
+  }
+): Promise<MetricSubmission[]> {
+  let url = `/metric-submissions/?assignment_id=${assignmentId}`;
+  
+  if (options) {
+    if (options.formId) url += `&form_id=${options.formId}`;
+    if (options.layerId) url += `&layer_id=${options.layerId}`;
+    // other parameters...
+  }
+  
+  return fetchApi<MetricSubmission[]>(url);
+}
+```
+
+**Note:** For view-only access to subsidiary/branch data, simply use the appropriate layer_id parameter while maintaining the same assignment and form parameters.
 
 ### Reported Metric Value Endpoints (`/api/reported-metric-values/`)
 Provides **read-only access** to the final, calculated **aggregated metric records** (`ReportedMetricValue`).
