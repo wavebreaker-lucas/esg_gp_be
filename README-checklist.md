@@ -282,13 +282,13 @@ Different scoring methods are available:
 
 ### Planned Change: Exclude NA from Compliance Percentage Calculation
 
-> **Planned (not yet implemented):**
->
-> The compliance percentage calculation will be updated so that items marked as 'NA' (not applicable) are excluded from the denominator. This means compliance will be calculated as:
->
->     compliance_percentage = (YES responses) / (Total items - NA responses) * 100
->
-> This change will ensure that organizations are not penalized for checklist items that do not apply to them. The ESG rating and all compliance statistics will be based only on applicable items (YES/NO), not on NA or unanswered items. This is currently under review and will be implemented after client approval.
+Planned (not yet implemented):
+
+The compliance percentage calculation will be updated so that items marked as 'NA' (not applicable) are excluded from the denominator. This means compliance will be calculated as:
+
+    compliance_percentage = (YES responses) / (Total items - NA responses) * 100
+
+This change will ensure that organizations are not penalized for checklist items that do not apply to them. The ESG rating and all compliance statistics will be based only on applicable items (YES/NO), not on NA or unanswered items. This is currently under review and will be implemented after client approval.
 
 ## AI Report Generation
 

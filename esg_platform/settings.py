@@ -35,6 +35,7 @@ ALLOWED_HOSTS = [os.environ['WEBSITE_HOSTNAME']] if 'WEBSITE_HOSTNAME' in os.env
     'gpbe-dsftand5hzfnbxbb.eastasia-01.azurewebsites.net',
     'localhost',
     '127.0.0.1',
+    '169.254.130.3',  # Allow Azure health check IP
 ]
 
 CSRF_TRUSTED_ORIGINS = ['https://' + os.environ['WEBSITE_HOSTNAME']] if 'WEBSITE_HOSTNAME' in os.environ else [
