@@ -23,6 +23,7 @@ UNIT_TYPES = [
     ('MWh', 'Megawatt Hours'),
     ('m3', 'Cubic Meters'),
     ('tonnes', 'Tonnes'),
+    ('kg', 'Kilograms'),
     ('tCO2e', 'Tonnes CO2 Equivalent'),
     # Social
     ('person', 'Person'),
