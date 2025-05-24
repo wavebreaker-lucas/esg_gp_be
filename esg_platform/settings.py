@@ -38,6 +38,7 @@ ALLOWED_HOSTS += [
     'gpbe-dsftand5hzfnbxbb.eastasia-01.azurewebsites.net',
     'localhost',
     '127.0.0.1',
+    '169.254.130.2',  # Allow Azure health check IP
     '169.254.130.3',  # Allow Azure health check IP
 ]
 
