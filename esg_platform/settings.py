@@ -206,17 +206,16 @@ STORAGES = {
             "azure_ssl": True,
         },
     },
-    # Optionally, configure static files as well:
-    # "staticfiles": {
-    #     "BACKEND": "storages.backends.azure_storage.AzureStorage",
-    #     "OPTIONS": {
-    #         "account_name": os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore'),
-    #         "account_key": os.getenv('AZURE_STORAGE_ACCOUNT_KEY'),
-    #         "azure_container": os.getenv('AZURE_STORAGE_CONTAINER', 'esg-static'),
-    #         "custom_domain": f"{os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore')}.blob.core.windows.net",
-    #         "azure_ssl": True,
-    #     },
-    # },
+    "staticfiles": {
+        "BACKEND": "storages.backends.azure_storage.AzureStorage",
+        "OPTIONS": {
+            "account_name": os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore'),
+            "account_key": os.getenv('AZURE_STORAGE_ACCOUNT_KEY'),
+            "azure_container": os.getenv('AZURE_STORAGE_CONTAINER', 'esg-static'),
+            "custom_domain": f"{os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore')}.blob.core.windows.net",
+            "azure_ssl": True,
+        },
+    },
 }
 
 # Default primary key field type
