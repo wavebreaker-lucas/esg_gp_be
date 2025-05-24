@@ -31,7 +31,10 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = [os.environ['WEBSITE_HOSTNAME']] if 'WEBSITE_HOSTNAME' in os.environ else [
+ALLOWED_HOSTS = []
+if 'WEBSITE_HOSTNAME' in os.environ:
+    ALLOWED_HOSTS.append(os.environ['WEBSITE_HOSTNAME'])
+ALLOWED_HOSTS += [
     'gpbe-dsftand5hzfnbxbb.eastasia-01.azurewebsites.net',
     'localhost',
     '127.0.0.1',
