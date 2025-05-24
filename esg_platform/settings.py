@@ -190,8 +190,8 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # File upload settings - increase from default 2.5MB
-FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20MB
-DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15MB
 
 # Azure Blob Storage Configuration (Django 4.2+ STORAGES setting)
 # DEFAULT_FILE_STORAGE = 'data_management.services.storage.ESGAzureStorage'  # <-- Remove or comment out this line
