@@ -78,7 +78,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # Added for static file serving
+    # 'whitenoise.middleware.WhiteNoiseMiddleware',  # Removed for Azure static files
     'corsheaders.middleware.CorsMiddleware',  # Add CORS middleware at the top
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
