@@ -81,17 +81,13 @@ class UtilityBillAnalyzer:
             file_path = None
             
             try:
-                if hasattr(settings, 'USE_AZURE_STORAGE') and settings.USE_AZURE_STORAGE:
-                    # For Azure Blob Storage, download to a temporary file
+                # Always use a temporary file for compatibility with all storage backends
+                with evidence.file.open('rb') as fsrc:
                     temp_file = NamedTemporaryFile(delete=False, suffix=os.path.splitext(evidence.filename)[1])
-                    temp_file.write(evidence.file.read())
+                    temp_file.write(fsrc.read())
                     temp_file.close()
                     file_path = temp_file.name
-                    logger.info(f"Downloaded blob to temporary file: {file_path}")
-                else:
-                    # For local storage, use the file path directly
-                    file_path = evidence.file.path
-                    logger.info(f"Using local file path: {file_path}")
+                    logger.info(f"Downloaded file to temporary file: {file_path}")
                 
                 # Determine analyzer ID
                 analyzer_id = self.default_analyzer_id
@@ -100,14 +96,8 @@ class UtilityBillAnalyzer:
                 if evidence.intended_metric and evidence.intended_metric.ocr_analyzer_id:
                     analyzer_id = evidence.intended_metric.ocr_analyzer_id
                     logger.info(f"Using metric-specific analyzer: {analyzer_id}")
-                # # Old logic for submission metric - keep commented for reference if needed
-                # # if evidence.submission and evidence.submission.metric and evidence.submission.metric.ocr_analyzer_id:
-                # #    analyzer_id = evidence.submission.metric.ocr_analyzer_id
-                # #    logger.info(f"Using metric-specific analyzer: {analyzer_id}")
-                # Check standalone evidence using intended_metric field
                 elif evidence.intended_metric_id:
                     try:
-                        # We need to get the metric using the new BaseESGMetric
                         metric = BaseESGMetric.objects.get(id=evidence.intended_metric_id)
                         if metric.ocr_analyzer_id:
                             analyzer_id = metric.ocr_analyzer_id
