@@ -201,7 +201,7 @@ STORAGES = {
         "OPTIONS": {
             "account_name": os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore'),
             "account_key": os.getenv('AZURE_STORAGE_ACCOUNT_KEY'),
-            "azure_container": os.getenv('AZURE_STORAGE_CONTAINER', 'esg-evidence'),
+            "azure_container": os.getenv('AZURE_MEDIA_CONTAINER', 'esg-evidence'),
             "custom_domain": f"{os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore')}.blob.core.windows.net",
             "azure_ssl": True,
         },
@@ -211,7 +211,7 @@ STORAGES = {
         "OPTIONS": {
             "account_name": os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore'),
             "account_key": os.getenv('AZURE_STORAGE_ACCOUNT_KEY'),
-            "azure_container": os.getenv('AZURE_STORAGE_CONTAINER', 'esg-static'),
+            "azure_container": os.getenv('AZURE_STATIC_CONTAINER', 'esg-static'),
             "custom_domain": f"{os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore')}.blob.core.windows.net",
             "azure_ssl": True,
         },
