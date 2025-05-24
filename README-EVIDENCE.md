@@ -59,42 +59,13 @@ The evidence model has been updated with a layer field:
 ```python
 class ESGMetricEvidence(models.Model):
     # Standard evidence fields
-    ...
-    # Layer association
-    layer = models.ForeignKey(
-        LayerProfile, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True,
-        related_name='evidence_files',
-        help_text="The layer this evidence is from"
-    )
-    ...
-```
-
-## Key Components
-
-### Polymorphic Metric Enhancements (`BaseESGMetric`)
-- **Custom Analyzer ID**: Each polymorphic metric (`BaseESGMetric`) can have a specific `ocr_analyzer_id` to use a custom Azure Content Understanding analyzer tailored for specific utility bill formats.
-  ```python
-  class BaseESGMetric(PolymorphicModel):
-      # ... other fields ...
-      ocr_analyzer_id = models.CharField(
-          max_length=100, 
-          blank=True, 
-          null=True,
-          help_text="Custom Azure Form Recognizer model ID for evidence processing (if applicable)"
-      )
-  ```
-
-### ESGMetricEvidence Model
-The `ESGMetricEvidence` model has been enhanced with several OCR-related fields:
-```python
-class ESGMetricEvidence(models.Model):
-    # Standard evidence fields
     # NOTE: The direct submission ForeignKey has been removed.
     # Evidence is now linked via metadata (intended_metric, layer, period, source_identifier).
-    file = models.FileField(upload_to='esg_evidence/%Y/%m/')
+    #
+    # FILENAME STORAGE STRATEGY:
+    # Files are now stored with a UUID-based unique filename to avoid collisions and improve security.
+    # The folder structure remains date-based (esg_evidence/YYYY/MM/uuid.ext).
+    file = models.FileField(upload_to=evidence_upload_to)
     filename = models.CharField(max_length=255)
     file_type = models.CharField(max_length=50) # Added field
     uploaded_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)

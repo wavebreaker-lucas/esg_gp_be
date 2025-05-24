@@ -2,6 +2,9 @@ from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from accounts.models import CustomUser, LayerProfile
 from django.utils import timezone # Import timezone
+import uuid
+import os
+from datetime import datetime
 
 class ESGFormCategory(models.Model):
     """Categories for ESG disclosure forms (Environmental, Social, Governance)"""
@@ -277,7 +280,12 @@ class ESGMetricEvidence(models.Model):
     Supporting documentation for ESG metrics.
     Evidence is associated with metrics, layers, and sources via metadata rather than direct attachment.
     """
-    file = models.FileField(upload_to='esg_evidence/%Y/%m/')
+    def evidence_upload_to(instance, filename):
+        now = datetime.now()
+        ext = os.path.splitext(filename)[1]
+        unique_id = uuid.uuid4().hex
+        return f"esg_evidence/{now.year}/{now.month:02d}/{unique_id}{ext}"
+    file = models.FileField(upload_to=evidence_upload_to)
     filename = models.CharField(max_length=255)
     file_type = models.CharField(max_length=50)
     uploaded_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
