@@ -122,18 +122,37 @@ The `UtilityBillAnalyzer` service is responsible for processing utility bill evi
 
 ## File Storage Approach (Current)
 
-All evidence files uploaded to the ESG Platform are now stored **exclusively in Azure Blob Storage**. There is no fallback to local or temporary storage. This ensures:
+All evidence files uploaded to the ESG Platform are now stored **exclusively in Azure Blob Storage**. There is no fallback to local or temporary storage for persistent files. This ensures:
 - High durability and availability of evidence files
 - No risk of file loss during app restarts or redeployments
 - Centralized, secure, and scalable storage for all uploads
 
-### How It Works
-- When a user uploads evidence (e.g., via `POST /api/metric-evidence/`), the file is saved directly to Azure Blob Storage in the configured container (e.g., `esg-evidence`).
-- The Django backend uses the Azure Storage account name, account key, and container name, all provided via environment variables.
-- The storage backend generates secure, time-limited URLs for file access using SAS tokens.
+**Note:** The only exception is temporary files created during OCR processing, which are deleted immediately after use.
+
+### File Naming Strategy (UUID-based)
+
+To avoid filename collisions and improve security, all evidence files are saved with a UUID-based unique filename (preserving the original extension) in a date-based folder structure. Example path:
+
+```
+esg_evidence/2024/06/uuid4filename.pdf
+```
+
+**Code Example:**
+
+```python
+def evidence_upload_to(instance, filename):
+    import uuid
+    import os
+    from datetime import datetime
+    ext = os.path.splitext(filename)[1]
+    today = datetime.today()
+    return f"esg_evidence/{today.year}/{today.month:02d}/{uuid.uuid4()}{ext}"
+```
+
+This function is used as the `upload_to` argument for the `file` field in the `ESGMetricEvidence` model.
 
 ### Required Environment Variables
-To enable Azure Blob Storage, the following environment variables **must** be set in your Azure App Service configuration:
+To enable Azure Blob Storage, the following environment variables **must** be set in your Azure App Service configuration (not just in `.env`):
 
 - `AZURE_STORAGE_ACCOUNT_NAME` — The name of your Azure Storage account (e.g., `esgplatformstore`)
 - `AZURE_STORAGE_ACCOUNT_KEY` — The full access key for your storage account (not a connection string or SAS token)
@@ -141,7 +160,7 @@ To enable Azure Blob Storage, the following environment variables **must** be se
 
 **Note:**
 - The account key must be kept secure and up to date. If you rotate keys, update the app settings and restart the service.
-- No evidence files are stored on the local filesystem or `/tmp` directories.
+- No evidence files are stored on the local filesystem or `/tmp` directories except for temporary OCR processing.
 
 ### Security
 - Anonymous access to the blob container is disabled.
@@ -406,10 +425,11 @@ python manage.py test_ocr 123 --format json
 2. **Always specify the intended metric (`metric_id`)** when uploading to set the `intended_metric` field correctly.
 3. **Specify the correct `layer_id`** for organizational context.
 4. **Use `source_identifier`** when applicable for the metric type.
-5. **Enable OCR for utility bills** where appropriate.
-6. **Review OCR results** for accuracy.
-7. **Explicitly apply OCR data to specific submissions** using the `apply_ocr` endpoint when needed. Never assume automatic application of OCR *values* to submission *data*.
-8. **Set appropriate `ocr_analyzer_id`** on `BaseESGMetric` instances for custom OCR models.
+5. **Use `target_vehicle_id` or `target_fuel_source_id`** for direct linking when relevant.
+6. **Enable OCR for utility bills** where appropriate.
+7. **Review OCR results** for accuracy.
+8. **Explicitly apply OCR data to specific submissions** using the `apply_ocr` endpoint when needed. Never assume automatic application of OCR *values* to submission *data*.
+9. **Set appropriate `ocr_analyzer_id`** on `BaseESGMetric` instances for custom OCR models.
 
 ## Technical Implementation Details
 
@@ -440,6 +460,8 @@ Evidence files are associated with metrics and submission context using metadata
 2. **`layer`**: ForeignKey to `LayerProfile` indicating the organizational unit.
 3. **`period` / `ocr_period`**: Date fields indicating the reporting period.
 4. **`source_identifier`**: A string for further context (e.g., facility name, meter ID).
+5. **`target_vehicle`**: (Optional) Direct link to a specific vehicle (see below).
+6. **`target_fuel_source`**: (Optional) Direct link to a specific fuel source (see below).
 
 When displaying evidence for a submission or finding supporting documents, the system queries `ESGMetricEvidence` filtering by these fields based on the corresponding fields in the `ESGMetricSubmission` record.
 
@@ -459,3 +481,23 @@ The system finds relevant evidence dynamically when needed:
 3. Via API endpoints like `GET /api/batch-evidence/?submission_ids=...`
 
 These mechanisms query the `ESGMetricEvidence` table using the `metric`, `layer`, `reporting_period`, and `source_identifier` from the submission(s) as filter criteria.
+
+## Direct Vehicle and Fuel Source Linking
+
+The system supports direct linking between evidence files and specific vehicles or fuel sources, providing a more precise way to associate supporting documentation with these records.
+
+### Vehicle Evidence
+- Evidence can be linked to a specific vehicle using the `target_vehicle` field.
+- To upload evidence for a vehicle, include `target_vehicle_id` in the upload request.
+- To retrieve evidence for a vehicle:
+  ```
+  GET /api/metric-evidence/by_vehicle/?vehicle_id=45&period=2024-06-30
+  ```
+
+### Fuel Source Evidence
+- Evidence can be linked to a specific fuel source using the `target_fuel_source` field.
+- To upload evidence for a fuel source, include `target_fuel_source_id` in the upload request.
+- To retrieve evidence for a fuel source, use a similar endpoint (if implemented) or filter by this field in the database.
+
+### Enhanced Evidence Finding
+- The `find_relevant_evidence()` function automatically merges vehicle/fuel source evidence with standard metadata-matching evidence for submissions of the appropriate metric type.
