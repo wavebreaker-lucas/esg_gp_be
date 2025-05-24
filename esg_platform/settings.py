@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'data_management',
     # 'dashboard',  # Removed - app has been deleted
     'utils',
+    'storages',
 ]
 
 MIDDLEWARE = [
@@ -188,25 +189,16 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20MB
 
-# Azure Blob Storage Configuration
-# Default to True in production environments, only allow False in development
-IS_PRODUCTION = os.environ.get('WEBSITE_HOSTNAME') is not None  # Check if running on Azure
-USE_AZURE_STORAGE = os.getenv('USE_AZURE_STORAGE', str(IS_PRODUCTION)) == 'True'
+# Azure Blob Storage Configuration (force always)
+DEFAULT_FILE_STORAGE = 'data_management.services.storage.ESGAzureStorage'
+AZURE_ACCOUNT_NAME = os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore')
+AZURE_ACCOUNT_KEY = os.getenv('AZURE_STORAGE_ACCOUNT_KEY')
+AZURE_CONTAINER = os.getenv('AZURE_STORAGE_CONTAINER', 'esg-evidence')
+AZURE_CUSTOM_DOMAIN = f'{AZURE_ACCOUNT_NAME}.blob.core.windows.net'
+AZURE_LOCATION = 'esg_evidence'
+AZURE_SSL = True
 
-if USE_AZURE_STORAGE:
-    INSTALLED_APPS += ['storages']
-    DEFAULT_FILE_STORAGE = 'data_management.services.storage.ESGAzureStorage'
-    AZURE_ACCOUNT_NAME = os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore')
-    AZURE_ACCOUNT_KEY = os.getenv('AZURE_STORAGE_ACCOUNT_KEY')
-    AZURE_CONTAINER = os.getenv('AZURE_STORAGE_CONTAINER', 'esg-evidence')
-    AZURE_CUSTOM_DOMAIN = f'{AZURE_ACCOUNT_NAME}.blob.core.windows.net'
-    AZURE_LOCATION = 'esg_evidence'
-    AZURE_SSL = True
-    
-    # Log storage configuration on startup for verification
-    print(f"Azure Blob Storage enabled with account {AZURE_ACCOUNT_NAME}")
-else:
-    print("WARNING: Using local file storage which is not recommended for production. Files in /tmp will be lost on deployment.")
+print(f"Azure Blob Storage enabled with account {AZURE_ACCOUNT_NAME}")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
