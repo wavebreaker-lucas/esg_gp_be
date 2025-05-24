@@ -193,16 +193,31 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20MB
 
-# Azure Blob Storage Configuration (force always)
-DEFAULT_FILE_STORAGE = 'data_management.services.storage.ESGAzureStorage'
-AZURE_ACCOUNT_NAME = os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore')
-AZURE_ACCOUNT_KEY = os.getenv('AZURE_STORAGE_ACCOUNT_KEY')
-AZURE_CONTAINER = os.getenv('AZURE_STORAGE_CONTAINER', 'esg-evidence')
-AZURE_CUSTOM_DOMAIN = f'{AZURE_ACCOUNT_NAME}.blob.core.windows.net'
-AZURE_LOCATION = 'esg_evidence'
-AZURE_SSL = True
-
-print(f"Azure Blob Storage enabled with account {AZURE_ACCOUNT_NAME}")
+# Azure Blob Storage Configuration (Django 4.2+ STORAGES setting)
+# DEFAULT_FILE_STORAGE = 'data_management.services.storage.ESGAzureStorage'  # <-- Remove or comment out this line
+STORAGES = {
+    "default": {
+        "BACKEND": "data_management.services.storage.ESGAzureStorage",
+        "OPTIONS": {
+            "account_name": os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore'),
+            "account_key": os.getenv('AZURE_STORAGE_ACCOUNT_KEY'),
+            "azure_container": os.getenv('AZURE_STORAGE_CONTAINER', 'esg-evidence'),
+            "custom_domain": f"{os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore')}.blob.core.windows.net",
+            "azure_ssl": True,
+        },
+    },
+    # Optionally, configure static files as well:
+    # "staticfiles": {
+    #     "BACKEND": "storages.backends.azure_storage.AzureStorage",
+    #     "OPTIONS": {
+    #         "account_name": os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore'),
+    #         "account_key": os.getenv('AZURE_STORAGE_ACCOUNT_KEY'),
+    #         "azure_container": os.getenv('AZURE_STORAGE_CONTAINER', 'esg-static'),
+    #         "custom_domain": f"{os.getenv('AZURE_STORAGE_ACCOUNT_NAME', 'esgplatformstore')}.blob.core.windows.net",
+    #         "azure_ssl": True,
+    #     },
+    # },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
