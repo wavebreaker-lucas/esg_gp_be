@@ -25,6 +25,7 @@ UNIT_TYPES = [
     ('tonnes', 'Tonnes'),
     ('kg', 'Kilograms'),
     ('tCO2e', 'Tonnes CO2 Equivalent'),
+    ('MJ', 'Megajoules'),
     # Social
     ('person', 'Person'),
     ('hours', 'Hours'),
@@ -43,7 +44,7 @@ FUEL_TYPE_CHOICES = [
     ('kerosene', 'Kerosene (in litre)'),
     ('natural_gas', 'Natural gas (in cubic meter)'),
     ('charcoal', 'Charcoal (in KG)'),
-    ('town_gas', 'Town gas (in KG)'),
+    ('town_gas', 'Town gas (in MJ)'),
     ('petrol', 'Petrol (in litre)'),
     ('unleaded_petrol', 'Unleaded petrol (in litre)'),
     ('refrigerant', 'Refrigerant/Blend'),
@@ -519,10 +520,10 @@ class VehicleTrackingMetric(BaseESGMetric):
     
     # Default fuel type choices - can be extended through admin
     DEFAULT_FUEL_TYPES = [
-        {"value": "diesel_oil", "label": "Diesel oil"},
-        {"value": "lpg", "label": "LPG"},
-        {"value": "petrol", "label": "Petrol"},
-        {"value": "unleaded_petrol", "label": "Unleaded petrol"},
+        {"value": "diesel_oil", "label": "Diesel oil", "unit": "litre"},
+        {"value": "lpg", "label": "LPG", "unit": "kg"},
+        {"value": "petrol", "label": "Petrol", "unit": "litre"},
+        {"value": "unleaded_petrol", "label": "Unleaded petrol", "unit": "litre"},
     ]
     
     # Default emission factor mapping - still using JSON for this complex mapping
@@ -770,7 +771,7 @@ class FuelConsumptionMetric(BaseESGMetric):
         {"value": "kerosene", "label": "Kerosene", "unit": "litre"},
         {"value": "natural_gas", "label": "Natural gas", "unit": "cubic meter"},
         {"value": "charcoal", "label": "Charcoal", "unit": "kg"},
-        {"value": "town_gas", "label": "Town gas", "unit": "kg"},
+        {"value": "town_gas", "label": "Town gas", "unit": "MJ"},
         {"value": "petrol", "label": "Petrol", "unit": "litre"},
         {"value": "unleaded_petrol", "label": "Unleaded petrol", "unit": "litre"},
         {"value": "refrigerant", "label": "Refrigerant/Blend", "unit": "kg"},
