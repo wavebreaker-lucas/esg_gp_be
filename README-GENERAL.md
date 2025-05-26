@@ -451,7 +451,6 @@ curl -X POST "http://localhost:8000/api/layers/" \
 
 ## Glossary
 
-- **ESG**: Environmental, Social, and Governance - A framework for evaluating organizations' sustainability and societal impact
 - **JWT**: JSON Web Token - A secure way to handle user authentication and information exchange
 - **OTP**: One-Time Password - A automatically generated code sent via email for additional security
 - **API**: Application Programming Interface - A set of rules that allow different software applications to communicate
