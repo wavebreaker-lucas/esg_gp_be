@@ -395,30 +395,6 @@ The admin interface has been updated to support the new vehicle linking:
 - Improved the evidence detail view to show associated vehicle information
 - Added raw_id_fields for easier vehicle selection
 
-## Testing OCR Processing
-
-For testing OCR processing without saving to the database, use the Django management command:
-
-```bash
-python manage.py test_ocr <evidence_id> [--save] [--format json|pretty]
-```
-
-Options:
-- `--save`: Save results to the database (default: don't save)
-- `--format`: Display format, either 'json' or 'pretty' (default: pretty)
-
-Example:
-```bash
-# Test processing without saving
-python manage.py test_ocr 123
-
-# Test and save results
-python manage.py test_ocr 123 --save
-
-# Output as JSON
-python manage.py test_ocr 123 --format json
-```
-
 ## Best Practices for Evidence Management
 
 1. **Always specify the reporting period (`period`)** when uploading evidence files.
