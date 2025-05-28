@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
-from django.db.models import Count, Sum
+from django.db.models import Count
 from ..permissions import BakerTillyAdmin
 from ..models import CustomUser, AppUser, GroupLayer, SubsidiaryLayer, BranchLayer, RoleChoices
 from ..serializers.models import GroupLayerSerializer, AppUserSerializer, SubsidiaryLayerSerializer, BranchLayerSerializer
