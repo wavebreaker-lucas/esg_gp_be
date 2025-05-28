@@ -5,7 +5,7 @@ This module provides optimized aggregation and formatting functions for dashboar
 """
 
 import logging
-from datetime import datetime, date
+from datetime import date
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 from django.db.models import Sum, Count, F, Q, Value, CharField
