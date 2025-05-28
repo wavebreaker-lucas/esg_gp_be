@@ -187,4 +187,5 @@ Emission factors are populated and maintained through management commands:
 *   **Unit Conversion Expansion:** Enhance the current unit conversion system to handle a wider range of units and conversions.
 *   **Testing:** Implement thorough testing for factor lookups, unit conversions, and calculation logic.
 *   **Admin Interface:** Develop admin interfaces for monitoring and triggering emissions calculations.
-*   **Additional Signals:** Implement similar signal triggers for pollutant and energy calculations once those services are implemented. 
+*   **Additional Signals:** Implement similar signal triggers for pollutant and energy calculations once those services are implemented.
+*   **Dashboard API Enhancement for Metric Location:** Modify dashboard service functions and API responses to explicitly include the metric's specific location (e.g., "PRC", "HK", "ALL" from `BaseESGMetric.location`) in aggregated results, allowing for breakdowns by these specific locations. 
