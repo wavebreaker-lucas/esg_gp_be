@@ -7,15 +7,15 @@ from django.contrib.contenttypes.models import ContentType
 import uuid
 from django.utils import timezone
 
-from .models import RoleChoices, LayerTypeChoices, GroupLayer, SubsidiaryLayer, LayerProfile, BranchLayer, AppUser, CustomUser
-from .utils import (
-    validate_password,
+from ..models import RoleChoices, LayerTypeChoices, GroupLayer, SubsidiaryLayer, LayerProfile, BranchLayer, AppUser, CustomUser
+from ..utils import (
+    validate_password, # This is also in utils, but keeping here if it was intended to be re-exported
     generate_otp_code,
     get_all_lower_layers,
     get_creator_layers,
     get_parent_layer
 )
-from .serializers.models import LayerProfileSerializer
+from ..serializers.models import LayerProfileSerializer
 
 # Common password list for security validation
 COMMON_PASSWORDS = {

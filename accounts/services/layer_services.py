@@ -1,19 +1,18 @@
 import logging
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied # Added PermissionDenied
 
-from accounts.models import (
+from ..models import (
     LayerProfile,
     GroupLayer,
     SubsidiaryLayer,
     BranchLayer,
-    LayerTypeChoices
+    LayerTypeChoices,
+    AppUser # Added AppUser import
 )
 from data_management.models import TemplateAssignment
-# Assuming get_accessible_layers and has_layer_access are in accounts/services.py
-# If accounts.services is a package, the import might need adjustment.
-# For now, assuming they can be imported directly if services.py is in the accounts app.
-from accounts.services import get_accessible_layers as get_user_accessible_layer_profiles_qs
-from accounts.services import has_layer_access
+# Corrected imports to point to .core within the same package
+from .core import get_accessible_layers as get_user_accessible_layer_profiles_qs
+from .core import has_layer_access
 
 logger = logging.getLogger(__name__)
 
