@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime
 import logging
-from django.db.models import Sum, F
+from django.db.models import Sum
 from django.db import models
 from django.core.exceptions import ObjectDoesNotExist
 
