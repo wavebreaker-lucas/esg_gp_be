@@ -17,7 +17,12 @@ from .views.fuel_data import FuelSourceTypeViewSet, StationaryFuelTypeViewSet
 # Import the metrics view separately (or adjust above import)
 from .views.form_definition import metrics as metric_views
 # Import dashboard API views
-from .views.dashboard_api import total_emissions_api, emissions_time_series_api, vehicle_emissions_breakdown_api
+from .views.dashboard_api import (
+    total_emissions_api, 
+    emissions_time_series_api, 
+    vehicle_emissions_breakdown_api,
+    UnifiedViewableLayersView
+)
 from .views.checklist_reports import (
     generate_checklist_report, generate_combined_checklist_report,
     get_reports_by_submission, get_report_by_id, get_reports_by_layer,
@@ -75,4 +80,7 @@ urlpatterns += [
     path('checklist-reports/submission/<int:submission_id>/', get_reports_by_submission, name='get_reports_by_submission'),
     path('checklist-reports/<int:report_id>/', get_report_by_id, name='get_report_by_id'),
     path('checklist-reports/layer/<int:layer_id>/', get_reports_by_layer, name='get_reports_by_layer'),
+
+    # New Unified Dashboard Layers Endpoint
+    path('dashboard/viewable-layers/', UnifiedViewableLayersView.as_view(), name='dashboard-viewable-layers'),
 ] 

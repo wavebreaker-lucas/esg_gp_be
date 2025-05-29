@@ -14,6 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.views import APIView
 
 from ..services.dashboard import get_total_emissions, get_emissions_time_series, get_vehicle_emissions_breakdown
 from accounts.models import LayerTypeChoices
@@ -309,6 +310,4 @@ class UnifiedViewableLayersView(APIView):
         
         return Response(flat_layers_list)
 
-urlpatterns += [
-    path('dashboard/viewable-layers/', UnifiedViewableLayersView.as_view(), name='dashboard-viewable-layers'),
-] 
+# REMOVED THE INCORRECT urlpatterns manipulation from here 
