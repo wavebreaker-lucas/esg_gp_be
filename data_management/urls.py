@@ -68,6 +68,8 @@ urlpatterns += [
     path('dashboard/total-emissions/', total_emissions_api, name='dashboard-total-emissions'),
     path('dashboard/emissions-time-series/', emissions_time_series_api, name='dashboard-emissions-time-series'),
     path('dashboard/vehicle-emissions/', vehicle_emissions_breakdown_api, name='dashboard-vehicle-emissions'),
+    path('dashboard/viewable-layers/', UnifiedViewableLayersView.as_view(), name='data-management-viewable-layers'),
+    path('dashboard/viewable-layers-test/', viewable_layers_simple_api, name='data-management-viewable-layers-test'),
 
     # Checklist Reports
     path('checklist-reports/generate/', generate_checklist_report, name='generate_checklist_report'),
@@ -81,8 +83,4 @@ urlpatterns += [
     path('checklist-reports/submission/<int:submission_id>/', get_reports_by_submission, name='get_reports_by_submission'),
     path('checklist-reports/<int:report_id>/', get_report_by_id, name='get_report_by_id'),
     path('checklist-reports/layer/<int:layer_id>/', get_reports_by_layer, name='get_reports_by_layer'),
-
-    # Dashboard endpoints
-    path('dashboard/viewable-layers/', UnifiedViewableLayersView.as_view(), name='data-management-viewable-layers'),
-    path('dashboard/viewable-layers-test/', viewable_layers_simple_api, name='data-management-viewable-layers-test'),
 ] 
