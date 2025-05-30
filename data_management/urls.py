@@ -12,7 +12,7 @@ from .views import (
     ReportedMetricValueViewSet,
     VehicleTypeViewSet, FuelTypeViewSet,
     total_emissions_api, emissions_time_series_api, vehicle_emissions_breakdown_api,
-    UnifiedViewableLayersView, viewable_layers_simple_api
+    UnifiedViewableLayersView
 )
 # Import fuel data views
 from .views.fuel_data import FuelSourceTypeViewSet, StationaryFuelTypeViewSet
@@ -64,7 +64,6 @@ urlpatterns += [
     path('dashboard/emissions-time-series/', emissions_time_series_api, name='dashboard-emissions-time-series'),
     path('dashboard/vehicle-emissions/', vehicle_emissions_breakdown_api, name='dashboard-vehicle-emissions'),
     path('dashboard/viewable-layers/', UnifiedViewableLayersView.as_view(), name='data-management-viewable-layers'),
-    path('dashboard/viewable-layers-test/', viewable_layers_simple_api, name='data-management-viewable-layers-test'),
 
     # Checklist Reports
     path('checklist-reports/generate/', generate_checklist_report, name='generate_checklist_report'),

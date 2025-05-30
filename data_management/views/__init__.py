@@ -18,7 +18,7 @@ from .submissions import (
 # Import from dashboard_api module
 from .dashboard_api import (
     total_emissions_api, emissions_time_series_api, vehicle_emissions_breakdown_api,
-    UnifiedViewableLayersView, viewable_layers_simple_api
+    UnifiedViewableLayersView
 )
 
 # Import from templates package
@@ -53,8 +53,6 @@ __all__ = [
     'total_emissions_api',
     'emissions_time_series_api',
     'vehicle_emissions_breakdown_api',
-    'viewable_layers_simple_api',
-    # 'AggregatedMetricDataView', # Commented out
     'get_required_submission_count',
     'attach_evidence_to_submissions',
 ] 
