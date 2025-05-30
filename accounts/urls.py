@@ -18,6 +18,12 @@ router = DefaultRouter()
 router.register(r'layers', LayerProfileViewSet, basename='layer-profile')  # /api/layers/
 router.register(r'app_users', AppUserViewSet, basename='app-user')  # /api/app_users/
 
+# DEBUG: Print the router patterns
+print("--- DEBUG: Router URL patterns ---")
+for pattern in router.urls:
+    print(f"Pattern: {pattern.pattern}")
+print("--- END DEBUG ---")
+
 # URL patterns including both ViewSet URLs and regular views
 urlpatterns = [
     # Baker Tilly Admin endpoints

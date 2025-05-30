@@ -129,6 +129,7 @@ class LayerProfileViewSet(ViewSet, CSVExportMixin, ErrorHandlingMixin):
 
     def retrieve(self, request, pk=None):
         """Get a specific layer by ID"""
+        print(f"--- DEBUG: LayerProfileViewSet.retrieve called with pk='{pk}' ---")  # DEBUG LINE
         try:
             user = request.user
             cache_key = f'layer_detail_{pk}_{user.id}'

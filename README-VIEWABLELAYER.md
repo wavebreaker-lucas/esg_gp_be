@@ -6,7 +6,7 @@ This document outlines the implementation of the `UnifiedViewableLayersView` end
 
 **Objective:** Provide a single, consistent API endpoint for frontend features (Dashboard, Submission Status, Submission Viewing) to fetch a list of viewable layers/entities based on user role and context.
 
-**Endpoint:** `GET /api/data_management/viewable-layers/`
+**Endpoint:** `GET /api/viewable-layers/`
 
 **View Class:** `data_management.views.dashboard_api.UnifiedViewableLayersView`
 
@@ -20,7 +20,7 @@ This document outlines the implementation of the `UnifiedViewableLayersView` end
     *   `get_full_group_layer_data(group_id)`: Service function that fetches the complete hierarchical data for a given `group_id` (Group, its Subsidiaries, and their Branches). Used for Baker Tilly Admin "View As" scenario. Returns raw model instances in a structured dictionary.
     *   `get_user_accessible_layer_data(user, assignment_id=None)`: Service function that fetches specific layer model instances accessible to the given `user`, optionally filtered by the context of a `TemplateAssignment` (including its relevant parents, children, and grandchildren). Used for Company Admins and other non-BT Admin roles, or BT Admins not using "View As".
 
-**Query Parameters for `GET /api/data_management/viewable-layers/`:**
+**Query Parameters for `GET /api/viewable-layers/`:**
 
 *   `view_as_group_id` (integer, optional):
     *   **Target User:** Baker Tilly Admins.
@@ -66,7 +66,7 @@ The list is sorted by layer type (Group, then Subsidiary, then Branch) and then 
 
 **Frontend Responsibility (Phase 3 - To be done by Frontend Team):**
 
-*   Update UI features (Dashboard, Submission Status, Submission Viewing) to call `GET /api/data_management/viewable-layers/`.
+*   Update UI features (Dashboard, Submission Status, Submission Viewing) to call `GET /api/viewable-layers/`.
 *   Pass `view_as_group_id` when a Baker Tilly Admin is "Viewing As" a specific group.
 *   Pass `assignment_id` when the context is specific to a `TemplateAssignment` for non-BT Admin users.
 *   Process the returned flat list (using `id` and `parentId`) to render the layer hierarchy or list as needed.
