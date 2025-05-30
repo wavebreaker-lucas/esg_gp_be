@@ -10,20 +10,15 @@ from .views import (
     BatchEvidenceView,
     AvailableLayersView, SumSubmissionsByLayerView, 
     ReportedMetricValueViewSet,
-    VehicleTypeViewSet, FuelTypeViewSet
+    VehicleTypeViewSet, FuelTypeViewSet,
+    total_emissions_api, emissions_time_series_api, vehicle_emissions_breakdown_api,
+    UnifiedViewableLayersView, viewable_layers_simple_api
 )
 # Import fuel data views
 from .views.fuel_data import FuelSourceTypeViewSet, StationaryFuelTypeViewSet
 # Import the metrics view separately (or adjust above import)
 from .views.form_definition import metrics as metric_views
-# Import dashboard API views
-from .views.dashboard_api import (
-    total_emissions_api, 
-    emissions_time_series_api, 
-    vehicle_emissions_breakdown_api,
-    UnifiedViewableLayersView,
-    viewable_layers_simple_api
-)
+# Import checklist reports views
 from .views.checklist_reports import (
     generate_checklist_report, generate_combined_checklist_report,
     get_reports_by_submission, get_report_by_id, get_reports_by_layer,

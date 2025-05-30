@@ -15,6 +15,12 @@ from .submissions import (
     ReportedMetricValueViewSet
 )
 
+# Import from dashboard_api module
+from .dashboard_api import (
+    total_emissions_api, emissions_time_series_api, vehicle_emissions_breakdown_api,
+    UnifiedViewableLayersView, viewable_layers_simple_api
+)
+
 # Import from templates package
 from .templates import TemplateViewSet, TemplateAssignmentView, UserTemplateAssignmentView, UserTemplateAssignmentStructureView
 
@@ -43,6 +49,11 @@ __all__ = [
     'ESGFormViewSet',
     'VehicleTypeViewSet',
     'FuelTypeViewSet',
+    'UnifiedViewableLayersView',
+    'total_emissions_api',
+    'emissions_time_series_api',
+    'vehicle_emissions_breakdown_api',
+    'viewable_layers_simple_api',
     # 'AggregatedMetricDataView', # Commented out
     'get_required_submission_count',
     'attach_evidence_to_submissions',
