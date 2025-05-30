@@ -81,6 +81,6 @@ urlpatterns += [
     path('checklist-reports/<int:report_id>/', get_report_by_id, name='get_report_by_id'),
     path('checklist-reports/layer/<int:layer_id>/', get_reports_by_layer, name='get_reports_by_layer'),
 
-    # Moved Unified Dashboard Layers Endpoint to a more general path
-    path('viewable-layers/', UnifiedViewableLayersView.as_view(), name='data-management-viewable-layers'),
+    # Dashboard endpoints
+    path('dashboard/viewable-layers/', UnifiedViewableLayersView.as_view(), name='data-management-viewable-layers'),
 ] 

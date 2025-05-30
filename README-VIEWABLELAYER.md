@@ -6,7 +6,7 @@ This document outlines the implementation of the `UnifiedViewableLayersView` end
 
 **Objective:** Provide a single, consistent API endpoint for frontend features (Dashboard, Submission Status, Submission Viewing) to fetch a list of viewable layers/entities based on user role and context.
 
-**Endpoint:** `GET /api/viewable-layers/`
+**Endpoint:** `GET /api/dashboard/viewable-layers/`
 
 **View Class:** `data_management.views.dashboard_api.UnifiedViewableLayersView`
 
