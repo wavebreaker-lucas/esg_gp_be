@@ -21,7 +21,8 @@ from .views.dashboard_api import (
     total_emissions_api, 
     emissions_time_series_api, 
     vehicle_emissions_breakdown_api,
-    UnifiedViewableLayersView
+    UnifiedViewableLayersView,
+    viewable_layers_simple_api
 )
 from .views.checklist_reports import (
     generate_checklist_report, generate_combined_checklist_report,
@@ -83,4 +84,5 @@ urlpatterns += [
 
     # Dashboard endpoints
     path('dashboard/viewable-layers/', UnifiedViewableLayersView.as_view(), name='data-management-viewable-layers'),
+    path('dashboard/viewable-layers-test/', viewable_layers_simple_api, name='data-management-viewable-layers-test'),
 ] 

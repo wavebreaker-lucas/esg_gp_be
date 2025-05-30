@@ -311,3 +311,13 @@ class UnifiedViewableLayersView(APIView):
         return Response(flat_layers_list)
 
 # REMOVED THE INCORRECT urlpatterns manipulation from here 
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def viewable_layers_simple_api(request):
+    """Simple function-based version for testing"""
+    try:
+        return Response([{'message': 'Simple viewable layers endpoint works!'}])
+    except Exception as e:
+        logger.error(f"Error in simple viewable layers: {e}", exc_info=True)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
