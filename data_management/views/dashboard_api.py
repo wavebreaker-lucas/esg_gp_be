@@ -15,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
+from django.db.models import Count, Q, Max
 
 from ..services.dashboard import get_total_emissions, get_emissions_time_series, get_vehicle_emissions_breakdown
 from accounts.models import LayerTypeChoices
@@ -24,7 +25,7 @@ from accounts.services.layer_services import (
     get_layer_parent_specific,
     get_specific_layer_instance
 )
-from data_management.models import TemplateAssignment
+from data_management.models import TemplateAssignment, ESGMetricSubmission, Template
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 
 logger = logging.getLogger(__name__)
@@ -220,22 +221,117 @@ def vehicle_emissions_breakdown_api(request):
 class UnifiedViewableLayersView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def _transform_to_flat_layer_dto(self, layer_instance, parent_id=None):
-        """Standardized output for a layer."""
+    def _get_assignment_metadata(self, layer_ids):
+        """
+        Get assignment and submission metadata for given layer IDs.
+        Returns a dict mapping layer_id to metadata in the frontend's desired format.
+        """
+        if not layer_ids:
+            return {}
+        
+        metadata_map = {}
+        
+        # Initialize all layers with default values
+        for layer_id in layer_ids:
+            metadata_map[layer_id] = {
+                'assignment_count': 0,
+                'active_templates': [],
+                'has_submissions': False,
+                'last_activity': None
+            }
+        
+        # Get active template assignments with template details
+        active_assignments = TemplateAssignment.objects.filter(
+            layer_id__in=layer_ids,
+            template__is_active=True
+        ).select_related('template').values(
+            'layer_id', 'template__id', 'template__name', 'status', 'assigned_at'
+        )
+        
+        # Get assignment counts per layer
+        assignment_counts = TemplateAssignment.objects.filter(
+            layer_id__in=layer_ids
+        ).values('layer_id').annotate(
+            count=Count('id'),
+            last_assigned=Max('assigned_at')
+        )
+        
+        # Check for submissions existence
+        submission_exists = ESGMetricSubmission.objects.filter(
+            layer_id__in=layer_ids
+        ).values('layer_id').annotate(
+            has_submissions=Count('id') > 0,
+            last_submission=Max('submitted_at')
+        )
+        
+        # Populate assignment counts
+        for item in assignment_counts:
+            layer_id = item['layer_id']
+            if layer_id in metadata_map:
+                metadata_map[layer_id]['assignment_count'] = item['count']
+                if item['last_assigned']:
+                    metadata_map[layer_id]['last_activity'] = item['last_assigned'].isoformat()
+        
+        # Populate active templates
+        for assignment in active_assignments:
+            layer_id = assignment['layer_id']
+            if layer_id in metadata_map:
+                metadata_map[layer_id]['active_templates'].append({
+                    'id': assignment['template__id'],
+                    'name': assignment['template__name'],
+                    'status': assignment['status']
+                })
+        
+        # Populate submission data
+        for item in submission_exists:
+            layer_id = item['layer_id']
+            if layer_id in metadata_map:
+                metadata_map[layer_id]['has_submissions'] = item['has_submissions']
+                # Update last_activity if submission is more recent
+                if item['last_submission']:
+                    submission_time = item['last_submission'].isoformat()
+                    current_last = metadata_map[layer_id]['last_activity']
+                    if not current_last or submission_time > current_last:
+                        metadata_map[layer_id]['last_activity'] = submission_time
+        
+        return metadata_map
+
+    def _transform_to_flat_layer_dto(self, layer_instance, parent_id=None, metadata=None):
+        """Standardized output for a layer in the frontend's desired format."""
         # Ensure we have the specific instance to access all common fields correctly
         # (company_name, company_location, layer_type are on LayerProfile and inherited)
         specific_layer = get_specific_layer_instance(layer_instance)
-        return {
+        
+        base_dto = {
             'id': specific_layer.pk, # Use .pk for consistency across specific/proxy
             'name': specific_layer.company_name,
             'type': specific_layer.layer_type,
             'location': specific_layer.company_location,
-            'parentId': parent_id
+            'parentId': parent_id,
+            'assignment_count': 0,
+            'active_templates': [],
+            'has_submissions': False,
+            'last_activity': None
         }
+        
+        # Add metadata if provided
+        if metadata and specific_layer.pk in metadata:
+            layer_metadata = metadata[specific_layer.pk]
+            base_dto.update({
+                'assignment_count': layer_metadata.get('assignment_count', 0),
+                'active_templates': layer_metadata.get('active_templates', []),
+                'has_submissions': layer_metadata.get('has_submissions', False),
+                'last_activity': layer_metadata.get('last_activity')
+            })
+        
+        return base_dto
 
     def get(self, request):
         view_as_group_id_str = request.query_params.get('view_as_group_id')
         assignment_id_str = request.query_params.get('assignment_id')
+        include_metadata = request.query_params.get('include_metadata', '').lower() == 'true'
+        filter_active_only = request.query_params.get('filter_active_only', '').lower() == 'true'
+        
         user = request.user
         
         # Check if the user is a Baker Tilly Admin.
@@ -243,6 +339,7 @@ class UnifiedViewableLayersView(APIView):
         is_bt_admin = hasattr(user, 'is_baker_tilly_admin') and user.is_baker_tilly_admin
 
         flat_layers_list = []
+        metadata_map = {}
 
         try:
             if is_bt_admin and view_as_group_id_str:
@@ -250,12 +347,23 @@ class UnifiedViewableLayersView(APIView):
                     group_id = int(view_as_group_id_str)
                     raw_group_data = get_full_group_layer_data(group_id) # Service raises DoesNotExist
 
-                    group_obj = raw_group_data['group']
-                    flat_layers_list.append(self._transform_to_flat_layer_dto(group_obj, None))
+                    # Collect all layer IDs for metadata query
+                    all_layer_ids = [raw_group_data['group'].pk]
                     for sub_obj, branches_list in raw_group_data.get('subsidiaries_with_branches', []):
-                        flat_layers_list.append(self._transform_to_flat_layer_dto(sub_obj, group_obj.pk))
+                        all_layer_ids.append(sub_obj.pk)
+                        all_layer_ids.extend([branch.pk for branch in branches_list])
+                    
+                    # Get metadata if requested
+                    if include_metadata:
+                        metadata_map = self._get_assignment_metadata(all_layer_ids)
+                    
+                    # Build response
+                    group_obj = raw_group_data['group']
+                    flat_layers_list.append(self._transform_to_flat_layer_dto(group_obj, None, metadata_map))
+                    for sub_obj, branches_list in raw_group_data.get('subsidiaries_with_branches', []):
+                        flat_layers_list.append(self._transform_to_flat_layer_dto(sub_obj, group_obj.pk, metadata_map))
                         for branch_obj in branches_list:
-                            flat_layers_list.append(self._transform_to_flat_layer_dto(branch_obj, sub_obj.pk))
+                            flat_layers_list.append(self._transform_to_flat_layer_dto(branch_obj, sub_obj.pk, metadata_map))
                 
                 except ValueError:
                     return Response({'error': 'Invalid view_as_group_id. Must be an integer.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -274,6 +382,11 @@ class UnifiedViewableLayersView(APIView):
                 
                 accessible_specific_layers = get_user_accessible_layer_data(user, assignment_id)
                 
+                # Get metadata if requested
+                if include_metadata:
+                    layer_ids = [layer.pk for layer in accessible_specific_layers]
+                    metadata_map = self._get_assignment_metadata(layer_ids)
+                
                 # Create a map of specific layer instances by their ID for quick parent lookup
                 # This is important if accessible_specific_layers doesn't guarantee parent presence
                 layer_map_for_parent_check = {layer.pk: layer for layer in accessible_specific_layers}
@@ -290,7 +403,15 @@ class UnifiedViewableLayersView(APIView):
                         # This check is more about constructing the hierarchy from *this* list.
                         if parent_specific_instance.pk in layer_map_for_parent_check:
                              parent_id = parent_specific_instance.pk
-                    flat_layers_list.append(self._transform_to_flat_layer_dto(layer_inst, parent_id))
+                    
+                    layer_dto = self._transform_to_flat_layer_dto(layer_inst, parent_id, metadata_map)
+                    
+                    # Apply filtering if requested
+                    if filter_active_only and include_metadata:
+                        if not (layer_dto.get('assignment_count', 0) > 0 or layer_dto.get('has_submissions', False)):
+                            continue
+                    
+                    flat_layers_list.append(layer_dto)
 
         except (ObjectDoesNotExist, TemplateAssignment.DoesNotExist) as e: # Catch specific DoesNotExist errors
             # Handle cases where GroupLayer, TemplateAssignment, or a specific layer for assignment is not found
