@@ -257,10 +257,10 @@ class UnifiedViewableLayersView(APIView):
         )
         
         # Check for submissions existence
-        submission_exists = ESGMetricSubmission.objects.filter(
+        submission_data = ESGMetricSubmission.objects.filter(
             layer_id__in=layer_ids
         ).values('layer_id').annotate(
-            has_submissions=Count('id') > 0,
+            submission_count=Count('id'),
             last_submission=Max('submitted_at')
         )
         
@@ -283,10 +283,10 @@ class UnifiedViewableLayersView(APIView):
                 })
         
         # Populate submission data
-        for item in submission_exists:
+        for item in submission_data:
             layer_id = item['layer_id']
             if layer_id in metadata_map:
-                metadata_map[layer_id]['has_submissions'] = item['has_submissions']
+                metadata_map[layer_id]['has_submissions'] = item['submission_count'] > 0
                 # Update last_activity if submission is more recent
                 if item['last_submission']:
                     submission_time = item['last_submission'].isoformat()
