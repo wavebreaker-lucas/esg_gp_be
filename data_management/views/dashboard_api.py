@@ -28,7 +28,7 @@ from accounts.services.layer_services import (
 from data_management.models import TemplateAssignment, ESGMetricSubmission, Template
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from accounts.services import get_user_layers_and_parents_ids
-from accounts.models import AppUser
+from accounts.models import AppUser, LayerProfile
 
 logger = logging.getLogger(__name__)
 
@@ -244,31 +244,41 @@ class UnifiedViewableLayersView(APIView):
             }
         
         # For inheritance logic, we need to understand which layers are direct vs inherited for each layer
+        # This should be based on layer hierarchy, not user permissions
         layer_inheritance_map = {}
         
-        if user and not getattr(user, 'is_baker_tilly_admin', False):
-            # For regular users, calculate inheritance for each layer
-            for layer_id in layer_ids:
-                # Get what assignments this layer can access (direct + inherited)
-                user_app_users = AppUser.objects.filter(user=user, layer_id=layer_id)
-                if user_app_users.exists():
-                    # This is the user's direct layer, get its accessible assignments
-                    accessible_layer_ids = get_user_layers_and_parents_ids(user)
-                    direct_layer_ids = {layer_id}  # Only this layer is direct
-                    
-                    layer_inheritance_map[layer_id] = {
-                        'accessible_layer_ids': accessible_layer_ids,
-                        'direct_layer_ids': direct_layer_ids
-                    }
-                else:
-                    # For Baker Tilly viewing a specific group, treat all as direct
-                    layer_inheritance_map[layer_id] = {
-                        'accessible_layer_ids': {layer_id},
-                        'direct_layer_ids': {layer_id}
-                    }
-        else:
-            # For Baker Tilly admins, all assignments are considered direct
-            for layer_id in layer_ids:
+        for layer_id in layer_ids:
+            try:
+                # Get the specific layer instance to understand its hierarchy
+                layer = LayerProfile.objects.get(id=layer_id)
+                accessible_layer_ids = {layer_id}  # Start with the layer itself
+                direct_layer_ids = {layer_id}  # This layer's direct assignments
+                
+                # Add parent layers to accessible_layer_ids for inheritance
+                if layer.layer_type == 'SUBSIDIARY':
+                    if hasattr(layer, 'subsidiarylayer') and layer.subsidiarylayer.group_layer:
+                        group_layer_id = layer.subsidiarylayer.group_layer.id
+                        accessible_layer_ids.add(group_layer_id)
+                        # Group assignments are inherited, not direct
+                        
+                elif layer.layer_type == 'BRANCH':
+                    if hasattr(layer, 'branchlayer') and layer.branchlayer.subsidiary_layer:
+                        subsidiary_layer_id = layer.branchlayer.subsidiary_layer.id
+                        accessible_layer_ids.add(subsidiary_layer_id)
+                        
+                        # Also add the group layer if the subsidiary has one
+                        subsidiary_layer = LayerProfile.objects.get(id=subsidiary_layer_id)
+                        if hasattr(subsidiary_layer, 'subsidiarylayer') and subsidiary_layer.subsidiarylayer.group_layer:
+                            group_layer_id = subsidiary_layer.subsidiarylayer.group_layer.id
+                            accessible_layer_ids.add(group_layer_id)
+                
+                layer_inheritance_map[layer_id] = {
+                    'accessible_layer_ids': accessible_layer_ids,
+                    'direct_layer_ids': direct_layer_ids
+                }
+                
+            except LayerProfile.DoesNotExist:
+                # Fallback if layer not found
                 layer_inheritance_map[layer_id] = {
                     'accessible_layer_ids': {layer_id},
                     'direct_layer_ids': {layer_id}
