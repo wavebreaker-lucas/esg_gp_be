@@ -27,6 +27,8 @@ from accounts.services.layer_services import (
 )
 from data_management.models import TemplateAssignment, ESGMetricSubmission, Template
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
+from accounts.services import get_user_layers_and_parents_ids
+from accounts.models import AppUser
 
 logger = logging.getLogger(__name__)
 
@@ -221,10 +223,11 @@ def vehicle_emissions_breakdown_api(request):
 class UnifiedViewableLayersView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def _get_assignment_metadata(self, layer_ids):
+    def _get_assignment_metadata(self, layer_ids, user=None):
         """
         Get assignment and submission metadata for given layer IDs.
         Returns a dict mapping layer_id to metadata in the frontend's desired format.
+        Follows the inheritance pattern used in UserTemplateAssignmentView.
         """
         if not layer_ids:
             return {}
@@ -240,47 +243,107 @@ class UnifiedViewableLayersView(APIView):
                 'last_activity': None
             }
         
-        # Get active template assignments with template details
+        # For inheritance logic, we need to understand which layers are direct vs inherited for each layer
+        layer_inheritance_map = {}
+        
+        if user and not getattr(user, 'is_baker_tilly_admin', False):
+            # For regular users, calculate inheritance for each layer
+            for layer_id in layer_ids:
+                # Get what assignments this layer can access (direct + inherited)
+                user_app_users = AppUser.objects.filter(user=user, layer_id=layer_id)
+                if user_app_users.exists():
+                    # This is the user's direct layer, get its accessible assignments
+                    accessible_layer_ids = get_user_layers_and_parents_ids(user)
+                    direct_layer_ids = {layer_id}  # Only this layer is direct
+                    
+                    layer_inheritance_map[layer_id] = {
+                        'accessible_layer_ids': accessible_layer_ids,
+                        'direct_layer_ids': direct_layer_ids
+                    }
+                else:
+                    # For Baker Tilly viewing a specific group, treat all as direct
+                    layer_inheritance_map[layer_id] = {
+                        'accessible_layer_ids': {layer_id},
+                        'direct_layer_ids': {layer_id}
+                    }
+        else:
+            # For Baker Tilly admins, all assignments are considered direct
+            for layer_id in layer_ids:
+                layer_inheritance_map[layer_id] = {
+                    'accessible_layer_ids': {layer_id},
+                    'direct_layer_ids': {layer_id}
+                }
+        
+        # Get all potentially accessible assignments for all layers
+        all_accessible_layer_ids = set()
+        for layer_data in layer_inheritance_map.values():
+            all_accessible_layer_ids.update(layer_data['accessible_layer_ids'])
+        
+        # Get active template assignments with template details (including inherited)
         active_assignments = TemplateAssignment.objects.filter(
-            layer_id__in=layer_ids,
+            layer_id__in=all_accessible_layer_ids,
             template__is_active=True
         ).select_related('template').values(
             'layer_id', 'template__id', 'template__name', 'status', 'assigned_at'
         )
         
-        # Get assignment counts per layer
+        # Get assignment counts per accessible layer
         assignment_counts = TemplateAssignment.objects.filter(
-            layer_id__in=layer_ids
+            layer_id__in=all_accessible_layer_ids
         ).values('layer_id').annotate(
             count=Count('id'),
             last_assigned=Max('assigned_at')
         )
         
-        # Check for submissions existence
+        # Create lookup maps for efficiency
+        assignment_count_map = {item['layer_id']: item for item in assignment_counts}
+        active_assignments_map = {}
+        for assignment in active_assignments:
+            layer_id = assignment['layer_id']
+            if layer_id not in active_assignments_map:
+                active_assignments_map[layer_id] = []
+            active_assignments_map[layer_id].append(assignment)
+        
+        # Populate metadata for each layer
+        for layer_id, inheritance_data in layer_inheritance_map.items():
+            accessible_layer_ids = inheritance_data['accessible_layer_ids']
+            direct_layer_ids = inheritance_data['direct_layer_ids']
+            
+            # Count assignments (direct + inherited)
+            total_count = 0
+            latest_assigned = None
+            
+            for acc_layer_id in accessible_layer_ids:
+                if acc_layer_id in assignment_count_map:
+                    count_data = assignment_count_map[acc_layer_id]
+                    total_count += count_data['count']
+                    if count_data['last_assigned']:
+                        if not latest_assigned or count_data['last_assigned'] > latest_assigned:
+                            latest_assigned = count_data['last_assigned']
+            
+            metadata_map[layer_id]['assignment_count'] = total_count
+            if latest_assigned:
+                metadata_map[layer_id]['last_activity'] = latest_assigned.isoformat()
+            
+            # Populate active templates (direct + inherited)
+            for acc_layer_id in accessible_layer_ids:
+                if acc_layer_id in active_assignments_map:
+                    for assignment in active_assignments_map[acc_layer_id]:
+                        relationship = 'direct' if assignment['layer_id'] in direct_layer_ids else 'inherited'
+                        metadata_map[layer_id]['active_templates'].append({
+                            'id': assignment['template__id'],
+                            'name': assignment['template__name'],
+                            'status': assignment['status'],
+                            'relationship': relationship
+                        })
+        
+        # Check for submissions existence (only for the specific layers, not inherited)
         submission_data = ESGMetricSubmission.objects.filter(
             layer_id__in=layer_ids
         ).values('layer_id').annotate(
             submission_count=Count('id'),
             last_submission=Max('submitted_at')
         )
-        
-        # Populate assignment counts
-        for item in assignment_counts:
-            layer_id = item['layer_id']
-            if layer_id in metadata_map:
-                metadata_map[layer_id]['assignment_count'] = item['count']
-                if item['last_assigned']:
-                    metadata_map[layer_id]['last_activity'] = item['last_assigned'].isoformat()
-        
-        # Populate active templates
-        for assignment in active_assignments:
-            layer_id = assignment['layer_id']
-            if layer_id in metadata_map:
-                metadata_map[layer_id]['active_templates'].append({
-                    'id': assignment['template__id'],
-                    'name': assignment['template__name'],
-                    'status': assignment['status']
-                })
         
         # Populate submission data
         for item in submission_data:
@@ -355,7 +418,7 @@ class UnifiedViewableLayersView(APIView):
                     
                     # Get metadata if requested
                     if include_metadata:
-                        metadata_map = self._get_assignment_metadata(all_layer_ids)
+                        metadata_map = self._get_assignment_metadata(all_layer_ids, user)
                     
                     # Build response
                     group_obj = raw_group_data['group']
@@ -385,7 +448,7 @@ class UnifiedViewableLayersView(APIView):
                 # Get metadata if requested
                 if include_metadata:
                     layer_ids = [layer.pk for layer in accessible_specific_layers]
-                    metadata_map = self._get_assignment_metadata(layer_ids)
+                    metadata_map = self._get_assignment_metadata(layer_ids, user)
                 
                 # Create a map of specific layer instances by their ID for quick parent lookup
                 # This is important if accessible_specific_layers doesn't guarantee parent presence
