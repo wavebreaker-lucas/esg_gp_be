@@ -174,16 +174,50 @@ class UserTemplateAssignmentStructureView(views.APIView):
     """
     API view for group users to get the detailed form/metric structure
     of a specific template assignment they have access to.
+    
+    Supports view_as_group_id parameter for Baker Tilly admins to view
+    template structure for any client group.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, assignment_id):
         """
         Get the detailed form and metric structure for a specific assignment.
+        
+        Query Parameters:
+        - view_as_group_id: (Baker Tilly admins only) View structure for assignments in a specific client group
         """
-        accessible_layer_ids = get_user_layers_and_parents_ids(request.user)
+        view_as_group_id_str = request.query_params.get('view_as_group_id')
+        user = request.user
+        
+        # Check if the user is a Baker Tilly Admin
+        is_bt_admin = hasattr(user, 'is_baker_tilly_admin') and user.is_baker_tilly_admin
 
         try:
+            if is_bt_admin and view_as_group_id_str:
+                # Baker Tilly admin viewing specific client group
+                try:
+                    group_id = int(view_as_group_id_str)
+                    group_data = get_full_group_layer_data(group_id)
+                    
+                    # Collect all layer IDs for this group
+                    accessible_layer_ids = [group_data['group'].pk]
+                    for sub_obj, branches_list in group_data.get('subsidiaries_with_branches', []):
+                        accessible_layer_ids.append(sub_obj.pk)
+                        accessible_layer_ids.extend([branch.pk for branch in branches_list])
+                        
+                except ValueError:
+                    return Response({'error': 'Invalid view_as_group_id. Must be an integer.'}, status=status.HTTP_400_BAD_REQUEST)
+                except Exception as e:
+                    return Response({'error': f'Group not found: {str(e)}'}, status=status.HTTP_404_NOT_FOUND)
+                    
+            elif not is_bt_admin and view_as_group_id_str:
+                return Response({'error': 'You are not authorized to use the view_as_group_id parameter.'}, status=status.HTTP_403_FORBIDDEN)
+            
+            else:
+                # Regular user behavior (unchanged)
+                accessible_layer_ids = get_user_layers_and_parents_ids(request.user)
+
             # Fetch assignment, ensuring it exists and user has access
             assignment = TemplateAssignment.objects.select_related(
                 'template', 'layer' # Include layer for potential context, though not directly returned here
