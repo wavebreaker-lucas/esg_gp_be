@@ -5,9 +5,10 @@ Views for user template assignment access.
 from rest_framework import views, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.core.exceptions import ObjectDoesNotExist
 
 from accounts.models import AppUser # LayerProfile no longer needed directly here
-from accounts.services import get_user_layers_and_parents_ids # Import the new function
+from accounts.services import get_user_layers_and_parents_ids, get_full_group_layer_data # Import the new function
 from ...models import TemplateAssignment
 from ...serializers.polymorphic_metrics import ESGMetricPolymorphicSerializer
 from ...serializers.templates import TemplateAssignmentSerializer
@@ -17,59 +18,147 @@ class UserTemplateAssignmentView(views.APIView):
     """
     API view for group users to access templates assigned to their group.
     Retrieves list of assignments or metadata for a specific assignment.
+    
+    Supports view_as_group_id parameter for Baker Tilly admins to view
+    template assignments for any client group.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, assignment_id=None):
         """
         Get template assignments list or metadata for a specific assignment.
+        
+        Query Parameters:
+        - view_as_group_id: (Baker Tilly admins only) View assignments for a specific client group
         """
-        accessible_layer_ids = get_user_layers_and_parents_ids(request.user)
-        user_direct_layer_ids = {app_user.layer_id for app_user in AppUser.objects.filter(user=request.user)} # More efficient
+        view_as_group_id_str = request.query_params.get('view_as_group_id')
+        user = request.user
+        
+        # Check if the user is a Baker Tilly Admin
+        is_bt_admin = hasattr(user, 'is_baker_tilly_admin') and user.is_baker_tilly_admin
 
-        if assignment_id:
-            # Get specific template assignment metadata
-            try:
-                assignment = TemplateAssignment.objects.select_related(
-                    'template', 'layer'
-                ).get(
-                    id=assignment_id,
+        try:
+            if is_bt_admin and view_as_group_id_str:
+                # Baker Tilly admin viewing specific client group
+                try:
+                    group_id = int(view_as_group_id_str)
+                    group_data = get_full_group_layer_data(group_id)
+                    
+                    # Collect all layer IDs for this group
+                    accessible_layer_ids = [group_data['group'].pk]
+                    user_direct_layer_ids = set()  # For BT admins, we'll determine this differently
+                    
+                    for sub_obj, branches_list in group_data.get('subsidiaries_with_branches', []):
+                        accessible_layer_ids.append(sub_obj.pk)
+                        accessible_layer_ids.extend([branch.pk for branch in branches_list])
+                    
+                    # For Baker Tilly admins viewing a group, all assignments in the group are considered "accessible"
+                    # but we still want to show inheritance relationships
+                    # Direct assignments are those directly assigned to each layer
+                    # Inherited assignments are those a layer gets from its parents
+                    
+                except ValueError:
+                    return Response({'error': 'Invalid view_as_group_id. Must be an integer.'}, status=status.HTTP_400_BAD_REQUEST)
+                except Exception as e:
+                    return Response({'error': f'Group not found: {str(e)}'}, status=status.HTTP_404_NOT_FOUND)
+                    
+            elif not is_bt_admin and view_as_group_id_str:
+                return Response({'error': 'You are not authorized to use the view_as_group_id parameter.'}, status=status.HTTP_403_FORBIDDEN)
+            
+            else:
+                # Regular user behavior (unchanged)
+                accessible_layer_ids = get_user_layers_and_parents_ids(request.user)
+                user_direct_layer_ids = {app_user.layer_id for app_user in AppUser.objects.filter(user=request.user)}
+
+            if assignment_id:
+                # Get specific template assignment metadata
+                try:
+                    assignment = TemplateAssignment.objects.select_related(
+                        'template', 'layer'
+                    ).get(
+                        id=assignment_id,
+                        layer_id__in=accessible_layer_ids
+                    )
+
+                    # Use the TemplateAssignmentSerializer for consistency
+                    serializer = TemplateAssignmentSerializer(assignment, context=self.get_serializer_context())
+                    assignment_data = serializer.data
+
+                    # Add relationship info
+                    if is_bt_admin and view_as_group_id_str:
+                        # For BT admins viewing a group, determine relationship based on layer hierarchy
+                        assignment_data['relationship'] = self._determine_relationship_for_bt_admin(assignment, group_data)
+                    else:
+                        # Regular logic for company users
+                        if assignment.layer_id in user_direct_layer_ids:
+                            assignment_data['relationship'] = 'direct'
+                        else:
+                            assignment_data['relationship'] = 'inherited'
+
+                    return Response(assignment_data)
+
+                except TemplateAssignment.DoesNotExist:
+                    return Response(
+                        {'error': 'Template assignment not found or you do not have access to it'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            else:
+                # Get all template assignments for these layers (LIST VIEW)
+                assignments = TemplateAssignment.objects.filter(
                     layer_id__in=accessible_layer_ids
-                )
+                ).select_related('template', 'layer')
 
-                # Use the TemplateAssignmentSerializer for consistency
-                serializer = TemplateAssignmentSerializer(assignment, context=self.get_serializer_context())
-                assignment_data = serializer.data
+                assignments_data = []
+                for assignment in assignments:
+                    assignment_data = TemplateAssignmentSerializer(assignment, context=self.get_serializer_context()).data
+                    
+                    # Add relationship info
+                    if is_bt_admin and view_as_group_id_str:
+                        # For BT admins viewing a group, determine relationship based on layer hierarchy
+                        assignment_data['relationship'] = self._determine_relationship_for_bt_admin(assignment, group_data)
+                    else:
+                        # Regular logic for company users
+                        if assignment.layer_id in user_direct_layer_ids:
+                            assignment_data['relationship'] = 'direct'
+                        else:
+                            assignment_data['relationship'] = 'inherited'
+                    
+                    assignments_data.append(assignment_data)
 
-                # Add relationship info
-                if assignment.layer_id in user_direct_layer_ids:
-                    assignment_data['relationship'] = 'direct'
-                else:
-                    assignment_data['relationship'] = 'inherited'
+                return Response(assignments_data)
+                
+        except Exception as e:
+            return Response(
+                {'error': f'An error occurred: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-                return Response(assignment_data)
-
-            except TemplateAssignment.DoesNotExist:
-                return Response(
-                    {'error': 'Template assignment not found or you do not have access to it'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        else:
-            # Get all template assignments for these layers (LIST VIEW - unchanged)
-            assignments = TemplateAssignment.objects.filter(
-                layer_id__in=accessible_layer_ids
-            ).select_related('template', 'layer')
-
-            assignments_data = []
-            for assignment in assignments:
-                assignment_data = TemplateAssignmentSerializer(assignment, context=self.get_serializer_context()).data
-                if assignment.layer_id in user_direct_layer_ids:
-                    assignment_data['relationship'] = 'direct'
-                else:
-                    assignment_data['relationship'] = 'inherited'
-                assignments_data.append(assignment_data)
-
-            return Response(assignments_data)
+    def _determine_relationship_for_bt_admin(self, assignment, group_data):
+        """
+        Determine if an assignment is direct or inherited for Baker Tilly admin view.
+        An assignment is direct if it's assigned to the specific layer.
+        An assignment is inherited if it's assigned to a parent layer.
+        """
+        assignment_layer_id = assignment.layer_id
+        group_id = group_data['group'].pk
+        
+        # If assignment is on the group itself, it's direct to group but inherited to subsidiaries/branches
+        if assignment_layer_id == group_id:
+            return 'direct'
+        
+        # Check if assignment is on a subsidiary
+        for sub_obj, _ in group_data.get('subsidiaries_with_branches', []):
+            if assignment_layer_id == sub_obj.pk:
+                return 'direct'
+        
+        # Check if assignment is on a branch
+        for _, branches_list in group_data.get('subsidiaries_with_branches', []):
+            for branch_obj in branches_list:
+                if assignment_layer_id == branch_obj.pk:
+                    return 'direct'
+        
+        # If we can't find it, default to direct (shouldn't happen if logic is correct)
+        return 'direct'
 
     def get_serializer_context(self):
         """Ensures request context is passed to serializers."""
