@@ -421,16 +421,19 @@ class ESGMetricEvidenceViewSet(viewsets.ModelViewSet):
         except BaseESGMetric.DoesNotExist: # Update exception type
             return Response({'error': 'Metric not found'}, status=404)
         
-        # Check user access to layers
-        user_layers = LayerProfile.objects.filter(app_users__user=request.user)
-        
-        # Base query
-        evidence_query = ESGMetricEvidence.objects.filter(
-            intended_metric=metric
-        ).filter(
-            models.Q(uploaded_by=request.user) | 
-            models.Q(layer__in=user_layers)
-        )
+        # Base query with Baker Tilly admin support
+        if request.user.is_baker_tilly_admin or request.user.is_staff or request.user.is_superuser:
+            # Baker Tilly admins and staff can see all evidence for the metric
+            evidence_query = ESGMetricEvidence.objects.filter(intended_metric=metric)
+        else:
+            # Regular users can only see evidence they uploaded or from their layers
+            user_layers = LayerProfile.objects.filter(app_users__user=request.user)
+            evidence_query = ESGMetricEvidence.objects.filter(
+                intended_metric=metric
+            ).filter(
+                models.Q(uploaded_by=request.user) | 
+                models.Q(layer__in=user_layers)
+            )
         
         # Apply optional filters
         
