@@ -12,6 +12,7 @@ from .models import (
 from data_management.models.polymorphic_metrics import BaseESGMetric
 # Also import other needed models if not implicitly handled
 from data_management.models.templates import Template, ESGForm, ESGFormCategory
+from data_management.models.factors import GHGEmissionFactor
 
 class BakerTillyAccessMixin:
     """
@@ -70,6 +71,11 @@ class BakerTillyAdmin(BasePermission):
         print(f"Is object instance of BaseESGMetric? {is_metric}")
         if is_metric:
              print(f"Permission GRANTED: Object is BaseESGMetric instance.")
+             return True
+
+        # Check for GHG Emission Factors
+        if isinstance(obj, GHGEmissionFactor):
+             print(f"Permission GRANTED: Object is GHGEmissionFactor instance.")
              return True
 
         print("Permission DENIED: Object type not recognized for admin object permission.")
