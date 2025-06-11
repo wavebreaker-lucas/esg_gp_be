@@ -16,6 +16,8 @@ from .views import (
 )
 # Import fuel data views
 from .views.fuel_data import FuelSourceTypeViewSet, StationaryFuelTypeViewSet
+# Import emission factor views
+from .views.emission_factors import GHGEmissionFactorViewSet
 # Import the metrics view separately (or adjust above import)
 from .views.form_definition import metrics as metric_views
 # Import checklist reports views
@@ -44,6 +46,8 @@ router.register(r'fuel-types', FuelTypeViewSet, basename='fuel-type')
 # Register fuel data viewsets
 router.register(r'fuel-source-types', FuelSourceTypeViewSet, basename='fuel-source-type')
 router.register(r'stationary-fuel-types', StationaryFuelTypeViewSet, basename='stationary-fuel-type')
+# Register emission factor viewset (Baker Tilly admin only)
+router.register(r'emission-factors', GHGEmissionFactorViewSet, basename='emission-factor')
 
 # Export the router's URLs
 # Assuming this urls.py is included under /api/ in your main urls.py

@@ -5,6 +5,11 @@ from .templates import (
 )
 from .esg import BoundaryItemSerializer, EmissionFactorSerializer, ESGDataSerializer, DataEditLogSerializer
 from .polymorphic_metrics import ESGMetricPolymorphicSerializer
+from .emission_factors import (
+    GHGEmissionFactorSerializer, 
+    GHGEmissionFactorListSerializer, 
+    GHGEmissionFactorBulkCreateSerializer
+)
 
 __all__ = [
     'TemplateSerializer',
@@ -17,4 +22,7 @@ __all__ = [
     'ESGDataSerializer',
     'DataEditLogSerializer',
     'ESGMetricPolymorphicSerializer',
+    'GHGEmissionFactorSerializer',
+    'GHGEmissionFactorListSerializer',
+    'GHGEmissionFactorBulkCreateSerializer',
 ]
