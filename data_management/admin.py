@@ -151,6 +151,13 @@ class TabularMetricRowInline(admin.TabularInline):
     fields = ('row_index', 'row_data')
     ordering = ('row_index',)
 
+# --- Add MaterialMatrix inline ---
+class MaterialMatrixDataPointInline(admin.TabularInline):
+    model = MaterialMatrixDataPoint
+    extra = 1
+    fields = ('material_type', 'period', 'value', 'unit')
+    ordering = ('period', 'material_type')
+
 # Custom form for VehicleRecord that uses the new ForeignKey relationships
 class VehicleRecordForm(forms.ModelForm):
     class Meta:
@@ -298,6 +305,9 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
             elif isinstance(metric, FuelConsumptionMetric):
                 logger.info(f"Adding FuelRecordInline for submission {obj.pk}")
                 inlines.append(FuelRecordInline)
+            elif isinstance(metric, MaterialTrackingMatrixMetric):
+                logger.info(f"Adding MaterialMatrixDataPointInline for submission {obj.pk}")
+                inlines.append(MaterialMatrixDataPointInline)
             # Add cases for other metric types as needed
             
             logger.info(f"Returning inlines: {[i.__name__ for i in inlines]}")
@@ -346,6 +356,8 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
                 if source_count == 0:
                     return "(No fuel sources)"
                 return f"{source_count} fuel source(s)"
+            elif isinstance(metric, MaterialTrackingMatrixMetric):
+                return f"{obj.material_data_points.count()} material data points"
             # Add checks for other metric types (Material, MultiField, etc.) here
             else:
                 return "(Data type not shown)"
