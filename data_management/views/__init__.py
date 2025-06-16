@@ -22,7 +22,11 @@ from .dashboard_api import (
 )
 
 # Import from templates package
-from .templates import TemplateViewSet, TemplateAssignmentView, UserTemplateAssignmentView, UserTemplateAssignmentStructureView
+from .templates import (
+    TemplateViewSet, TemplateAssignmentView, UserTemplateAssignmentView, 
+    UserTemplateAssignmentStructureView, FormCompletionStatusViewSet, 
+    TemplateVerificationStatusView
+)
 
 # Import from vehicle_data package
 from .vehicle_data import VehicleTypeViewSet, FuelTypeViewSet
@@ -45,6 +49,8 @@ __all__ = [
     'TemplateAssignmentView',
     'UserTemplateAssignmentView',
     'UserTemplateAssignmentStructureView',
+    'FormCompletionStatusViewSet',
+    'TemplateVerificationStatusView',
     'ESGFormCategoryViewSet',
     'ESGFormViewSet',
     'VehicleTypeViewSet',
