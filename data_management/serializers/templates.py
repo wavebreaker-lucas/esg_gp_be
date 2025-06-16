@@ -6,7 +6,7 @@ from ..models.templates import (
     ESGFormCategory, ESGForm,
     Template, TemplateFormSelection, TemplateAssignment,
     ESGMetricSubmission, ESGMetricEvidence,
-    ReportedMetricValue
+    ReportedMetricValue, FormCompletionStatus
 )
 # Import the new base model (might need specialized ones later)
 from ..models.polymorphic_metrics import (
@@ -1231,3 +1231,95 @@ class ESGFormDetailSerializer(serializers.ModelSerializer):
         pass
 
 # ----------------------------------
+
+# --- NEW: FormCompletionStatus Verification Serializers ---
+
+class FormVerificationSerializer(serializers.Serializer):
+    """Serializer for admin verification of completed forms"""
+    verification_notes = serializers.CharField(
+        required=False, 
+        allow_blank=True, 
+        max_length=1000,
+        help_text="Admin notes during verification process"
+    )
+    
+    def validate(self, data):
+        """Ensure the user has permission to verify forms"""
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user'):
+            raise serializers.ValidationError("Authentication required")
+            
+        user = request.user
+        # Check if user is Baker Tilly admin
+        if not (user.is_staff or user.is_superuser or getattr(user, 'is_baker_tilly_admin', False)):
+            raise serializers.ValidationError("Only Baker Tilly admins can verify forms")
+            
+        return data
+
+class FormSendBackSerializer(serializers.Serializer):
+    """Serializer for sending forms back to users for changes"""
+    reason = serializers.CharField(
+        max_length=500, 
+        help_text="Reason for sending the form back to the user"
+    )
+    
+    def validate(self, data):
+        """Ensure the user has permission to send forms back"""
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user'):
+            raise serializers.ValidationError("Authentication required")
+            
+        user = request.user
+        # Check if user is Baker Tilly admin
+        if not (user.is_staff or user.is_superuser or getattr(user, 'is_baker_tilly_admin', False)):
+            raise serializers.ValidationError("Only Baker Tilly admins can send forms back")
+            
+        return data
+
+class FormCompletionStatusSerializer(serializers.ModelSerializer):
+    """Serializer for FormCompletionStatus with verification fields"""
+    form_name = serializers.CharField(source='form_selection.form.name', read_only=True)
+    form_code = serializers.CharField(source='form_selection.form.code', read_only=True)
+    layer_name = serializers.CharField(source='layer.company_name', read_only=True)
+    assignment_name = serializers.CharField(source='assignment.template.name', read_only=True)
+    completed_by_name = serializers.CharField(source='completed_by.username', read_only=True)
+    verified_by_name = serializers.CharField(source='verified_by.username', read_only=True)
+    status = serializers.CharField(read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    can_verify = serializers.BooleanField(read_only=True)
+    can_complete = serializers.BooleanField(read_only=True)
+    
+    class Meta:
+        model = FormCompletionStatus
+        fields = [
+            'id', 'form_selection', 'assignment', 'layer',
+            'form_name', 'form_code', 'layer_name', 'assignment_name',
+            'is_completed', 'completed_at', 'completed_by', 'completed_by_name',
+            'is_verified', 'verified_at', 'verified_by', 'verified_by_name', 'verification_notes',
+            'status', 'status_display', 'can_verify', 'can_complete'
+        ]
+        read_only_fields = [
+            'id', 'completed_at', 'verified_at', 'completed_by', 'verified_by',
+            'form_name', 'form_code', 'layer_name', 'assignment_name',
+            'completed_by_name', 'verified_by_name', 'status', 'status_display',
+            'can_verify', 'can_complete'
+        ]
+
+class TemplateVerificationStatusSerializer(serializers.Serializer):
+    """Serializer for template assignment verification overview"""
+    assignment_id = serializers.IntegerField()
+    assignment_name = serializers.CharField()
+    layer_name = serializers.CharField()
+    total_forms = serializers.IntegerField()
+    completed_forms = serializers.IntegerField()
+    verified_forms = serializers.IntegerField()
+    pending_verification = serializers.IntegerField()
+    draft_forms = serializers.IntegerField()
+    verification_progress_percentage = serializers.FloatField()
+    completion_progress_percentage = serializers.FloatField()
+    is_fully_verified = serializers.BooleanField()
+    is_fully_completed = serializers.BooleanField()
+    assignment_status = serializers.CharField()
+    form_statuses = FormCompletionStatusSerializer(many=True, read_only=True)
+
+# --- End FormCompletionStatus Serializers ---

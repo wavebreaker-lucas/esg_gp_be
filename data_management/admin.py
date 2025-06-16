@@ -1102,13 +1102,26 @@ admin.site.register(ChecklistReport, ChecklistReportAdmin)
 @admin.register(FormCompletionStatus)
 class FormCompletionStatusAdmin(admin.ModelAdmin):
     list_display = ['form_selection', 'get_company', 'get_reporting_year', 'get_form_name', 'get_template_name', 
-                    'is_completed', 'completed_at', 'completed_by']
-    list_filter = ['is_completed', 'assignment__layer', 'assignment__reporting_year', 
+                    'get_status_display', 'is_completed', 'completed_at', 'completed_by', 
+                    'is_verified', 'verified_at', 'verified_by']
+    list_filter = ['is_completed', 'is_verified', 'assignment__layer', 'assignment__reporting_year', 
                    'form_selection__template', 'form_selection__form']
     search_fields = ['assignment__layer__company_name', 'form_selection__form__name', 
-                     'form_selection__template__name']
-    raw_id_fields = ['form_selection', 'assignment', 'completed_by']
-    readonly_fields = ['completed_at']
+                     'form_selection__template__name', 'verification_notes']
+    raw_id_fields = ['form_selection', 'assignment', 'completed_by', 'verified_by']
+    readonly_fields = ['completed_at', 'verified_at']
+    
+    fieldsets = [
+        ('Form Information', {
+            'fields': ['form_selection', 'assignment', 'layer']
+        }),
+        ('Completion Status', {
+            'fields': ['is_completed', 'completed_at', 'completed_by']
+        }),
+        ('Verification Status', {
+            'fields': ['is_verified', 'verified_at', 'verified_by', 'verification_notes']
+        })
+    ]
     
     def get_form_name(self, obj):
         return obj.form_selection.form.name
@@ -1129,3 +1142,7 @@ class FormCompletionStatusAdmin(admin.ModelAdmin):
         return obj.assignment.reporting_year
     get_reporting_year.short_description = 'Reporting Year'
     get_reporting_year.admin_order_field = 'assignment__reporting_year'
+    
+    def get_status_display(self, obj):
+        return obj.get_status_display()
+    get_status_display.short_description = 'Status'

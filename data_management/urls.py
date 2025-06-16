@@ -26,6 +26,10 @@ from .views.checklist_reports import (
     get_reports_by_submission, get_report_by_id, get_reports_by_layer,
     get_checklist_status, generate_combined_report_for_layer
 )
+# Import form completion verification views
+from .views.templates.form_completion import (
+    FormCompletionStatusViewSet, TemplateVerificationStatusView
+)
 
 # Create a router for ViewSets
 router = DefaultRouter()
@@ -48,6 +52,9 @@ router.register(r'fuel-source-types', FuelSourceTypeViewSet, basename='fuel-sour
 router.register(r'stationary-fuel-types', StationaryFuelTypeViewSet, basename='stationary-fuel-type')
 # Register emission factor viewset (Baker Tilly admin only)
 router.register(r'emission-factors', GHGEmissionFactorViewSet, basename='emission-factor')
+# Register form completion and verification viewsets
+router.register(r'form-completion', FormCompletionStatusViewSet, basename='form-completion')
+router.register(r'template-verification', TemplateVerificationStatusView, basename='template-verification')
 
 # Export the router's URLs
 # Assuming this urls.py is included under /api/ in your main urls.py
