@@ -119,13 +119,15 @@ GET /api/form-completion/
 **Query Parameters:**
 - `assignment_id` - Filter by template assignment
 - `layer_id` - Filter by layer
+- `form_id` - Filter by specific form
 - `is_completed` - Filter by completion status (`true`/`false`)
 - `is_verified` - Filter by verification status (`true`/`false`)
 - `status` - Filter by status (`DRAFT`, `PENDING_VERIFICATION`, `VERIFIED`)
 
-**Example:**
+**Examples:**
 ```http
 GET /api/form-completion/?assignment_id=1&status=PENDING_VERIFICATION
+GET /api/form-completion/?layer_id=5&form_id=3&is_completed=true
 ```
 
 **Response:**
