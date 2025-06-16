@@ -36,6 +36,11 @@ class FormCompletionStatusFilter:
         if layer_id:
             queryset = queryset.filter(layer_id=layer_id)
         
+        # Filter by form ID
+        form_id = request.query_params.get('form_id')
+        if form_id:
+            queryset = queryset.filter(form_selection__form__id=form_id)
+        
         # Filter by completion status
         is_completed = request.query_params.get('is_completed')
         if is_completed is not None:
