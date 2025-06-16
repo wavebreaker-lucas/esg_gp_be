@@ -230,6 +230,7 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 is_completed = False
                 completed_at = None
                 completed_by_email = None
+                form_status = None  # Explicitly set to None for verification field checks
                 
             return Response({
                 "form_id": form.pk,
@@ -241,7 +242,16 @@ class ESGFormViewSet(viewsets.ModelViewSet):
                 "completed_by": completed_by_email,
                 "layer_id": target_layer.id,
                 "layer_name": target_layer.company_name,
-                "assignment_status": assignment.get_status_display()
+                "assignment_status": assignment.get_status_display(),
+                # Add verification fields
+                "is_verified": form_status.is_verified if form_status else False,
+                "verified_at": form_status.verified_at if form_status else None,
+                "verified_by": form_status.verified_by.email if form_status and form_status.verified_by else None,
+                "verification_notes": form_status.verification_notes if form_status else "",
+                "status": form_status.status if form_status else "DRAFT",
+                "status_display": form_status.get_status_display() if form_status else "Draft",
+                "can_complete": form_status.can_complete() if form_status else True,
+                "can_verify": form_status.can_verify() if form_status else False
             })
 
     def _get_layer_completion_status(self, form_selection, assignment, layer):
@@ -260,6 +270,7 @@ class ESGFormViewSet(viewsets.ModelViewSet):
             is_completed = False
             completed_at = None
             completed_by_email = None
+            form_status = None  # Explicitly set to None for verification field checks
         
         return {
             "layer_id": layer.id,
@@ -267,7 +278,16 @@ class ESGFormViewSet(viewsets.ModelViewSet):
             "layer_type": layer.layer_type,
             "is_completed": is_completed,
             "completed_at": completed_at,
-            "completed_by": completed_by_email
+            "completed_by": completed_by_email,
+            # Add verification fields
+            "is_verified": form_status.is_verified if form_status else False,
+            "verified_at": form_status.verified_at if form_status else None,
+            "verified_by": form_status.verified_by.email if form_status and form_status.verified_by else None,
+            "verification_notes": form_status.verification_notes if form_status else "",
+            "status": form_status.status if form_status else "DRAFT",
+            "status_display": form_status.get_status_display() if form_status else "Draft",
+            "can_complete": form_status.can_complete() if form_status else True,
+            "can_verify": form_status.can_verify() if form_status else False
         }
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, BakerTillyAdmin])
