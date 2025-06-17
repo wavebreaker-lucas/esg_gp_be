@@ -159,8 +159,23 @@ GET /api/form-completion/?layer_id=5&form_id=3&is_completed=true
 
 ### 2. User Completes Form
 
+#### Option A: Using FormCompletionStatus ID (Original)
 ```http
 POST /api/form-completion/{id}/complete/
+```
+
+#### Option B: Using Form/Assignment IDs (User-Friendly)
+```http
+POST /api/form-completion/complete-by-ids/
+```
+
+**Request Body:**
+```json
+{
+  "form_id": 3,
+  "assignment_id": 1,
+  "layer_id": 5  // Optional - defaults to user's layer
+}
 ```
 
 **Permissions:** User must have access to the form's layer
@@ -174,24 +189,34 @@ POST /api/form-completion/{id}/complete/
     "status": "PENDING_VERIFICATION",
     "is_completed": true,
     "completed_at": "2024-01-15T10:30:00Z"
-  }
+  },
+  "created_new_record": false
 }
 ```
 
 ### 3. Admin Verifies Form
 
+#### Option A: Using FormCompletionStatus ID (Original)
 ```http
 POST /api/form-completion/{id}/verify/
 ```
 
-**Permissions:** Baker Tilly Admin only
+#### Option B: Using Form/Assignment IDs (User-Friendly)
+```http
+POST /api/form-completion/verify-by-ids/
+```
 
 **Request Body:**
 ```json
 {
+  "form_id": 3,
+  "assignment_id": 1,
+  "layer_id": 5,  // Optional - defaults to assignment's layer
   "verification_notes": "Data looks accurate and complete. Verified."
 }
 ```
+
+**Permissions:** Baker Tilly Admin only
 
 **Response:**
 ```json
@@ -210,18 +235,27 @@ POST /api/form-completion/{id}/verify/
 
 ### 4. Admin Sends Form Back
 
+#### Option A: Using FormCompletionStatus ID (Original)
 ```http
 POST /api/form-completion/{id}/send_back/
 ```
 
-**Permissions:** Baker Tilly Admin only
+#### Option B: Using Form/Assignment IDs (User-Friendly)
+```http
+POST /api/form-completion/send-back-by-ids/
+```
 
 **Request Body:**
 ```json
 {
+  "form_id": 3,
+  "assignment_id": 1,
+  "layer_id": 5,  // Optional - defaults to assignment's layer
   "reason": "Please update the energy consumption values for Q3 and Q4."
 }
 ```
+
+**Permissions:** Baker Tilly Admin only
 
 **Response:**
 ```json
@@ -312,15 +346,39 @@ print(f"Verified: {progress['verified_forms']}/{progress['total_forms']}")
 curl -X GET "/api/form-completion/?status=PENDING_VERIFICATION" \
   -H "Authorization: Bearer {token}"
 
-# Complete a form
+# Complete a form (Option A - using FormCompletionStatus ID)
 curl -X POST "/api/form-completion/1/complete/" \
   -H "Authorization: Bearer {token}"
 
-# Verify a form
+# Complete a form (Option B - user-friendly with form/assignment IDs)
+curl -X POST "/api/form-completion/complete-by-ids/" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"form_id": 3, "assignment_id": 1}'
+
+# Verify a form (Option A - using FormCompletionStatus ID)
 curl -X POST "/api/form-completion/1/verify/" \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{"verification_notes": "All data looks good"}'
+
+# Verify a form (Option B - user-friendly with form/assignment IDs)
+curl -X POST "/api/form-completion/verify-by-ids/" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"form_id": 3, "assignment_id": 1, "verification_notes": "All data looks good"}'
+
+# Send form back (Option A - using FormCompletionStatus ID)
+curl -X POST "/api/form-completion/1/send_back/" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "Please update Q3 data"}'
+
+# Send form back (Option B - user-friendly with form/assignment IDs)
+curl -X POST "/api/form-completion/send-back-by-ids/" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"form_id": 3, "assignment_id": 1, "reason": "Please update Q3 data"}'
 
 # Get assignment verification overview
 curl -X GET "/api/template-verification/1/verification_status/" \
