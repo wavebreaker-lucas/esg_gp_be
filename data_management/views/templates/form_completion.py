@@ -57,7 +57,9 @@ class FormCompletionStatusFilter:
             if status_filter == 'DRAFT':
                 queryset = queryset.filter(is_completed=False)
             elif status_filter == 'PENDING_VERIFICATION':
-                queryset = queryset.filter(is_completed=True, is_verified=False)
+                queryset = queryset.filter(is_completed=True, is_verified=False, revision_required=False)
+            elif status_filter == 'REVISION_REQUIRED':
+                queryset = queryset.filter(is_completed=True, is_verified=False, revision_required=True)
             elif status_filter == 'VERIFIED':
                 queryset = queryset.filter(is_verified=True)
         

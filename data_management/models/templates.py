@@ -225,6 +225,9 @@ class FormCompletionStatus(models.Model):
                                    help_text="Admin user who verified this form")
     verification_notes = models.TextField(blank=True, help_text="Admin notes during verification process")
     
+    # Revision tracking field (new)
+    revision_required = models.BooleanField(default=False, help_text="Admin has sent this form back for revision")
+    
     class Meta:
         ordering = ['assignment', 'form_selection']
         unique_together = ['form_selection', 'assignment', 'layer']
@@ -259,14 +262,16 @@ class FormCompletionStatus(models.Model):
     def send_back_for_changes(self, admin_user, reason=""):
         """
         Admin sends form back to user for changes.
-        This resets both completion and verification status.
-        User must re-complete the form after making changes.
+        Form stays completed but requires revision.
         """
-        self.is_completed = False
+        if not self.is_completed:
+            raise ValueError("Cannot send back a form that is not completed")
+        
+        # Keep completion status but mark as requiring revision
+        # is_completed stays True - admin can still see it in their view
         self.is_verified = False
-        self.completed_at = None
+        self.revision_required = True
         self.verified_at = None
-        self.completed_by = None
         self.verified_by = admin_user
         self.verification_notes = f"Sent back for changes: {reason}" if reason else "Sent back for changes"
         self.save()
@@ -277,6 +282,7 @@ class FormCompletionStatus(models.Model):
     def mark_completed(self, user):
         """
         Mark form as completed by user.
+        Clears any previous revision requirements.
         """
         if not self.can_complete():
             raise ValueError("Form cannot be marked as complete - it may already be verified")
@@ -284,6 +290,7 @@ class FormCompletionStatus(models.Model):
         self.is_completed = True
         self.completed_at = timezone.now()
         self.completed_by = user
+        self.revision_required = False  # Clear revision flag when user re-completes
         self.save()
         
         # Trigger assignment status update
@@ -308,10 +315,12 @@ class FormCompletionStatus(models.Model):
     @property
     def status(self):
         """
-        Current status of the form based on completion and verification flags.
+        Current status of the form based on completion, verification, and revision flags.
         """
         if not self.is_completed:
             return "DRAFT"
+        elif self.revision_required:
+            return "REVISION_REQUIRED"
         elif not self.is_verified:
             return "PENDING_VERIFICATION"
         else:
@@ -323,7 +332,8 @@ class FormCompletionStatus(models.Model):
         """
         status_map = {
             "DRAFT": "Draft",
-            "PENDING_VERIFICATION": "Pending Verification", 
+            "PENDING_VERIFICATION": "Pending Verification",
+            "REVISION_REQUIRED": "Revision Required", 
             "VERIFIED": "Verified"
         }
         return status_map.get(self.status, self.status)
