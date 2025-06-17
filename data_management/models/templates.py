@@ -260,6 +260,7 @@ class FormCompletionStatus(models.Model):
         """
         Admin sends form back to user for changes.
         This resets both completion and verification status.
+        User must re-complete the form after making changes.
         """
         self.is_completed = False
         self.is_verified = False
@@ -269,6 +270,9 @@ class FormCompletionStatus(models.Model):
         self.verified_by = admin_user
         self.verification_notes = f"Sent back for changes: {reason}" if reason else "Sent back for changes"
         self.save()
+        
+        # Trigger assignment status update
+        self.assignment.update_status()
     
     def mark_completed(self, user):
         """
@@ -324,22 +328,7 @@ class FormCompletionStatus(models.Model):
         }
         return status_map.get(self.status, self.status)
     
-    def send_back_for_changes(self, admin_user, reason=""):
-        """
-        Send form back to user for changes (reset verification status).
-        """
-        if not self.is_completed:
-            raise ValueError("Cannot send back a form that is not completed")
-        
-        # Reset verification status but keep completion status
-        self.is_verified = False
-        self.verified_at = None
-        self.verified_by = None
-        self.verification_notes = f"Sent back for changes: {reason}" if reason else "Sent back for changes"
-        self.save()
-        
-        # Trigger assignment status update
-        self.assignment.update_status()
+
 
 class ReportedMetricValue(models.Model):
     """Parent record storing aggregation results for a specific input metric context and aggregation level."""
