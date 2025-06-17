@@ -36,6 +36,8 @@ Form-level verification was chosen as the optimal granularity because:
 
 ```
 📝 DRAFT → ✅ USER COMPLETE → 👀 PENDING VERIFICATION → ✓ ADMIN VERIFY
+  ↑                              ↓
+  ←--------← REVISION REQUIRED ←-←
 ```
 
 ### State Transitions
@@ -43,9 +45,10 @@ Form-level verification was chosen as the optimal granularity because:
 | Current State | User Action | Admin Action | Next State |
 |---------------|-------------|--------------|------------|
 | `DRAFT` | Mark Complete | - | `PENDING_VERIFICATION` |
+| `REVISION_REQUIRED` | Mark Complete | - | `PENDING_VERIFICATION` |
 | `PENDING_VERIFICATION` | - | Verify | `VERIFIED` |
-| `PENDING_VERIFICATION` | - | Send Back | `DRAFT` |
-| `VERIFIED` | - | Send Back | `DRAFT` |
+| `PENDING_VERIFICATION` | - | Send Back | `REVISION_REQUIRED` |
+| `VERIFIED` | - | Send Back | `REVISION_REQUIRED` |
 
 ### Business Rules
 
@@ -84,8 +87,8 @@ class FormCompletionStatus(models.Model):
 
 ```python
 # Status properties
-form_status.status  # Returns: "DRAFT", "PENDING_VERIFICATION", "VERIFIED"
-form_status.get_status_display()  # Returns: "Draft", "Pending Verification", "Verified"
+form_status.status  # Returns: "DRAFT", "PENDING_VERIFICATION", "VERIFIED", "REVISION_REQUIRED"
+form_status.get_status_display()  # Returns: "Draft", "Pending Verification", "Verified", "Revision Required"
 
 # Business logic
 form_status.can_complete()  # Can user mark as complete?
@@ -122,12 +125,13 @@ GET /api/form-completion/
 - `form_id` - Filter by specific form
 - `is_completed` - Filter by completion status (`true`/`false`)
 - `is_verified` - Filter by verification status (`true`/`false`)
-- `status` - Filter by status (`DRAFT`, `PENDING_VERIFICATION`, `VERIFIED`)
+- `status` - Filter by status (`DRAFT`, `PENDING_VERIFICATION`, `VERIFIED`, `REVISION_REQUIRED`)
 
 **Examples:**
 ```http
 GET /api/form-completion/?assignment_id=1&status=PENDING_VERIFICATION
 GET /api/form-completion/?layer_id=5&form_id=3&is_completed=true
+GET /api/form-completion/?status=REVISION_REQUIRED
 ```
 
 **Response:**
@@ -263,8 +267,10 @@ POST /api/form-completion/send-back-by-ids/
   "message": "Form sent back for changes successfully",
   "form_status": {
     "id": 1,
-    "status": "DRAFT",
+    "status": "REVISION_REQUIRED",
+    "is_completed": true,
     "is_verified": false,
+    "revision_required": true,
     "verification_notes": "Sent back for changes: Please update the energy consumption values for Q3 and Q4."
   }
 }
@@ -285,7 +291,8 @@ GET /api/template-verification/{assignment_id}/verification_status/
   "total_forms": 8,
   "completed_forms": 6,
   "verified_forms": 4,
-  "pending_verification": 2,
+  "pending_verification": 1,
+  "revision_required": 1,
   "draft_forms": 2,
   "completion_progress_percentage": 75.0,
   "verification_progress_percentage": 50.0,
@@ -344,6 +351,10 @@ print(f"Verified: {progress['verified_forms']}/{progress['total_forms']}")
 ```bash
 # Get forms pending verification
 curl -X GET "/api/form-completion/?status=PENDING_VERIFICATION" \
+  -H "Authorization: Bearer {token}"
+
+# Get forms requiring revision
+curl -X GET "/api/form-completion/?status=REVISION_REQUIRED" \
   -H "Authorization: Bearer {token}"
 
 # Complete a form (Option A - using FormCompletionStatus ID)
