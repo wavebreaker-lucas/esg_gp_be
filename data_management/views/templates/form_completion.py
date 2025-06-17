@@ -13,7 +13,7 @@ from rest_framework.filters import OrderingFilter
 
 from accounts.permissions import BakerTillyAdmin
 from accounts.services import get_accessible_layers
-from ...models.templates import FormCompletionStatus, TemplateAssignment
+from ...models.templates import FormCompletionStatus, TemplateAssignment, ESGForm
 from ...serializers.templates import (
     FormCompletionStatusSerializer,
     FormVerificationSerializer,
@@ -241,7 +241,6 @@ class FormCompletionStatusViewSet(viewsets.ModelViewSet):
             assignment = TemplateAssignment.objects.select_related('template', 'layer').get(pk=assignment_id)
             
             # Get the form
-            from ...models.esg import ESGForm
             form = ESGForm.objects.get(pk=form_id)
             
             # Determine target layer
@@ -367,7 +366,6 @@ class FormCompletionStatusViewSet(viewsets.ModelViewSet):
             assignment = TemplateAssignment.objects.select_related('template', 'layer').get(pk=assignment_id)
             
             # Get the form
-            from ...models.esg import ESGForm
             form = ESGForm.objects.get(pk=form_id)
             
             # Determine target layer
@@ -487,7 +485,6 @@ class FormCompletionStatusViewSet(viewsets.ModelViewSet):
             assignment = TemplateAssignment.objects.select_related('template', 'layer').get(pk=assignment_id)
             
             # Get the form
-            from ...models.esg import ESGForm
             form = ESGForm.objects.get(pk=form_id)
             
             # Determine target layer
