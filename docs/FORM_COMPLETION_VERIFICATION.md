@@ -56,7 +56,9 @@ Form-level verification was chosen as the optimal granularity because:
 2. **Only Baker Tilly admins can verify** forms
 3. **Forms must be completed** before they can be verified
 4. **Verified forms can be sent back** for changes if needed
-5. **Template assignments track overall progress** based on form completion/verification
+5. **Forms sent back stay completed** but show "Revision Required" status
+6. **Admin retains visibility** of all reviewed forms regardless of current status
+7. **Template assignments track overall progress** based on form completion/verification
 
 ## 📊 Data Models
 
@@ -403,6 +405,10 @@ curl -X GET "/api/template-verification/1/verification_status/" \
 #### 1. "Form cannot be marked as complete"
 **Cause**: Form is already verified  
 **Solution**: Check if form needs to be sent back for changes first
+
+#### 1a. "User needs to make changes after admin feedback"
+**Cause**: Form status is "Revision Required"  
+**Solution**: User should update form data then mark as complete again
 
 #### 2. "Only Baker Tilly admins can verify forms"
 **Cause**: User doesn't have admin permissions  
