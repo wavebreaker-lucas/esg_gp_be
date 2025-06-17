@@ -1288,6 +1288,7 @@ class FormCompletionStatusSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     can_verify = serializers.BooleanField(read_only=True)
     can_complete = serializers.BooleanField(read_only=True)
+    revision_required = serializers.BooleanField(read_only=True)
     
     class Meta:
         model = FormCompletionStatus
@@ -1296,6 +1297,7 @@ class FormCompletionStatusSerializer(serializers.ModelSerializer):
             'form_name', 'form_code', 'layer_name', 'assignment_name',
             'is_completed', 'completed_at', 'completed_by', 'completed_by_name',
             'is_verified', 'verified_at', 'verified_by', 'verified_by_name', 'verification_notes',
+            'revision_required',
             'status', 'status_display', 'can_verify', 'can_complete'
         ]
         read_only_fields = [
