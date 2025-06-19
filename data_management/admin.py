@@ -158,6 +158,12 @@ class MaterialMatrixDataPointInline(admin.TabularInline):
     fields = ('material_type', 'period', 'value', 'unit')
     ordering = ('period', 'material_type')
 
+# --- Add MultiField inline ---
+class MultiFieldDataPointInline(admin.StackedInline):
+    model = MultiFieldDataPoint
+    extra = 0
+    fields = ('field_data',)
+
 # Custom form for VehicleRecord that uses the new ForeignKey relationships
 class VehicleRecordForm(forms.ModelForm):
     class Meta:
@@ -308,6 +314,9 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
             elif isinstance(metric, MaterialTrackingMatrixMetric):
                 logger.info(f"Adding MaterialMatrixDataPointInline for submission {obj.pk}")
                 inlines.append(MaterialMatrixDataPointInline)
+            elif isinstance(metric, MultiFieldMetric):
+                logger.info(f"Adding MultiFieldDataPointInline for submission {obj.pk}")
+                inlines.append(MultiFieldDataPointInline)
             # Add cases for other metric types as needed
             
             logger.info(f"Returning inlines: {[i.__name__ for i in inlines]}")
@@ -358,6 +367,15 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
                 return f"{source_count} fuel source(s)"
             elif isinstance(metric, MaterialTrackingMatrixMetric):
                 return f"{obj.material_data_points.count()} material data points"
+            elif isinstance(metric, MultiFieldMetric):
+                try:
+                    data = obj.multifield_data
+                    if data and data.field_data:
+                        field_count = len(data.field_data)
+                        return f"Multi-field data ({field_count} fields)"
+                    return "(No multi-field data)"
+                except obj._meta.get_field('multifield_data').related_model.DoesNotExist:
+                    return "(No multi-field data)"
             # Add checks for other metric types (Material, MultiField, etc.) here
             else:
                 return "(Data type not shown)"
@@ -638,6 +656,19 @@ class TabularMetricRowAdmin(admin.ModelAdmin):
     search_fields = ['submission__id']
     ordering = ['submission', 'row_index']
     raw_id_fields = ['submission']
+
+@admin.register(MultiFieldDataPoint)
+class MultiFieldDataPointAdmin(admin.ModelAdmin):
+    list_display = ['submission', 'get_field_count']
+    list_filter = ['submission__metric']
+    search_fields = ['submission__id']
+    raw_id_fields = ['submission']
+    
+    def get_field_count(self, obj):
+        if obj.field_data:
+            return len(obj.field_data)
+        return 0
+    get_field_count.short_description = "Field Count"
 
 @admin.register(GHGEmissionFactor)
 class GHGEmissionFactorAdmin(admin.ModelAdmin):
