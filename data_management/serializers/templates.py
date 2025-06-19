@@ -293,9 +293,11 @@ class TemplateAssignmentSerializer(serializers.ModelSerializer):
             return 'PENDING'
         elif progress['verified_forms'] == progress['total_forms']:
             return 'VERIFIED'
-        elif progress['completed_forms'] == progress['total_forms']:
+        elif progress['completed_forms'] == progress['total_forms'] and progress['revision_required'] == 0:
+            # All forms completed and none require revision
             return 'SUBMITTED'
         elif progress['completed_forms'] > 0:
+            # Some forms completed (including those requiring revision)
             return 'IN_PROGRESS'
         else:
             return 'IN_PROGRESS'
@@ -1379,6 +1381,7 @@ class TemplateVerificationStatusSerializer(serializers.Serializer):
     total_forms = serializers.IntegerField()
     completed_forms = serializers.IntegerField()
     verified_forms = serializers.IntegerField()
+    revision_required = serializers.IntegerField()  # ← NEW: Count of forms requiring revision
     pending_verification = serializers.IntegerField()
     draft_forms = serializers.IntegerField()
     verification_progress_percentage = serializers.FloatField()

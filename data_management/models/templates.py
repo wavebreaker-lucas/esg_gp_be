@@ -123,13 +123,24 @@ class TemplateAssignment(models.Model):
         """
         Returns dictionary with verification statistics for this assignment.
         """
+        # FIX: Count ALL forms that should be in this template, not just existing FormCompletionStatus records
+        total_forms_in_template = TemplateFormSelection.objects.filter(
+            template=self.template
+        ).count()
+        
+        # Get existing completion statuses for this assignment
         form_statuses = self.form_completion_status.all()
+        completed_count = form_statuses.filter(is_completed=True).count()
+        verified_count = form_statuses.filter(is_verified=True).count()
+        revision_required_count = form_statuses.filter(is_completed=True, revision_required=True).count()
+        
         return {
-            'total_forms': form_statuses.count(),
-            'completed_forms': form_statuses.filter(is_completed=True).count(),
-            'verified_forms': form_statuses.filter(is_verified=True).count(),
-            'pending_verification': form_statuses.filter(is_completed=True, is_verified=False).count(),
-            'draft_forms': form_statuses.filter(is_completed=False).count()
+            'total_forms': total_forms_in_template,  # ← FIXED: Use actual template form count
+            'completed_forms': completed_count,
+            'verified_forms': verified_count,
+            'revision_required': revision_required_count,  # ← NEW: Count forms sent back for revision
+            'pending_verification': form_statuses.filter(is_completed=True, is_verified=False, revision_required=False).count(),  # ← FIXED: Exclude revision-required forms
+            'draft_forms': total_forms_in_template - completed_count  # ← FIXED: Calculate drafts correctly
         }
     
     @property
@@ -161,11 +172,11 @@ class TemplateAssignment(models.Model):
         elif progress['verified_forms'] == progress['total_forms']:
             # All forms verified
             new_status = 'VERIFIED'
-        elif progress['completed_forms'] == progress['total_forms']:
-            # All forms completed, but not all verified
+        elif progress['completed_forms'] == progress['total_forms'] and progress['revision_required'] == 0:
+            # All forms completed and none require revision
             new_status = 'SUBMITTED'
         elif progress['completed_forms'] > 0:
-            # Some forms completed
+            # Some forms completed (including those requiring revision)
             new_status = 'IN_PROGRESS'
         else:
             # No forms completed yet
@@ -194,6 +205,31 @@ class TemplateAssignment(models.Model):
             }
             for fs in self.form_completion_status.all().select_related('form_selection__form', 'verified_by')
         ]
+
+    def get_verification_progress_for_layer(self, layer):
+        """
+        Returns dictionary with verification statistics for this assignment for a specific layer.
+        This is more accurate when you need layer-specific completion status.
+        """
+        # Count ALL forms that should be in this template
+        total_forms_in_template = TemplateFormSelection.objects.filter(
+            template=self.template
+        ).count()
+        
+        # Get existing completion statuses for this assignment and specific layer
+        form_statuses = self.form_completion_status.filter(layer=layer)
+        completed_count = form_statuses.filter(is_completed=True).count()
+        verified_count = form_statuses.filter(is_verified=True).count()
+        revision_required_count = form_statuses.filter(is_completed=True, revision_required=True).count()
+        
+        return {
+            'total_forms': total_forms_in_template,
+            'completed_forms': completed_count,
+            'verified_forms': verified_count,
+            'revision_required': revision_required_count,  # ← NEW: Count forms sent back for revision
+            'pending_verification': form_statuses.filter(is_completed=True, is_verified=False, revision_required=False).count(),  # ← FIXED: Exclude revision-required forms
+            'draft_forms': total_forms_in_template - completed_count
+        }
 
 class FormCompletionStatus(models.Model):
     """
