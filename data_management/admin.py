@@ -371,8 +371,16 @@ class ESGMetricSubmissionAdmin(admin.ModelAdmin):
                 try:
                     data = obj.multifield_data
                     if data and data.field_data:
-                        field_count = len(data.field_data)
-                        return f"Multi-field data ({field_count} fields)"
+                        # Check if it's structured data
+                        if 'sections' in data.field_data:
+                            sections = data.field_data.get('sections', {})
+                            total = data.field_data.get('total_workforce', 'N/A')
+                            section_count = len(sections)
+                            return f"Structured workforce data: {total} total, {section_count} sections"
+                        else:
+                            # Fallback for flat structure
+                            field_count = len(data.field_data)
+                            return f"Multi-field data ({field_count} fields)"
                     return "(No multi-field data)"
                 except obj._meta.get_field('multifield_data').related_model.DoesNotExist:
                     return "(No multi-field data)"
