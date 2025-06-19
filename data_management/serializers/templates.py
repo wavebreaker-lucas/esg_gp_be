@@ -236,95 +236,107 @@ class TemplateAssignmentSerializer(serializers.ModelSerializer):
         For direct assignments, this is the same as obj.layer.id.
         For inherited assignments, this is the requesting user's layer ID.
         """
-        request = self.context.get('request')
-        if not request or not hasattr(request, 'user'):
-            return obj.layer.id  # Default to the assignment's layer if no user context
+        try:
+            request = self.context.get('request')
+            if not request or not hasattr(request, 'user'):
+                return obj.layer.id  # Default to the assignment's layer if no user context
+                
+            user = request.user
             
-        user = request.user
-        
-        # Baker Tilly admins should submit to the template's assigned layer
-        if user.is_staff or user.is_superuser or getattr(user, 'is_baker_tilly_admin', False):
+            # Baker Tilly admins should submit to the template's assigned layer
+            if user.is_staff or user.is_superuser or getattr(user, 'is_baker_tilly_admin', False):
+                return obj.layer.id
+                
+            # Check if user is directly in the assigned layer
+            if AppUser.objects.filter(user=user, layer=obj.layer).exists():
+                return obj.layer.id  # Direct assignment, use assigned layer
+                
+            # For inherited assignments, find the user's layer
+            user_layers = [app_user.layer for app_user in user.app_users.all()]
+            
+            if not user_layers:
+                # No layers found, fall back to assignment layer
+                return obj.layer.id
+                
+            # For simplicity, use the first layer found (most users will have only one)
+            return user_layers[0].id
+            
+        except Exception:
+            # Fallback to avoid 500 errors
             return obj.layer.id
-            
-        # Check if user is directly in the assigned layer
-        if AppUser.objects.filter(user=user, layer=obj.layer).exists():
-            return obj.layer.id  # Direct assignment, use assigned layer
-            
-        # For inherited assignments, find the user's layer
-        # First, get all the user's layers
-        user_layers = [app_user.layer for app_user in user.app_users.all()]
-        
-        if not user_layers:
-            # No layers found, fall back to assignment layer
-            return obj.layer.id
-            
-        # For simplicity, use the first layer found (most users will have only one)
-        # In a more complex implementation, we might want to match the user's layer
-        # with the hierarchy of the assignment layer
-        return user_layers[0].id
     
     def get_user_layer_status(self, obj):
         """
         Return the assignment status calculated for the requesting user's specific layer.
         This provides the correct status when users have layer-specific completion progress.
         """
-        request = self.context.get('request')
-        if not request or not hasattr(request, 'user'):
-            return obj.status  # Fallback to general status if no user context
+        try:
+            request = self.context.get('request')
+            if not request or not hasattr(request, 'user'):
+                return obj.status  # Fallback to general status if no user context
+                
+            user = request.user
             
-        user = request.user
-        
-        # Baker Tilly admins see general status across all layers
-        if user.is_staff or user.is_superuser or getattr(user, 'is_baker_tilly_admin', False):
+            # Baker Tilly admins see general status across all layers
+            if user.is_staff or user.is_superuser or getattr(user, 'is_baker_tilly_admin', False):
+                return obj.status
+            
+            # Get the user's layer
+            user_layers = [app_user.layer for app_user in user.app_users.all()]
+            if not user_layers:
+                return obj.status  # Fallback if user has no layer
+                
+            user_layer = user_layers[0]  # Use first layer for simplicity
+            
+            # Calculate layer-specific progress
+            progress = obj.get_verification_progress_for_layer(user_layer)
+            
+            # Calculate status based on layer-specific progress
+            if progress['total_forms'] == 0:
+                return 'PENDING'
+            elif progress['verified_forms'] == progress['total_forms']:
+                return 'VERIFIED'
+            elif progress['completed_forms'] == progress['total_forms'] and progress['revision_required'] == 0:
+                # All forms completed and none require revision
+                return 'SUBMITTED'
+            elif progress['completed_forms'] > 0:
+                # Some forms completed (including those requiring revision)
+                return 'IN_PROGRESS'
+            else:
+                return 'IN_PROGRESS'
+                
+        except Exception:
+            # Fallback to avoid 500 errors
             return obj.status
-        
-        # Get the user's layer
-        user_layers = [app_user.layer for app_user in user.app_users.all()]
-        if not user_layers:
-            return obj.status  # Fallback if user has no layer
-            
-        user_layer = user_layers[0]  # Use first layer for simplicity
-        
-        # Calculate layer-specific progress
-        progress = obj.get_verification_progress_for_layer(user_layer)
-        
-        # Calculate status based on layer-specific progress
-        if progress['total_forms'] == 0:
-            return 'PENDING'
-        elif progress['verified_forms'] == progress['total_forms']:
-            return 'VERIFIED'
-        elif progress['completed_forms'] == progress['total_forms'] and progress['revision_required'] == 0:
-            # All forms completed and none require revision
-            return 'SUBMITTED'
-        elif progress['completed_forms'] > 0:
-            # Some forms completed (including those requiring revision)
-            return 'IN_PROGRESS'
-        else:
-            return 'IN_PROGRESS'
     
     def get_user_layer_progress(self, obj):
         """
         Return progress statistics for the requesting user's layer.
         """
-        request = self.context.get('request')
-        if not request or not hasattr(request, 'user'):
-            return obj.verification_progress  # Fallback to general progress
+        try:
+            request = self.context.get('request')
+            if not request or not hasattr(request, 'user'):
+                return obj.verification_progress  # Fallback to general progress
+                
+            user = request.user
             
-        user = request.user
-        
-        # Baker Tilly admins see general progress across all layers
-        if user.is_staff or user.is_superuser or getattr(user, 'is_baker_tilly_admin', False):
+            # Baker Tilly admins see general progress across all layers
+            if user.is_staff or user.is_superuser or getattr(user, 'is_baker_tilly_admin', False):
+                return obj.verification_progress
+            
+            # Get the user's layer
+            user_layers = [app_user.layer for app_user in user.app_users.all()]
+            if not user_layers:
+                return obj.verification_progress  # Fallback if user has no layer
+                
+            user_layer = user_layers[0]  # Use first layer for simplicity
+            
+            # Return layer-specific progress
+            return obj.get_verification_progress_for_layer(user_layer)
+            
+        except Exception:
+            # Fallback to avoid 500 errors
             return obj.verification_progress
-        
-        # Get the user's layer
-        user_layers = [app_user.layer for app_user in user.app_users.all()]
-        if not user_layers:
-            return obj.verification_progress  # Fallback if user has no layer
-            
-        user_layer = user_layers[0]  # Use first layer for simplicity
-        
-        # Return layer-specific progress
-        return obj.get_verification_progress_for_layer(user_layer)
 
     def create(self, validated_data):
         # template = validated_data.pop('template_id') # No longer needed due to source='template' on template_id
