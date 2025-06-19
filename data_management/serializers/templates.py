@@ -864,9 +864,14 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         
         if multifield_data:
             from ..models.submission_data import MultiFieldDataPoint
+            # Handle both formats: direct data or nested under field_data
+            if 'field_data' in multifield_data:
+                field_data = multifield_data['field_data']
+            else:
+                field_data = multifield_data
             MultiFieldDataPoint.objects.create(
                 submission=submission,
-                field_data=multifield_data.get('field_data', {})
+                field_data=field_data
             )
         
         # Handle vehicle_records nested creation
@@ -961,9 +966,14 @@ class ESGMetricSubmissionSerializer(serializers.ModelSerializer):
         
         if multifield_data:
             from ..models.submission_data import MultiFieldDataPoint
+            # Handle both formats: direct data or nested under field_data
+            if 'field_data' in multifield_data:
+                field_data = multifield_data['field_data']
+            else:
+                field_data = multifield_data
             MultiFieldDataPoint.objects.update_or_create(
                 submission=instance,
-                defaults={'field_data': multifield_data.get('field_data', {})}
+                defaults={'field_data': field_data}
             )
         
         # Handle vehicle_records nested update
